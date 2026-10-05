@@ -5,7 +5,7 @@ import (
 	"sync"
 	"time"
 
-	"arrstats/internal/clients/sonarr"
+	"cleanarr/internal/clients/sonarr"
 )
 
 // ServiceStatus is the live state of one service (Santé page).

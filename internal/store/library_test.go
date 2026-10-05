@@ -12,10 +12,10 @@ import (
 	"testing"
 	"time"
 
-	"arrstats/internal/mockarr"
-	"arrstats/internal/store"
-	"arrstats/internal/syncer"
-	"arrstats/internal/upstream"
+	"cleanarr/internal/mockarr"
+	"cleanarr/internal/store"
+	"cleanarr/internal/syncer"
+	"cleanarr/internal/upstream"
 )
 
 var now = time.Unix(mockarr.Anchor, 0)

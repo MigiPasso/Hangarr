@@ -5,7 +5,7 @@ import (
 	"math"
 	"testing"
 
-	"arrstats/internal/store"
+	"cleanarr/internal/store"
 )
 
 const dayS = 24 * 60 * 60

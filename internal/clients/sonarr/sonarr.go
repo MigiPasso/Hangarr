@@ -10,7 +10,7 @@ import (
 	"net/url"
 	"strconv"
 
-	"arrstats/internal/clients/httpx"
+	"cleanarr/internal/clients/httpx"
 )
 
 // Image is a poster/fanart/banner reference.

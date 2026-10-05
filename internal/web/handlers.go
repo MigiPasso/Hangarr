@@ -3,12 +3,14 @@ package web
 import (
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
-	"arrstats/internal/auth"
-	"arrstats/internal/store"
+	"cleanarr/internal/auth"
+	"cleanarr/internal/store"
 )
 
 func (s *Server) healthz(w http.ResponseWriter, _ *http.Request) {
@@ -39,6 +41,23 @@ func (s *Server) notFound(w http.ResponseWriter, r *http.Request) {
 type loginData struct {
 	Username string
 	Error    string
+	// InsecureCookies: the page is served over plain HTTP while
+	// COOKIE_SECURE=true, so the browser will drop the session cookie.
+	InsecureCookies bool
+}
+
+// insecureCookieSetup reports a COOKIE_SECURE=true deployment reached over
+// plain HTTP. Browsers accept Secure cookies on localhost, so it is excluded.
+func (s *Server) insecureCookieSetup(r *http.Request) bool {
+	if !s.Config.CookieSecure || r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https" {
+		return false
+	}
+	host := r.Host
+	if h, _, err := net.SplitHostPort(host); err == nil {
+		host = h
+	}
+	host = strings.Trim(host, "[]")
+	return host != "localhost" && host != "127.0.0.1" && host != "::1"
 }
 
 // preSession returns the pre-session cookie value, creating it if needed.
@@ -60,6 +79,7 @@ func (s *Server) renderLogin(w http.ResponseWriter, r *http.Request, status int,
 		s.serverError(w, r, err)
 		return
 	}
+	data.InsecureCookies = s.insecureCookieSetup(r)
 	pd := s.page(r, "Connexion", "", data)
 	pd.CSRFToken = auth.PreSessionCSRF(s.PreSessionKey, pre)
 	s.render(w, r, status, "login", "", pd)

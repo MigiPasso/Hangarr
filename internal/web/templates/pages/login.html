@@ -1,7 +1,14 @@
 {{define "content"}}
 <section class="card auth-card">
-  <h1>arrstats</h1>
+  <h1>Cleanarr</h1>
   <p class="muted">Connectez-vous pour continuer.</p>
+  {{if .Data.InsecureCookies}}
+  <div class="alert alert-warning" role="alert">
+    <strong>Connexion impossible en HTTP.</strong> L'application est servie sans HTTPS alors que
+    <code>COOKIE_SECURE=true</code> : le navigateur refusera le cookie de session. Passez par HTTPS (reverse proxy), ou,
+    pour un test sur le réseau local uniquement, définissez <code>COOKIE_SECURE=false</code> et redémarrez.
+  </div>
+  {{end}}
   {{with .Data.Error}}<p class="alert alert-error" role="alert">{{.}}</p>{{end}}
   <form method="post" action="/login" class="stack">
     <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">

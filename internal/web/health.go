@@ -3,8 +3,8 @@ package web
 import (
 	"net/http"
 
-	"arrstats/internal/store"
-	"arrstats/internal/upstream"
+	"cleanarr/internal/store"
+	"cleanarr/internal/upstream"
 )
 
 // healthListLimit caps each data list of the Santé page.

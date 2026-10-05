@@ -9,8 +9,8 @@ import (
 	"strings"
 	"testing"
 
-	"arrstats/internal/secretbox"
-	"arrstats/internal/upstream"
+	"cleanarr/internal/secretbox"
+	"cleanarr/internal/upstream"
 )
 
 const testAPIKey = "0123456789abcdef0123456789abcdef"
@@ -134,7 +134,7 @@ func TestTautulliWebhook(t *testing.T) {
 	post := func(token string) resp {
 		h := map[string]string{"Content-Type": "application/json"}
 		if token != "" {
-			h["X-Arrstats-Token"] = token
+			h["X-Cleanarr-Token"] = token
 		}
 		return e.do(c, "POST", "/webhooks/tautulli", url.Values{"payload": {"ignored"}}, h)
 	}
@@ -181,7 +181,7 @@ func TestWebhookSecretGeneration(t *testing.T) {
 	csrf := csrfFrom(t, page.body)
 	h.do(c, "POST", "/config/tautulli", url.Values{"csrf_token": {csrf}, "tautulli.url": {"http://tautulli:8181"}}, nil)
 	r := h.do(c, "POST", "/config/tautulli/webhook-secret", url.Values{"csrf_token": {csrf}}, map[string]string{"HX-Request": "true"})
-	m := regexp.MustCompile(`"X-Arrstats-Token": "([A-Za-z0-9_-]{43})"`).FindStringSubmatch(r.body)
+	m := regexp.MustCompile(`"X-Cleanarr-Token": "([A-Za-z0-9_-]{43})"`).FindStringSubmatch(r.body)
 	if m == nil {
 		t.Fatalf("secret not shown:\n%s", r.body)
 	}

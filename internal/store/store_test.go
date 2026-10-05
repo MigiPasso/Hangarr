@@ -115,3 +115,31 @@ func TestSecretIsStable(t *testing.T) {
 		t.Fatalf("secret not stable: %v %v calls=%d", a, b, calls)
 	}
 }
+
+func TestBackupTo(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	st, err := Open(ctx, dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = st.Close() }()
+	if err := st.SetSetting(ctx, "sync_time", "05:30", time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(dir, "backup.db")
+	if err := st.BackupTo(ctx, path); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.BackupTo(ctx, path); err == nil {
+		t.Error("an existing backup must not be overwritten")
+	}
+	copyStore, err := OpenPath(ctx, path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = copyStore.Close() }()
+	if v, _ := copyStore.Setting(ctx, "sync_time", ""); v != "05:30" {
+		t.Errorf("backup content: %q", v)
+	}
+}

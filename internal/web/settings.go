@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
-	"arrstats/internal/store"
-	"arrstats/internal/syncer"
+	"cleanarr/internal/store"
+	"cleanarr/internal/syncer"
 )
 
 type settingsData struct {

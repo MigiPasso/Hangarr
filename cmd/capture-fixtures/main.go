@@ -1,5 +1,5 @@
 // Command capture-fixtures records anonymized responses of the real
-// Sonarr, Radarr, Plex and Tautulli instances (configured like arrstats,
+// Sonarr, Radarr, Plex and Tautulli instances (configured like cleanarr,
 // through environment variables) into testdata/captured/, using the layout
 // served by mockarr. Run it with `make capture-fixtures`, then review the
 // files before committing them.
@@ -21,8 +21,8 @@ import (
 	"strings"
 	"time"
 
-	"arrstats/internal/clients/httpx"
-	"arrstats/internal/config"
+	"cleanarr/internal/clients/httpx"
+	"cleanarr/internal/config"
 )
 
 func main() {

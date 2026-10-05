@@ -13,11 +13,11 @@ import (
 	"strings"
 	"time"
 
-	"arrstats/internal/clients/httpx"
-	"arrstats/internal/clients/plex"
-	"arrstats/internal/clients/sonarr"
-	"arrstats/internal/store"
-	"arrstats/internal/upstream"
+	"cleanarr/internal/clients/httpx"
+	"cleanarr/internal/clients/plex"
+	"cleanarr/internal/clients/sonarr"
+	"cleanarr/internal/store"
+	"cleanarr/internal/upstream"
 )
 
 // Action names stored in action_log.

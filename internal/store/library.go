@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"arrstats/internal/matching"
+	"cleanarr/internal/matching"
 )
 
 // LibraryFilter holds the library filters (SPEC §7.2). Zero values mean "no

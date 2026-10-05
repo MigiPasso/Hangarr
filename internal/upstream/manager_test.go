@@ -13,9 +13,9 @@ import (
 	"testing"
 	"time"
 
-	"arrstats/internal/mockarr"
-	"arrstats/internal/secretbox"
-	"arrstats/internal/store"
+	"cleanarr/internal/mockarr"
+	"cleanarr/internal/secretbox"
+	"cleanarr/internal/store"
 )
 
 const apiKey = "0123456789abcdef0123456789abcdef"
@@ -264,7 +264,7 @@ func TestSetupKeyGeneratedThenMigrated(t *testing.T) {
 	}
 	save(t, m, Plex, input(PlexURL, "http://plex:32400", PlexToken, "token-0123456789"))
 
-	// Restart without ARRSTATS_MASTER_KEY: same generated key.
+	// Restart without CLEANARR_MASTER_KEY: same generated key.
 	restart := func(envKey []byte) *Manager {
 		t.Helper()
 		m2 := &Manager{Store: m.Store, HistoryMode: "auto", Registry: NewRegistry(nil), Log: m.Log}
@@ -280,7 +280,7 @@ func TestSetupKeyGeneratedThenMigrated(t *testing.T) {
 		t.Fatal("the generated key must be reused after a restart")
 	}
 
-	// ARRSTATS_MASTER_KEY appears: credentials re-encrypted, file removed.
+	// CLEANARR_MASTER_KEY appears: credentials re-encrypted, file removed.
 	envKey := []byte(strings.Repeat("e", 32))
 	m3 := restart(envKey)
 	if m3.KeyInDataDir || m3.Registry.Get().Values[PlexToken] != "token-0123456789" {

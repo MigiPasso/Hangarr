@@ -14,7 +14,7 @@ import (
 	"strconv"
 	"strings"
 
-	"arrstats/internal/clients/httpx"
+	"cleanarr/internal/clients/httpx"
 )
 
 // Library item types for /library/sections/{key}/all?type=N.

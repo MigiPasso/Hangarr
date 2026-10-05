@@ -1,6 +1,6 @@
 # Development and test environment. Everything runs here: nothing is
 # installed on the host besides Docker (see CLAUDE.md / README.md).
-name: arrstats
+name: cleanarr
 
 x-upstreams-mock: &upstreams-mock
   SONARR_URL: http://mock:8989
@@ -28,7 +28,7 @@ services:
       LOG_LEVEL: debug
       # Dev-only key: the services come from the environment (locked in the
       # UI), but public URLs and the webhook secret can be saved.
-      ARRSTATS_MASTER_KEY: ZGV2LW9ubHktbWFzdGVyLWtleS0tZG8tbm90LXVzZSE=
+      CLEANARR_MASTER_KEY: ZGV2LW9ubHktbWFzdGVyLWtleS0tZG8tbm90LXVzZSE=
     ports:
       - "8080:8080"
     volumes:
@@ -55,8 +55,8 @@ services:
       context: .
       target: dev
     working_dir: /src
-    # Makefile passes ARRSTATS_ENV_FILE=.env; the default keeps compose valid without .env.
-    env_file: ${ARRSTATS_ENV_FILE:-.env.example}
+    # Makefile passes CLEANARR_ENV_FILE=.env; the default keeps compose valid without .env.
+    env_file: ${CLEANARR_ENV_FILE:-.env.example}
     environment:
       DATA_DIR: /data
       DRY_RUN: ${DRY_RUN:-true}
@@ -92,7 +92,7 @@ services:
     profiles: [real]
     image: golang:1.27.1-bookworm
     working_dir: /src
-    env_file: ${ARRSTATS_ENV_FILE:-.env.example}
+    env_file: ${CLEANARR_ENV_FILE:-.env.example}
     environment:
       GOFLAGS: -buildvcs=false
     volumes:
@@ -133,7 +133,7 @@ services:
       LOG_FORMAT: json
       LOGIN_MAX_PER_IP: "50"
     healthcheck:
-      test: ["CMD", "/arrstats", "healthcheck"]
+      test: ["CMD", "/cleanarr", "healthcheck"]
       interval: 2s
       timeout: 3s
       retries: 30
@@ -157,7 +157,7 @@ services:
       LOG_FORMAT: json
       LOGIN_MAX_PER_IP: "50"
     healthcheck:
-      test: ["CMD", "/arrstats", "healthcheck"]
+      test: ["CMD", "/cleanarr", "healthcheck"]
       interval: 2s
       timeout: 3s
       retries: 30
@@ -178,13 +178,13 @@ services:
     secrets:
       - master_key
     environment:
-      ARRSTATS_MASTER_KEY_FILE: /run/secrets/master_key
+      CLEANARR_MASTER_KEY_FILE: /run/secrets/master_key
       DRY_RUN: "true"
       COOKIE_SECURE: "false"
       LOG_FORMAT: json
       LOGIN_MAX_PER_IP: "50"
     healthcheck:
-      test: ["CMD", "/arrstats", "healthcheck"]
+      test: ["CMD", "/cleanarr", "healthcheck"]
       interval: 2s
       timeout: 3s
       retries: 30

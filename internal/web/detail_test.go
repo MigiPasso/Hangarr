@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"arrstats/internal/clients/sonarr"
-	"arrstats/internal/store"
+	"cleanarr/internal/clients/sonarr"
+	"cleanarr/internal/store"
 )
 
 func (e *libEnv) mediaID(kind, title string) string {
@@ -114,7 +114,7 @@ func TestDeleteFlowDryRun(t *testing.T) {
 	r = e.do(e.c, "POST", "/series/"+id+"/delete", form, map[string]string{"HX-Request": "true", csrfHeader: tok})
 	trigger := r.header.Get("HX-Trigger")
 	if r.status != http.StatusOK || r.header.Get("HX-Reswap") != "none" ||
-		!strings.Contains(trigger, `"arrstats:deleted"`) || !strings.Contains(trigger, `"dryRun":true`) {
+		!strings.Contains(trigger, `"cleanarr:deleted"`) || !strings.Contains(trigger, `"dryRun":true`) {
 		t.Fatalf("dry run: %d %s", r.status, trigger)
 	}
 	for _, c := range trigger {
@@ -196,7 +196,7 @@ func TestProtectButton(t *testing.T) {
 	r := e.do(e.c, "POST", "/series/"+bb+"/protect", url.Values{"csrf_token": {tok}, "protect": {"1"}},
 		map[string]string{"HX-Request": "true"})
 	trigger := r.header.Get("HX-Trigger")
-	if r.status != http.StatusOK || !strings.Contains(trigger, "arrstats:changed") || !strings.Contains(trigger, `"success"`) {
+	if r.status != http.StatusOK || !strings.Contains(trigger, "cleanarr:changed") || !strings.Contains(trigger, `"success"`) {
 		t.Fatalf("protect: %d %s", r.status, trigger)
 	}
 	page = e.do(e.c, "GET", "/series/"+bb, nil, nil)
@@ -220,7 +220,7 @@ func TestProtectDryRun(t *testing.T) {
 	r := e.do(e.c, "POST", "/series/"+bb+"/protect", url.Values{"csrf_token": {tok}, "protect": {"1"}},
 		map[string]string{"HX-Request": "true"})
 	trigger := r.header.Get("HX-Trigger")
-	if !strings.Contains(trigger, "Simulation") || strings.Contains(trigger, "arrstats:changed") {
+	if !strings.Contains(trigger, "Simulation") || strings.Contains(trigger, "cleanarr:changed") {
 		t.Errorf("dry-run: %s", trigger)
 	}
 }

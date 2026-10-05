@@ -13,12 +13,12 @@ import (
 	"strings"
 	"sync/atomic"
 
-	"arrstats/internal/clients/httpx"
-	"arrstats/internal/clients/plex"
-	"arrstats/internal/clients/radarr"
-	"arrstats/internal/clients/sonarr"
-	"arrstats/internal/clients/tautulli"
-	"arrstats/internal/config"
+	"cleanarr/internal/clients/httpx"
+	"cleanarr/internal/clients/plex"
+	"cleanarr/internal/clients/radarr"
+	"cleanarr/internal/clients/sonarr"
+	"cleanarr/internal/clients/tautulli"
+	"cleanarr/internal/config"
 )
 
 // Service names.

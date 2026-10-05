@@ -15,7 +15,7 @@ import (
 	"syscall"
 	"time"
 
-	"arrstats/internal/mockarr"
+	"cleanarr/internal/mockarr"
 )
 
 func main() {

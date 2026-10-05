@@ -16,7 +16,7 @@ import (
 	"strings"
 	"time"
 
-	"arrstats/internal/store"
+	"cleanarr/internal/store"
 )
 
 //go:embed templates

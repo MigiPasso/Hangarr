@@ -8,9 +8,9 @@ import (
 	"slices"
 	"strings"
 
-	"arrstats/internal/clients/sonarr"
-	"arrstats/internal/store"
-	"arrstats/internal/upstream"
+	"cleanarr/internal/clients/sonarr"
+	"cleanarr/internal/store"
+	"cleanarr/internal/upstream"
 )
 
 // Protection actions stored in action_log.

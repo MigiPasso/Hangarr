@@ -15,10 +15,10 @@ import (
 	"testing/fstest"
 	"time"
 
-	"arrstats/internal/clients/sonarr"
-	"arrstats/internal/mockarr"
-	"arrstats/internal/store"
-	"arrstats/internal/upstream"
+	"cleanarr/internal/clients/sonarr"
+	"cleanarr/internal/mockarr"
+	"cleanarr/internal/store"
+	"cleanarr/internal/upstream"
 )
 
 const key = "test-key"

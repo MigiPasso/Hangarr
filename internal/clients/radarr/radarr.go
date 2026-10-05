@@ -9,8 +9,8 @@ import (
 	"net/url"
 	"strconv"
 
-	"arrstats/internal/clients/httpx"
-	"arrstats/internal/clients/sonarr"
+	"cleanarr/internal/clients/httpx"
+	"cleanarr/internal/clients/sonarr"
 )
 
 // Ratings accepts both shapes seen in Radarr: the current per-source map

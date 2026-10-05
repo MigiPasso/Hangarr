@@ -45,7 +45,7 @@
   <h2>Données</h2>
   <p class="small muted">Écarts entre Plex et Sonarr/Radarr, d'après la dernière synchronisation.</p>
   <div class="health-grid">
-    {{template "health_list" list2 "Dans Plex mais pas dans Sonarr/Radarr" "Ces éléments ne peuvent pas être supprimés depuis arrstats." $d.Data.PlexOnly}}
+    {{template "health_list" list2 "Dans Plex mais pas dans Sonarr/Radarr" "Ces éléments ne peuvent pas être supprimés depuis Cleanarr." $d.Data.PlexOnly}}
     {{template "health_list" list2 "Dans Sonarr/Radarr sans fichier" "Surveillés ou en attente de téléchargement." $d.Data.NoFile}}
     {{template "health_list" list2 "Dans Sonarr/Radarr mais absents de Plex" "Fichiers présents que Plex n'a pas (encore) indexés : chemin de bibliothèque ou scan Plex à vérifier." $d.Data.NotInPlex}}
     {{template "health_list" list2 "Rapprochements approximatifs" "Rapprochés par titre et année faute d'identifiant commun (TVDB, TMDB, IMDb) : à vérifier." $d.Data.Fuzzy}}

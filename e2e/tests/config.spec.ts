@@ -83,7 +83,7 @@ test("the synchronized library and the security journal", async ({ page }) => {
   }
 });
 
-test("without ARRSTATS_MASTER_KEY a key is generated in /data and the UI warns about it", async ({ page }) => {
+test("without CLEANARR_MASTER_KEY a key is generated in /data and the UI warns about it", async ({ page }) => {
   // app-e2e has no master key; auth.spec.ts already set its password.
   const base = process.env.BASE_URL ?? "http://app-e2e:8080";
   await page.goto(`${base}/login`);
@@ -111,7 +111,7 @@ test("Tautulli webhook: secret generated once, then the webhook accepts it", asy
 
   const hook = `${base}/webhooks/tautulli`;
   expect((await request.post(hook, { data: { event: "stop" } })).status()).toBe(401);
-  expect((await request.post(hook, { headers: { "X-Arrstats-Token": secret }, data: { event: "stop" } })).status()).toBe(202);
+  expect((await request.post(hook, { headers: { "X-Cleanarr-Token": secret }, data: { event: "stop" } })).status()).toBe(202);
 
   await page.reload();
   expect(await page.content()).not.toContain(secret);

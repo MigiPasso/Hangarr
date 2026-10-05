@@ -7,15 +7,15 @@
 <div class="alert alert-warning config-intro" role="note">
   <strong>Clé de chiffrement stockée avec les données.</strong> Les clés et tokens sont chiffrés, mais la clé a été générée
   dans le volume de données (<code>master.key</code>) : une sauvegarde ou une copie du volume les expose. Pour une
-  meilleure protection, définissez <code>ARRSTATS_MASTER_KEY</code> (ou <code>ARRSTATS_MASTER_KEY_FILE</code>) ;
-  <code>arrstats master-key</code> en génère une. Au redémarrage suivant, les secrets sont rechiffrés avec cette clé et
+  meilleure protection, définissez <code>CLEANARR_MASTER_KEY</code> (ou <code>CLEANARR_MASTER_KEY_FILE</code>) ;
+  <code>cleanarr master-key</code> en génère une. Au redémarrage suivant, les secrets sont rechiffrés avec cette clé et
   <code>master.key</code> est supprimé, sans rien ressaisir.
 </div>
 {{else if not .Data.CanStoreSecrets}}
 <div class="alert alert-warning config-intro" role="alert">
   <strong>Aucune clé maître n'est définie.</strong> Les adresses peuvent être enregistrées, mais pas les clés d'API ni les
-  tokens. Définissez <code>ARRSTATS_MASTER_KEY</code> (ou <code>ARRSTATS_MASTER_KEY_FILE</code>) puis redémarrez ;
-  <code>arrstats master-key</code> en génère une. Conservez-la en dehors du volume de données.
+  tokens. Définissez <code>CLEANARR_MASTER_KEY</code> (ou <code>CLEANARR_MASTER_KEY_FILE</code>) puis redémarrez ;
+  <code>cleanarr master-key</code> en génère une. Conservez-la en dehors du volume de données.
 </div>
 {{end}}
 <div class="config-grid">
@@ -76,17 +76,17 @@
   <div class="alert alert-warning" role="alert">
     <p><strong>Nouveau secret, affiché une seule fois :</strong></p>
     <p><code class="secret">{{.}}</code></p>
-    <p>En-tête JSON à coller dans Tautulli : <code class="secret">{"X-Arrstats-Token": "{{.}}"}</code></p>
+    <p>En-tête JSON à coller dans Tautulli : <code class="secret">{"X-Cleanarr-Token": "{{.}}"}</code></p>
   </div>
   {{end}}
   <ol class="small">
     <li>Tautulli → Settings → Notification Agents → Add a new notification agent → <strong>Webhook</strong>.</li>
-    <li>Webhook URL : <code>{{.WebhookURL}}</code> (ou l'adresse sous laquelle Tautulli joint arrstats, par exemple
-      <code>http://arrstats:8080/webhooks/tautulli</code> sur le même réseau Docker) ; méthode <code>POST</code>.</li>
+    <li>Webhook URL : <code>{{.WebhookURL}}</code> (ou l'adresse sous laquelle Tautulli joint Cleanarr, par exemple
+      <code>http://cleanarr:8080/webhooks/tautulli</code> sur le même réseau Docker) ; méthode <code>POST</code>.</li>
     <li>Triggers : <strong>Playback Stop</strong> et <strong>Watched</strong>.</li>
-    <li>Data : pour ces deux déclencheurs, champ <em>JSON Headers</em> : <code>{"X-Arrstats-Token": "<em>le secret</em>"}</code>.</li>
+    <li>Data : pour ces deux déclencheurs, champ <em>JSON Headers</em> : <code>{"X-Cleanarr-Token": "<em>le secret</em>"}</code>.</li>
   </ol>
-  <p class="small muted">arrstats relit alors l'historique Tautulli 30 secondes après une fin de lecture. Le contenu
+  <p class="small muted">Cleanarr relit alors l'historique Tautulli 30 secondes après une fin de lecture. Le contenu
     envoyé par Tautulli est ignoré : l'appel ne fait que déclencher cette lecture.</p>
   {{if .WebhookLocked}}<p class="small muted">Secret défini par l'environnement (<code>TAUTULLI_WEBHOOK_SECRET</code>).</p>
   {{else if not .CanStoreSecrets}}

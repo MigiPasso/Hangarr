@@ -1,4 +1,4 @@
-// arrstats: minimal client script (CSP script-src 'self', no eval).
+// cleanarr: minimal client script (CSP script-src 'self', no eval).
 // Live password checklist: purely informative, the server stays the only
 // source of truth and the password is never sent while typing.
 (function () {
@@ -86,15 +86,15 @@
     setTimeout(function () { t.remove(); }, 6000);
   }
 
-  document.addEventListener("arrstats:toast", function (e) { toast(e.detail.message, e.detail.level); });
+  document.addEventListener("cleanarr:toast", function (e) { toast(e.detail.message, e.detail.level); });
 
   // Protection changed: reload the detail (modal or page) to show the new state.
-  document.addEventListener("arrstats:changed", function (e) {
+  document.addEventListener("cleanarr:changed", function (e) {
     var modal = document.getElementById("modal");
     if (modal && modal.open) { htmx.ajax("GET", e.detail.detailUrl, { target: "#modal-body" }); } else { location.reload(); }
   });
 
-  document.addEventListener("arrstats:deleted", function (e) {
+  document.addEventListener("cleanarr:deleted", function (e) {
     var d = e.detail;
     var confirm = document.getElementById("confirm");
     if (confirm && confirm.open) { confirm.close(); }

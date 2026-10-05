@@ -8,13 +8,13 @@ import (
 	"strings"
 	"time"
 
-	"arrstats/internal/auth"
-	"arrstats/internal/store"
+	"cleanarr/internal/auth"
+	"cleanarr/internal/store"
 )
 
 const (
-	sessionCookie    = "arrstats_session"
-	preSessionCookie = "arrstats_presession"
+	sessionCookie    = "cleanarr_session"
+	preSessionCookie = "cleanarr_presession"
 	csrfHeader       = "X-CSRF-Token"
 	csrfField        = "csrf_token"
 )

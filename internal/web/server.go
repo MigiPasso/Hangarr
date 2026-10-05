@@ -11,12 +11,12 @@ import (
 	"sync/atomic"
 	"time"
 
-	"arrstats/internal/actions"
-	"arrstats/internal/auth"
-	"arrstats/internal/config"
-	"arrstats/internal/images"
-	"arrstats/internal/store"
-	"arrstats/internal/upstream"
+	"cleanarr/internal/actions"
+	"cleanarr/internal/auth"
+	"cleanarr/internal/config"
+	"cleanarr/internal/images"
+	"cleanarr/internal/store"
+	"cleanarr/internal/upstream"
 )
 
 // ShutdownTimeout bounds how long in-flight requests may run after SIGTERM.

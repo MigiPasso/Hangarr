@@ -12,7 +12,7 @@ import (
 	"sync"
 	"time"
 
-	"arrstats/internal/store"
+	"cleanarr/internal/store"
 )
 
 const day = 24 * time.Hour

@@ -15,10 +15,10 @@ import (
 	"sync"
 	"time"
 
-	"arrstats/internal/clients/httpx"
-	"arrstats/internal/clients/tautulli"
-	"arrstats/internal/secretbox"
-	"arrstats/internal/store"
+	"cleanarr/internal/clients/httpx"
+	"cleanarr/internal/clients/tautulli"
+	"cleanarr/internal/secretbox"
+	"cleanarr/internal/store"
 )
 
 // settingPrefix namespaces the service settings in app_settings.
@@ -35,7 +35,7 @@ type Manager struct {
 	HistoryMode string // HISTORY_SOURCE
 	Box         *secretbox.Box
 	// KeyInDataDir is set when the master key was generated in the data
-	// directory (no ARRSTATS_MASTER_KEY): a backup of the volume exposes
+	// directory (no CLEANARR_MASTER_KEY): a backup of the volume exposes
 	// the credentials, the UI says so.
 	KeyInDataDir bool
 	Registry     *Registry
@@ -62,7 +62,7 @@ func (m *Manager) SetupKey(ctx context.Context, envKey []byte, keyFile string) e
 		}
 		m.KeyInDataDir = true
 		if created {
-			m.Log.Warn("no ARRSTATS_MASTER_KEY: generated a master key in the data directory; "+
+			m.Log.Warn("no CLEANARR_MASTER_KEY: generated a master key in the data directory; "+
 				"a backup of the volume exposes the saved credentials", "file", keyFile)
 		}
 		return nil
@@ -89,14 +89,14 @@ func (m *Manager) SetupKey(ctx context.Context, envKey []byte, keyFile string) e
 	n, err := m.rekey(ctx, old)
 	if err != nil {
 		// The file stays: the migration is retried at the next start.
-		m.Log.Error("re-encrypting credentials with ARRSTATS_MASTER_KEY failed", "err", err)
+		m.Log.Error("re-encrypting credentials with CLEANARR_MASTER_KEY failed", "err", err)
 		return nil
 	}
 	if err := os.Remove(keyFile); err != nil {
 		m.Log.Error("credentials re-encrypted but the generated key file could not be removed", "file", keyFile, "err", err)
 		return nil
 	}
-	m.Log.Info("credentials re-encrypted with ARRSTATS_MASTER_KEY; generated key file removed", "count", n)
+	m.Log.Info("credentials re-encrypted with CLEANARR_MASTER_KEY; generated key file removed", "count", n)
 	return nil
 }
 
@@ -290,7 +290,7 @@ func (m *Manager) apply(svc string, saved Values, broken map[string]bool, in Inp
 		case f.Key == TautulliWebhook && len(v) < MinWebhookSecret:
 			verr[f.Key] = fmt.Sprintf("Au moins %d caractères.", MinWebhookSecret)
 		case m.Box == nil:
-			verr[f.Key] = "Enregistrement impossible : aucune clé maître n'est définie (ARRSTATS_MASTER_KEY)."
+			verr[f.Key] = "Enregistrement impossible : aucune clé maître n'est définie (CLEANARR_MASTER_KEY)."
 		default:
 			sealed, serr := m.Box.Seal(f.Key, v)
 			if serr != nil {

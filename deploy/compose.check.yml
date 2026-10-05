@@ -1,0 +1,36 @@
+# Override used by `make deploy-check`: runs compose.yml as shipped (same
+# image, read-only rootfs, user, volume) next to the mock upstreams, without
+# publishing any port nor reading a local .env, then runs deploy/check.sh.
+services:
+  cleanarr:
+    container_name: !reset null
+    ports: !reset []
+    env_file: !reset []
+    environment:
+      COOKIE_SECURE: "false"
+      SONARR_URL: http://mock:8989
+      SONARR_API_KEY: mock-api-key
+      RADARR_URL: http://mock:7878
+      RADARR_API_KEY: mock-api-key
+      PLEX_URL: http://mock:32400
+      PLEX_TOKEN: mock-api-key
+      TAUTULLI_URL: http://mock:8181
+      TAUTULLI_API_KEY: mock-api-key
+    depends_on:
+      - mock
+
+  mock:
+    build:
+      context: .
+      target: mock
+    environment:
+      MOCK_API_KEY: mock-api-key
+
+  check:
+    image: curlimages/curl:8.22.0
+    depends_on:
+      cleanarr:
+        condition: service_healthy
+    volumes:
+      - ./deploy/check.sh:/check.sh:ro
+    entrypoint: ["sh", "/check.sh"]

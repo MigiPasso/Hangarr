@@ -12,13 +12,13 @@ import (
 	"strconv"
 	"time"
 
-	"arrstats/internal/store"
-	"arrstats/internal/upstream"
+	"cleanarr/internal/store"
+	"cleanarr/internal/upstream"
 )
 
 // Tautulli webhook limits.
 const (
-	webhookHeader    = "X-Arrstats-Token"
+	webhookHeader    = "X-Cleanarr-Token"
 	webhookMaxBody   = 64 << 10
 	webhookPerMinute = 60
 )
@@ -59,7 +59,7 @@ func (s *Server) tautulliWebhook(w http.ResponseWriter, r *http.Request) {
 }
 
 // webhookURL is the address shown in the Configuration page; Tautulli must
-// use the address under which it reaches arrstats.
+// use the address under which it reaches cleanarr.
 func webhookURL(r *http.Request) string {
 	scheme := "http"
 	if r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https" {

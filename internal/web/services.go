@@ -6,8 +6,8 @@ import (
 	"slices"
 	"time"
 
-	"arrstats/internal/store"
-	"arrstats/internal/upstream"
+	"cleanarr/internal/store"
+	"cleanarr/internal/upstream"
 )
 
 // serviceForm is one section of the Configuration page.
