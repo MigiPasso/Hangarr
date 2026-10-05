@@ -1,0 +1,16 @@
+{{define "content"}}
+<section class="card auth-card">
+  <h1>arrstats</h1>
+  <p class="muted">Connectez-vous pour continuer.</p>
+  {{with .Data.Error}}<p class="alert alert-error" role="alert">{{.}}</p>{{end}}
+  <form method="post" action="/login" class="stack">
+    <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+    <label for="username">Nom d'utilisateur</label>
+    <input id="username" name="username" type="text" autocomplete="username" autocapitalize="none"
+           spellcheck="false" required autofocus value="{{.Data.Username}}">
+    <label for="password">Mot de passe</label>
+    <input id="password" name="password" type="password" autocomplete="current-password" required>
+    <button type="submit" class="primary">Se connecter</button>
+  </form>
+</section>
+{{end}}

@@ -1,0 +1,25 @@
+{{define "top_table"}}
+<div>
+  <h3>{{index . 0}}</h3>
+  {{with index . 1}}
+  <table class="table compact">
+    <thead><tr><th>#</th><th>Titre</th><th class="num">Lectures</th><th class="num">Heures</th></tr></thead>
+    <tbody>
+    {{range $i, $t := .}}
+      <tr><td class="muted">{{inc $i}}</td>
+        <td><a href="{{mediaPath $t.Kind}}/{{$t.MediaID}}" hx-get="{{mediaPath $t.Kind}}/{{$t.MediaID}}" hx-target="#modal-body">{{$t.Title}}</a></td>
+        <td class="num">{{$t.Plays}}</td><td class="num">{{hours $t.WatchSeconds}}</td></tr>
+    {{end}}
+    </tbody>
+  </table>
+  {{else}}<p class="muted small">Aucune lecture sur la période.</p>{{end}}
+</div>
+{{end}}
+
+{{define "count_list"}}
+<div>
+  <h3>{{index . 0}}</h3>
+  {{$tr := index . 2}}
+  <ul class="plain counts">{{range index . 1}}<li><span>{{if $tr}}{{transcode .Label}}{{else}}{{.Label}}{{end}}</span><span class="num muted">{{.N}}</span></li>{{else}}<li class="muted">Aucune donnée</li>{{end}}</ul>
+</div>
+{{end}}

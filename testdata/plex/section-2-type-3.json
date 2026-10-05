@@ -1,0 +1,9 @@
+{"MediaContainer":{"size":7,"totalSize":7,"offset":0,"Metadata":[
+ {"ratingKey":"2011","parentRatingKey":"201","type":"season","title":"Saison 1","parentTitle":"Breaking Bad","index":1,"leafCount":3},
+ {"ratingKey":"2012","parentRatingKey":"201","type":"season","title":"Saison 2","parentTitle":"Breaking Bad","index":2,"leafCount":3},
+ {"ratingKey":"2021","parentRatingKey":"202","type":"season","title":"Saison 1","parentTitle":"The Expanse","index":1,"leafCount":3},
+ {"ratingKey":"2022","parentRatingKey":"202","type":"season","title":"Saison 2","parentTitle":"The Expanse","index":2,"leafCount":3},
+ {"ratingKey":"2031","parentRatingKey":"203","type":"season","title":"Saison 1","parentTitle":"Severance","index":1,"leafCount":3},
+ {"ratingKey":"2041","parentRatingKey":"204","type":"season","title":"Saison 1","parentTitle":"Shogun","index":1,"leafCount":2},
+ {"ratingKey":"2051","parentRatingKey":"205","type":"season","title":"Saison 1","parentTitle":"Home Videos","index":1,"leafCount":4}
+]}}

@@ -1,0 +1,7 @@
+{"MediaContainer":{"size":5,"totalSize":5,"offset":0,"librarySectionID":1,"librarySectionTitle":"Films","Metadata":[
+ {"ratingKey":"101","key":"/library/metadata/101","guid":"plex://movie/5d7768ba96b655001fdc0408","type":"movie","title":"Inception","year":2010,"duration":8880000,"addedAt":1756000000,"updatedAt":1756000000,"viewCount":3,"lastViewedAt":1788301680,"Guid":[{"id":"imdb://tt1375666"},{"id":"tmdb://27205"},{"id":"tvdb://170"}]},
+ {"ratingKey":"102","key":"/library/metadata/102","guid":"plex://movie/5d776d1847dd6e001f6f002f","type":"movie","title":"Dune","year":2021,"duration":9300000,"addedAt":1762000000,"Guid":[{"id":"imdb://tt1160419"},{"id":"tmdb://438631"}]},
+ {"ratingKey":"103","key":"/library/metadata/103","guid":"plex://movie/5d776d1847dd6e001f6f0030","type":"movie","title":"Tenet","year":2020,"duration":9000000,"addedAt":1736000000,"Guid":[{"id":"imdb://tt6723592"},{"id":"tmdb://577922"}]},
+ {"ratingKey":"104","key":"/library/metadata/104","guid":"com.plexapp.agents.imdb://tt0816692?lang=en","type":"movie","title":"Interstellar","year":2014,"duration":10140000,"addedAt":1706800000},
+ {"ratingKey":"105","key":"/library/metadata/105","guid":"local://105","type":"movie","title":"Vacances 2019","year":2019,"duration":3600000,"addedAt":1600000000}
+]}}

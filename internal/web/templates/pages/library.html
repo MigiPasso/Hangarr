@@ -1,0 +1,152 @@
+{{define "content"}}{{$d := .Data}}
+<div class="library">
+  <form id="library" class="library-form" method="get" action="{{$d.Path}}"
+        hx-get="{{$d.Path}}" hx-target="#results" hx-push-url="true" hx-sync="this:replace"
+        hx-trigger="change, input changed delay:300ms from:input[name=q], submit">
+    {{if eq $d.View "table"}}<input type="hidden" name="view" value="table">{{end}}
+
+    <aside class="filters" aria-label="Filtres">
+     <details class="filters-panel" open>
+      <summary class="filters-head">
+        <h2>Filtres</h2>
+        {{if $d.Active}}<a class="small" href="{{$d.Path}}">Réinitialiser</a>{{end}}
+      </summary>
+
+      {{with $d.Facets}}{{if .Users}}
+      <label class="field">Point de vue
+        <select name="user">
+          <option value="">Tous les utilisateurs</option>
+          {{range .Users}}<option value="{{.ID}}"{{if eq .ID $d.Filter.User}} selected{{end}}>{{.Name}}</option>{{end}}
+        </select>
+      </label>
+      {{end}}{{end}}
+
+      <fieldset>
+        <legend>État de visionnage</legend>
+        {{range pairs "never" "Jamais vu" "in_progress" "En cours" "completed" "Terminé" "abandoned" "Abandonné"}}
+        <label class="check"><input type="checkbox" name="state" value="{{.V}}"{{if has $d.Filter.States .V}} checked{{end}}> {{.L}}</label>
+        {{end}}
+      </fieldset>
+
+      <label class="field">Dernier visionnage
+        <select name="last">
+          <option value="">Indifférent</option>
+          <option value="never"{{if eq $d.Filter.LastViewed "never"}} selected{{end}}>Jamais vu</option>
+          {{range list "30" "90" "180" "365"}}
+          <option value="{{.}}"{{if eq $d.Filter.LastViewed .}} selected{{end}}>Pas vu depuis plus de {{.}} jours</option>
+          {{end}}
+        </select>
+      </label>
+
+      <label class="field">Ajouté
+        <select name="added">
+          <option value="">Indifférent</option>
+          <option value="lt30"{{if eq $d.Filter.Added "lt30"}} selected{{end}}>Il y a moins de 30 jours</option>
+          <option value="gt180"{{if eq $d.Filter.Added "gt180"}} selected{{end}}>Il y a plus de 6 mois</option>
+          <option value="gt365"{{if eq $d.Filter.Added "gt365"}} selected{{end}}>Il y a plus d'un an</option>
+        </select>
+      </label>
+
+      {{if eq $d.Kind "series"}}
+      <label class="field">Statut
+        <select name="status">
+          <option value="">Indifférent</option>
+          <option value="continuing"{{if eq $d.Filter.Status "continuing"}} selected{{end}}>En cours de diffusion</option>
+          <option value="ended"{{if eq $d.Filter.Status "ended"}} selected{{end}}>Terminée</option>
+        </select>
+      </label>
+      {{end}}
+
+      {{with $d.Facets}}
+      <details{{if or $d.Filter.SeenBy $d.Filter.UnseenBy $d.Filter.Nobody $d.Filter.ViewersMin}} open{{end}}>
+        <summary>Spectateurs</summary>
+        {{if .Users}}
+        <fieldset><legend>Vu par</legend>
+          {{range .Users}}<label class="check"><input type="checkbox" name="seen_by" value="{{.ID}}"{{if hasID $d.Filter.SeenBy .ID}} checked{{end}}> {{.Name}}</label>{{end}}
+        </fieldset>
+        <fieldset><legend>Jamais vu par</legend>
+          {{range .Users}}<label class="check"><input type="checkbox" name="unseen_by" value="{{.ID}}"{{if hasID $d.Filter.UnseenBy .ID}} checked{{end}}> {{.Name}}</label>{{end}}
+        </fieldset>
+        {{end}}
+        <label class="check"><input type="checkbox" name="nobody" value="1"{{if $d.Filter.Nobody}} checked{{end}}> Vu par personne</label>
+        <label class="field">Spectateurs distincts (min.)
+          <input type="number" name="viewers_min" min="0" step="1" value="{{if $d.Filter.ViewersMin}}{{$d.Filter.ViewersMin}}{{end}}">
+        </label>
+      </details>
+
+      {{if .Genres}}
+      <details{{if $d.Filter.Genres}} open{{end}}>
+        <summary>Genres</summary>
+        <div class="check-list">
+          {{range .Genres}}<label class="check"><input type="checkbox" name="genre" value="{{.}}"{{if has $d.Filter.Genres .}} checked{{end}}> {{.}}</label>{{end}}
+        </div>
+      </details>
+      {{end}}
+
+      <details{{if or $d.Filter.YearMin $d.Filter.YearMax $d.Filter.RatingMin $d.Filter.SizeMinGB}} open{{end}}>
+        <summary>Année, note, taille</summary>
+        <div class="field-row">
+          <label class="field">Année min.<input type="number" name="year_min" min="1900" max="2100" value="{{if $d.Filter.YearMin}}{{$d.Filter.YearMin}}{{end}}"></label>
+          <label class="field">Année max.<input type="number" name="year_max" min="1900" max="2100" value="{{if $d.Filter.YearMax}}{{$d.Filter.YearMax}}{{end}}"></label>
+        </div>
+        <div class="field-row">
+          <label class="field">Note min.<input type="number" name="rating_min" min="0" max="10" step="0.1" value="{{if $d.Filter.RatingMin}}{{$d.Filter.RatingMin}}{{end}}"></label>
+          <label class="field">Taille min. (Go)<input type="number" name="size_min" min="0" step="1" value="{{if $d.Filter.SizeMinGB}}{{$d.Filter.SizeMinGB}}{{end}}"></label>
+        </div>
+      </details>
+
+      <details{{if or $d.Filter.Tags $d.Filter.Profile $d.Filter.Network $d.Filter.Match}} open{{end}}>
+        <summary>{{if eq $d.Kind "series"}}Sonarr{{else}}Radarr{{end}}</summary>
+        {{if .Tags}}
+        <fieldset><legend>Tags</legend>
+          {{range .Tags}}<label class="check"><input type="checkbox" name="tag" value="{{.}}"{{if has $d.Filter.Tags .}} checked{{end}}> {{.}}</label>{{end}}
+        </fieldset>
+        {{end}}
+        <label class="field">Profil qualité
+          <select name="profile">
+            <option value="">Tous</option>
+            {{range .Profiles}}<option{{if eq $d.Filter.Profile .}} selected{{end}}>{{.}}</option>{{end}}
+          </select>
+        </label>
+        <label class="field">{{if eq $d.Kind "series"}}Network{{else}}Studio{{end}}
+          <select name="network">
+            <option value="">Tous</option>
+            {{range .Networks}}<option{{if eq $d.Filter.Network .}} selected{{end}}>{{.}}</option>{{end}}
+          </select>
+        </label>
+        <fieldset><legend>Rapprochement Plex</legend>
+          {{range pairs "matched" "Rapproché" "arr_only" "Absent de Plex" "plex_only" "Absent de Sonarr/Radarr"}}
+          <label class="check"><input type="checkbox" name="match" value="{{.V}}"{{if has $d.Filter.Match .V}} checked{{end}}> {{.L}}</label>
+          {{end}}
+        </fieldset>
+      </details>
+      {{end}}
+      <noscript><button type="submit" class="primary">Filtrer</button></noscript>
+     </details>
+    </aside>
+
+    <div class="toolbar">
+      <input type="search" name="q" value="{{$d.Filter.Query}}" placeholder="Rechercher un titre…" aria-label="Rechercher" autocomplete="off">
+      <label class="inline-field">Tri
+        <select name="sort">
+          {{range pairs "title" "Titre" "last" "Dernier visionnage" "added" "Date d'ajout" "size" "Taille" "plays" "Lectures" "rating" "Note" "score" "Score de nettoyage"}}
+          <option value="{{.V}}"{{if eq $d.Filter.Sort .V}} selected{{end}}>{{.L}}</option>
+          {{end}}
+        </select>
+      </label>
+      <select name="dir" aria-label="Ordre">
+        <option value="asc"{{if not $d.Filter.Desc}} selected{{end}}>Croissant</option>
+        <option value="desc"{{if $d.Filter.Desc}} selected{{end}}>Décroissant</option>
+      </select>
+      <span class="view-toggle" role="group" aria-label="Affichage">
+        <a href="{{index $d.ViewURLs "grid"}}"{{if eq $d.View "grid"}} aria-current="true"{{end}}>Grille</a>
+        <a href="{{index $d.ViewURLs "table"}}"{{if eq $d.View "table"}} aria-current="true"{{end}}>Tableau</a>
+      </span>
+    </div>
+  </form>
+
+  <section id="results" class="results" aria-live="polite">
+    {{template "library_results" .}}
+  </section>
+</div>
+{{end}}

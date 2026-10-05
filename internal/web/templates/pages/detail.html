@@ -1,0 +1,4 @@
+{{define "content"}}
+<p class="breadcrumb"><a href="{{.Data.Path}}">← {{if eq .Data.M.Kind "series"}}Séries{{else}}Films{{end}}</a></p>
+<div data-detail>{{template "detail_body" .}}</div>
+{{end}}

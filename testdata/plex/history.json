@@ -1,0 +1,6 @@
+{"MediaContainer":{"size":4,"totalSize":4,"offset":0,"Metadata":[
+ {"historyKey":"/status/sessions/history/904","key":"/library/metadata/20411","ratingKey":"20411","librarySectionID":"2","parentKey":"/library/metadata/2041","grandparentKey":"/library/metadata/204","title":"Anjin","grandparentTitle":"Shogun","type":"episode","index":1,"parentIndex":1,"viewedAt":1790456400,"accountID":1002,"deviceID":7},
+ {"historyKey":"/status/sessions/history/903","key":"/library/metadata/101","ratingKey":"101","librarySectionID":"1","title":"Inception","type":"movie","year":2010,"viewedAt":1788301680,"accountID":1002,"deviceID":3},
+ {"historyKey":"/status/sessions/history/902","key":"/library/metadata/20111","ratingKey":"20111","librarySectionID":"2","parentKey":"/library/metadata/2011","grandparentKey":"/library/metadata/201","title":"Pilot","grandparentTitle":"Breaking Bad","type":"episode","index":1,"parentIndex":1,"viewedAt":1782247620,"accountID":1001,"deviceID":2},
+ {"historyKey":"/status/sessions/history/901","key":"/library/metadata/77","ratingKey":"77","librarySectionID":"3","title":"Some Track","type":"track","viewedAt":1782000000,"accountID":1001}
+]}}

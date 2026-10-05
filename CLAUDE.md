@@ -1,0 +1,122 @@
+# CLAUDE.md : conventions arrstats
+
+`SPEC.md` est la spécification de référence (Go + HTMX, croise Plex / Tautulli / Sonarr / Radarr).
+**Prowlarr est hors périmètre** (décision utilisateur) : aucun client, aucune config, aucune page ; ignorer SPEC §3.3,
+la partie Prowlarr de §7.7 et `PROWLARR_*` de §10.
+**Pas de « lectures en cours »** (décision utilisateur) : ignorer `get_activity` (SPEC §3.5) et le bloc « En cours de
+lecture » du Dashboard (§7.1).
+Le dépôt s'appelle `cleanarr`, mais l'application, le binaire et le module Go s'appellent **`arrstats`**.
+
+## Règle n°1 : tout passe par Docker
+
+Rien ne s'exécute sur la machine hôte en dehors de `docker`, `docker compose`, `make` et `git`.
+**Jamais** de `go`, `gofmt`, `npm`, `npx`, `node`, `golangci-lint`, `playwright` ni de navigateur en local.
+
+| Besoin | Commande |
+|---|---|
+| Lancer l'app (hot reload + mocks) | `make dev` → http://localhost:8080 |
+| Contre les vraies instances | `make dev-real` (lit `.env`, `DRY_RUN=true` par défaut) |
+| Tests unitaires et d'intégration (`-race`) | `make test` |
+| `go vet` + golangci-lint | `make lint` |
+| e2e Playwright (image runtime, base vierge) | `make e2e` |
+| `go mod tidy` | `make deps` |
+| Autre commande Go ponctuelle | `docker compose -f compose.dev.yml --profile tools run --rm gotools <cmd>` (ex. `gofmt -l -w .`) |
+| npm pour e2e | `docker compose -f compose.dev.yml --profile e2e run --rm --no-deps e2e npm …` |
+| Télécharger htmx / la liste de mots de passe | `make vendor-assets` |
+| Image runtime locale / multi-arch | `make image-load` / `make image` (`PUSH=1` pour pousser) |
+| Lancer une sync dans l'app de dev | `make sync` (`arrstats sync --once`) |
+| Capturer de vraies réponses API (anonymisées) | `make capture-fixtures` (lit `.env`, écrit `testdata/captured/`) |
+| Réinitialiser le mot de passe admin (dev) | `make reset-admin` |
+| Tout supprimer (conteneurs, volumes, base de dev) | `make clean` |
+
+Versions épinglées : Go dans `Dockerfile` (`GO_VERSION`) **et** `compose.dev.yml` (service `gotools`) ; golangci-lint et air
+dans `Dockerfile` ; Playwright dans `compose.dev.yml` **et** `e2e/package.json` (mêmes versions) ; htmx dans `Makefile`.
+Le Makefile doit rester compatible GNU Make 3.81 (macOS).
+
+## Livraison
+
+- Par phases (SPEC §15). Fin de phase : `make test`, `make lint` et `make e2e` verts, `make dev` fonctionnel, court récap,
+  puis **attendre la validation de l'utilisateur** avant la phase suivante.
+- Si un point de la spec est ambigu ou semble une mauvaise idée : le dire et proposer une alternative, ne pas deviner.
+
+## Stack (SPEC §2) : ne pas en sortir
+
+stdlib `net/http` (routing par patterns `GET /x/{id}`), `html/template` + `embed`, HTMX 2 vendorisé dans
+`internal/web/static/`, CSS fait main, SVG générés côté serveur, `modernc.org/sqlite` (sans CGO), migrations SQL
+embarquées (`internal/store/migrations/NNNN_name.sql`, jamais modifier une migration déjà livrée), `log/slog`.
+Pas de framework web, pas de build Node pour l'app, pas de CDN.
+
+## Conventions de code
+
+- Code, identifiants, commentaires et logs en **anglais** ; interface utilisateur en **français**.
+- SQL toujours paramétré ; les requêtes vivent dans `internal/store`.
+- Pages : rendu complet, ou partial si `HX-Request` est présent. Redirections HTMX via `HX-Redirect` (`redirect()`).
+- Templates : une page = `templates/pages/<nom>.html` (déclarée dans `pages` de `views.go`) + `layout.html` + `partials/*`.
+- CSP stricte (`script-src 'self'; style-src 'self'`) : **aucun** `<script>` inline, `style="…"` ni handler `on…=`.
+  Pour les barres de progression : `<progress>`, `<meter>` ou SVG.
+- CSRF : tout POST/PUT/DELETE authentifié passe par `authed()` ; le layout envoie le jeton via `hx-headers`,
+  les formulaires classiques via le champ caché `csrf_token`.
+- Clients d'API (phase 2+) : structs tolérantes (champs optionnels, pointeurs), fixtures réelles anonymisées dans
+  `testdata/`, `make capture-fixtures` pour les régénérer. Les noms de champs de SPEC §3 sont à valider.
+
+## Invariants de sécurité et de données
+
+- `DRY_RUN=true` par défaut ; dry-run et tag de protection (`PROTECTED_TAGS`) vérifiés **côté serveur**.
+- Suppression de saison : supprimer les fichiers **puis** démonitorer la saison (`PUT` de la série complète).
+- **Tautulli est la source de vérité** du visionnage (lectures, vu / pas vu, par utilisateur). Ne jamais utiliser
+  `viewCount` / `lastViewedAt` / `viewedLeafCount` de Plex pour ça : ils ne concernent que le compte du token.
+- Auth (SPEC §11) : admin créé une seule fois au premier démarrage, mot de passe affiché une seule fois sur stdout,
+  changement forcé, argon2id (PHC), sessions stockées hachées (SHA-256), verrouillage progressif, rate limit par IP,
+  `X-Forwarded-For` seulement depuis `TRUSTED_PROXIES`.
+- Kubernetes : image distroless nonroot (65532), rootfs en lecture seule, seul `/data` est inscriptible,
+  `/healthz` (liveness) et `/readyz` (readiness, sans dépendre des *arr*), arrêt propre sur SIGTERM (20 s).
+  Une seule réplique (SQLite).
+
+## Repères
+
+- `cmd/arrstats` : `serve`, `admin reset-password`, `healthcheck`, `version`.
+- `internal/mockarr` (servi par `cmd/mockarr`) : faux upstreams (sonarr :8989, radarr :7878, plex :32400,
+  tautulli :8181) depuis `testdata/`, appels destructeurs exposés sur `GET /_calls`, `POST /_reset`.
+  Les tests d'intégration l'utilisent via `httptest`. `MOCK_SHIFT_DATES=true` recale l'historique sur aujourd'hui.
+- `testdata/` : scénario synthétique décrit dans `testdata/README.md` (les tests en dépendent) ;
+  `testdata/captured/` : vraies réponses anonymisées, seulement vérifiées au décodage.
+- `internal/syncer` (et non `internal/sync`, pour ne pas masquer le paquet standard) : fetch parallèle, stockage,
+  rapprochement (`internal/matching`), liaison de l'historique, recalcul (`internal/scoring`).
+- Saison 0 (spéciaux) exclue de la progression et de `watch_state`.
+- Bibliothèque : une requête SQL paramétrée par lot (`store.LibraryQuery`, CTE `v` avec colonnes `eff_*` ; point de vue
+  utilisateur calculé à la volée, mêmes règles que `scoring`). Recherche sur `title_norm` (sans accents ni article).
+  Recherche déclenchée par `input` (et non `keyup` comme dans la spec) pour couvrir collage, autocomplétion, bouton ✕.
+- Sync : **une fois par jour** à l'heure réglée dans l'UI (page Réglages, table `app_settings`, défaut `SYNC_TIME`=04:00,
+  fuseau `TZ`) + rattrapage au démarrage si la dernière sync a plus de 24 h. `SYNC_INTERVAL` de la spec est supprimé.
+- Suppressions : `internal/actions` (tag de protection relu en live sur Sonarr/Radarr, dry-run, titre à saisir pour une
+  série, journal `action_log` pour toute tentative). Saison : fichiers (`DELETE episodefile/bulk`) PUIS `PUT` de l'objet
+  série **brut** avec `monitored=false` (`sonarr.UnmonitorSeason`). Resync ciblée ensuite (`syncer.RefreshSeries`).
+- Fiche détail : progression exacte via `GET /api/v3/episode?seriesId=` (appel live, 5 s max, repli approximatif).
+  Liens : `SONARR_PUBLIC_URL`, `RADARR_PUBLIC_URL`, `PLEX_PUBLIC_URL` (optionnels ; Plex par défaut via app.plex.tv).
+- Phase 5 : Dashboard (sans lectures en cours), Stats (/stats, /stats/users/{id}), Nettoyage (/cleanup). Graphiques SVG
+  générés en Go (`internal/web/charts.go`), palette validée (skill dataviz) : bleu #3987e5, orange #d95926, rampe bleue
+  pour la heatmap ; chaque graphique a une info-bulle `<title>` et un tableau de données. Seuil « récupérable » et poids
+  du score réglables dans Réglages (`app_settings`), recalcul immédiat.
+- e2e : `app-e2e` (DRY_RUN=true) et `app-e2e-live` (DRY_RUN=false) partagent le mock ; `/_calls` vérifie les appels.
+- `internal/images` : proxy MediaCover (`poster-500.jpg`) → cache disque `DATA_DIR/cache/img`, ETag, sémaphore (4),
+  singleflight, repli `remoteUrl` https, placeholder SVG. Pas de JS supplémentaire côté client.
+- `make e2e` tourne dans le projet compose `arrstats-e2e` (séparé) et lit le mot de passe initial dans les logs.
+
+## Phase 6 : périmètre convenu avec l'utilisateur
+
+En plus de SPEC §15.6 (Santé sans Prowlarr, webhook Tautulli, sélection en lot, export CSV, manifests kustomize +
+`make k8s-validate`, image multi-arch, e2e complets) :
+
+- **Configuration des services dans l'UI** (espace « Configuration ») : URL, URL publique, clé d'API / token de Sonarr,
+  Radarr, Plex, Tautulli (+ secret du webhook), avec bouton « Tester la connexion ».
+  - Secrets **chiffrés en base** (AES-256-GCM, nonce aléatoire par valeur) avec une **clé maître hors du volume** :
+    `ARRSTATS_MASTER_KEY` / `ARRSTATS_MASTER_KEY_FILE` (Secret Kubernetes). Sans clé maître : l'app démarre mais refuse
+    d'enregistrer des secrets et le signale dans l'UI. Ne jamais générer ni stocker la clé dans `/data`.
+  - Champs secrets en écriture seule : jamais renvoyés au navigateur (afficher `••••` + 4 derniers caractères) ;
+    champ vide = conserver la valeur actuelle.
+  - Variables d'env `SONARR_URL`, `*_API_KEY`… deviennent **optionnelles et prioritaires** : si définies, le champ est
+    verrouillé dans l'UI (« défini par l'environnement »). `RequireUpstreams` ne bloque plus le démarrage : sans
+    config, l'app tourne, la sync est désactivée et un bandeau invite à configurer.
+  - Changement de config : clients reconstruits à chaud, changement journalisé (onglet Sécurité).
+- **Bouton « Protéger / Ne plus protéger »** sur la fiche : ajoute/retire le premier tag de `PROTECTED_TAGS` via l'API
+  Sonarr/Radarr (PUT de l'objet brut, comme pour le démonitorage), journalisé dans `action_log`, soumis au dry-run.

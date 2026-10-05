@@ -1,0 +1,30 @@
+{{define "layout"}}<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="htmx-config" content='{"includeIndicatorStyles":false,"allowEval":false,"allowScriptTags":false}'>
+  <meta name="referrer" content="same-origin">
+  <title>{{.Title}} · arrstats</title>
+  <link rel="stylesheet" href="{{asset "app.css"}}">
+  <script src="{{asset "htmx.min.js"}}" defer></script>
+  <script src="{{asset "app.js"}}" defer></script>
+</head>
+<body{{if .Session}} hx-headers='{{.HXHeaders}}'{{end}}>
+  {{if .DryRun}}<div class="dry-run-banner" role="status">Mode simulation (DRY_RUN) : aucune suppression ne sera réellement effectuée.</div>{{end}}
+  {{if .Session}}{{template "nav" .}}{{end}}
+  <main class="{{if .Session}}container{{else}}centered{{end}}">
+    {{template "content" .}}
+  </main>
+  <footer class="footer">arrstats {{.Version}}</footer>
+  {{if .Session}}
+  <dialog id="modal" class="modal" aria-label="Fiche détaillée">
+    <button type="button" class="modal-close" data-close aria-label="Fermer">×</button>
+    <div id="modal-body"></div>
+  </dialog>
+  <dialog id="confirm" class="modal modal-small" aria-label="Confirmer la suppression"><div id="confirm-body"></div></dialog>
+  <div id="toasts" class="toasts" aria-live="polite"></div>
+  {{end}}
+</body>
+</html>
+{{end}}

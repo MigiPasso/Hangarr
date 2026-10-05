@@ -1,0 +1,62 @@
+{{define "content"}}{{$d := .Data}}
+<p class="breadcrumb"><a href="/stats">← Statistiques</a></p>
+<h1>{{$d.Name}}</h1>
+<div class="dash-grid">
+  <section class="card">
+    <h2>Heures regardées par mois</h2>
+    {{$d.Hours}}
+    <p class="small muted">{{$d.TotalHours}} sur les 12 derniers mois.</p>
+    <details class="data-table"><summary>Voir les données</summary>
+      <table class="table compact"><thead><tr><th>Mois</th><th class="num">Heures</th></tr></thead><tbody>
+      {{range $d.MonthRows}}<tr><td>{{.Month}}</td><td class="num">{{.Hours}}</td></tr>{{end}}
+      </tbody></table>
+    </details>
+  </section>
+
+  <section class="card">
+    <h2>Favoris (tout l'historique)</h2>
+    <div class="two-cols">
+      {{template "top_table" (list2 "Séries" $d.TopSeries)}}
+      {{template "top_table" (list2 "Films" $d.TopMovies)}}
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>Genres préférés</h2>
+    {{if $d.Genres}}
+    <table class="table compact"><thead><tr><th>Genre</th><th class="num">Part des lectures</th></tr></thead><tbody>
+      {{range $d.Genres}}<tr><td>{{.Genre}}</td><td class="num">{{share .PlaysShare}}</td></tr>{{end}}
+    </tbody></table>
+    {{else}}<p class="muted">Aucune lecture.</p>{{end}}
+  </section>
+
+  <section class="card">
+    <h2>En cours</h2>
+    {{if $d.InProgress}}
+    <ul class="plain">{{range $d.InProgress}}<li>
+      <a href="/series/{{.ID}}" hx-get="/series/{{.ID}}" hx-target="#modal-body">{{.Title}}</a>
+      <span class="small muted">{{with .Last}}vu jusqu'à {{.}}{{end}}{{with .Next}} · prochain ≈ {{.}}{{end}} · {{relptr .LastViewedAt}}</span>
+    </li>{{end}}</ul>
+    {{else}}<p class="muted">Aucune série en cours.</p>{{end}}
+  </section>
+
+  <section class="card">
+    <h2>Abandonnés</h2>
+    {{if $d.Abandoned}}
+    <ul class="plain">{{range $d.Abandoned}}<li>
+      <a href="{{mediaPath .Kind}}/{{.ID}}" hx-get="{{mediaPath .Kind}}/{{.ID}}" hx-target="#modal-body">{{.Title}}</a>
+      <span class="small muted">{{stateLabel .}} · {{relptr .LastViewedAt}}</span>
+    </li>{{end}}</ul>
+    {{else}}<p class="muted">Rien d'abandonné.</p>{{end}}
+  </section>
+
+  <section class="card">
+    <h2>Appareils</h2>
+    <div class="two-cols">
+      {{template "count_list" (list2 "Lecteurs" $d.Players false)}}
+      {{template "count_list" (list2 "Plateformes" $d.Platforms false)}}
+    </div>
+  </section>
+</div>
+{{end}}
+

@@ -1,0 +1,42 @@
+{{define "nav"}}
+<header class="topbar">
+  <a class="brand" href="/">arrstats</a>
+  <nav class="nav" aria-label="Navigation principale">
+    {{if .Session.MustChangePassword}}
+      <span class="nav-hint">Changez votre mot de passe pour continuer</span>
+    {{else}}
+      <a href="/"{{if eq .Active "dashboard"}} aria-current="page"{{end}}>Dashboard</a>
+      <a href="/series"{{if eq .Active "series"}} aria-current="page"{{end}}>Séries</a>
+      <a href="/movies"{{if eq .Active "movie"}} aria-current="page"{{end}}>Films</a>
+      <a href="/cleanup"{{if eq .Active "cleanup"}} aria-current="page"{{end}}>Nettoyage</a>
+      <a href="/stats"{{if eq .Active "stats"}} aria-current="page"{{end}}>Stats</a>
+      <span class="nav-disabled" aria-disabled="true" title="Bientôt disponible">Santé</span>
+      <a href="/journal"{{if eq .Active "journal"}} aria-current="page"{{end}}>Journal</a>
+      <a href="/settings"{{if eq .Active "settings"}} aria-current="page"{{end}}>Réglages</a>
+      <a href="/account"{{if eq .Active "account"}} aria-current="page"{{end}}>Compte</a>
+    {{end}}
+    <div class="nav-end">
+      {{if not .Session.MustChangePassword}}{{template "sync_status" .}}{{end}}
+      <form method="post" action="/logout" class="inline">
+        <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+        <button type="submit" class="link">Déconnexion</button>
+      </form>
+    </div>
+  </nav>
+</header>
+{{end}}
+
+{{define "sync_status"}}{{with .Sync}}
+<div id="sync-status" class="sync-status"{{if .Running}} hx-get="/sync/status" hx-trigger="every 2s" hx-swap="outerHTML"{{end}}>
+  {{if .Running}}
+    <span class="spinner" aria-hidden="true"></span>
+    <span class="small">Synchronisation{{with .Progress}} : {{.}}{{end}}…</span>
+  {{else}}
+    <span class="small muted">
+      {{if .LastAt}}Synchro {{relptr .LastAt}}{{else}}Jamais synchronisé{{end}}
+      {{if .Failed}}· <span class="warn">erreur : {{range $i, $f := .Failed}}{{if $i}}, {{end}}{{$f}}{{end}}</span>{{end}}
+    </span>
+    <button type="button" class="small" hx-post="/sync" hx-target="#sync-status" hx-swap="outerHTML">Synchroniser</button>
+  {{end}}
+</div>
+{{end}}{{end}}

@@ -1,0 +1,74 @@
+{{define "content"}}{{$d := .Data}}{{$o := $d.Overview}}
+<h1>Tableau de bord</h1>
+<div class="tiles">
+  <div class="tile"><span class="tile-label">Séries</span><span class="tile-value">{{$o.Series}}</span></div>
+  <div class="tile"><span class="tile-label">Films</span><span class="tile-value">{{$o.Movies}}</span></div>
+  <div class="tile"><span class="tile-label">Espace occupé</span><span class="tile-value">{{bytes $o.TotalBytes}}</span></div>
+  <div class="tile"><span class="tile-label">Jamais vu</span><span class="tile-value">{{bytes $o.NeverWatchedBytes}}</span>
+    <span class="tile-hint">{{pctOf $o.NeverWatchedBytes $o.TotalBytes}} de l'espace</span></div>
+  <a class="tile tile-link" href="/cleanup"><span class="tile-label">Récupérable</span><span class="tile-value">{{bytes $o.RecoverableBytes}}</span>
+    <span class="tile-hint">{{plural $o.RecoverableCount "élément" "éléments"}} au score ≥ {{num $d.Threshold}}</span></a>
+  <div class="tile"><span class="tile-label">Regardé (30 jours)</span><span class="tile-value">{{hours $o.WatchSeconds30d}}</span></div>
+</div>
+
+<div class="dash-grid">
+  <section class="card">
+    <h2>Heures regardées par jour (30 jours)</h2>
+    {{$d.Activity}}
+    <details class="data-table"><summary>Voir les données</summary>
+      <div class="table-wrap"><table class="table"><thead><tr><th>Jour</th><th class="num">Heures</th></tr></thead><tbody>
+      {{range $d.ActivityRows}}<tr><td>{{.Date}}</td><td class="num">{{.Hours}}</td></tr>{{end}}
+      </tbody></table></div>
+    </details>
+  </section>
+
+  <section class="card" id="top">{{template "dashboard_top" .}}</section>
+
+  <section class="card">
+    <h2>Derniers visionnages</h2>
+    {{if $d.Recent}}
+    <ul class="recent">
+      {{range $d.Recent}}
+      <li>
+        {{if .ArrID}}<img src="/img/{{.Kind}}/{{.ArrID}}/poster" alt="" width="36" height="54" loading="lazy" decoding="async">{{else}}<span class="thumb-fallback"></span>{{end}}
+        <div>
+          {{if .MediaID}}<a href="{{mediaPath .Kind}}/{{.MediaID}}" hx-get="{{mediaPath .Kind}}/{{.MediaID}}" hx-target="#modal-body">{{.Title}}</a>{{else}}{{.Title}}{{end}}
+          {{with .Episode}}<span class="muted small"> · {{.}}</span>{{end}}
+          <div class="small muted">{{with .UserName}}{{.}} · {{end}}{{reltime .StoppedAt}}</div>
+        </div>
+      </li>
+      {{end}}
+    </ul>
+    {{else}}<p class="muted">Aucun visionnage pour l'instant.</p>{{end}}
+  </section>
+
+  <section class="card">
+    <h2>Espace disque</h2>
+    {{if $d.Disks}}
+    <ul class="disks">
+      {{range $d.Disks}}
+      <li>
+        <div class="disk-head"><span class="path">{{.Path}}</span><span class="small muted">{{bytes .FreeBytes}} libres sur {{bytes .TotalBytes}}</span></div>
+        <meter min="0" max="100" low="75" high="90" optimum="0" value="{{.UsedPct}}" title="{{.UsedPct}} % utilisés">{{.UsedPct}} %</meter>
+      </li>
+      {{end}}
+    </ul>
+    {{else}}<p class="muted">Espace disque indisponible (Sonarr/Radarr injoignables).</p>{{end}}
+  </section>
+</div>
+{{end}}
+
+{{define "dashboard_top"}}{{$d := .Data}}
+<div class="section-head">
+  <h2>Les plus regardés</h2>
+  <nav class="tabs tabs-small" aria-label="Période">
+    <a href="/" hx-get="/" hx-target="#top"{{if not $d.TopAll}} aria-current="page"{{end}}>30 jours</a>
+    <a href="/?top=all" hx-get="/?top=all" hx-target="#top"{{if $d.TopAll}} aria-current="page"{{end}}>Tout</a>
+  </nav>
+</div>
+<div class="two-cols">
+  {{template "top_table" (list2 "Séries" $d.TopSeries)}}
+  {{template "top_table" (list2 "Films" $d.TopMovies)}}
+</div>
+{{end}}
+

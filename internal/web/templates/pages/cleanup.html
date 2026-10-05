@@ -1,0 +1,70 @@
+{{define "content"}}{{$d := .Data}}
+<div class="section-head">
+  <h1>Nettoyage</h1>
+  <nav class="tabs tabs-small" aria-label="Type">
+    <a href="/cleanup"{{if eq $d.Kind ""}} aria-current="page"{{end}}>Tout</a>
+    <a href="/cleanup?kind=series"{{if eq $d.Kind "series"}} aria-current="page"{{end}}>Séries</a>
+    <a href="/cleanup?kind=movie"{{if eq $d.Kind "movie"}} aria-current="page"{{end}}>Films</a>
+  </nav>
+</div>
+<p class="muted">
+  Classés par score de nettoyage (inactivité × taille ÷ lectures, voir <a href="/settings">Réglages</a>).
+  Exclus : les éléments protégés ({{$d.Protected}}) et ceux ajoutés il y a moins de {{$d.GraceDays}} jours.
+</p>
+
+<div class="tiles">
+  <div class="tile"><span class="tile-label">Récupérable (score ≥ {{num $d.Threshold}})</span><span class="tile-value">{{bytes $d.Recoverable}}</span></div>
+  {{if ne $d.Kind "movie"}}<div class="tile"><span class="tile-label">Saisons jamais vues</span><span class="tile-value">{{bytes $d.SeasonsBytes}}</span>
+    <span class="tile-hint">de séries regardées par ailleurs</span></div>{{end}}
+</div>
+
+<section class="card">
+  <h2>Candidats</h2>
+  {{if $d.Items}}
+  <div class="table-wrap">
+    <table class="table cleanup-table">
+      <thead><tr><th class="num">Score</th><th>Titre</th><th>État</th><th>Dernier visionnage</th><th class="num">Lectures</th><th class="num">Taille</th><th>Ajouté</th><th></th></tr></thead>
+      <tbody>
+      {{range $d.Items}}
+        <tr id="media-{{.ID}}"{{if ge .Score $d.Threshold}} class="above"{{end}}>
+          <td class="num">{{num .Score}}</td>
+          <td><a href="{{mediaPath .Kind}}/{{.ID}}" hx-get="{{mediaPath .Kind}}/{{.ID}}" hx-target="#modal-body">{{.Title}}</a>
+            <span class="muted small">{{if eq .Kind "series"}}série{{else}}film{{end}}{{if .Year}} · {{.Year}}{{end}}</span></td>
+          <td><span class="badge state state-{{.State}}">{{stateLabel .LibraryItem}}</span></td>
+          <td>{{if .LastViewedAt}}{{relptr .LastViewedAt}}{{with .LastViewedBy}} · {{.}}{{end}}{{else}}<span class="muted">jamais</span>{{end}}</td>
+          <td class="num">{{.Plays}}</td>
+          <td class="num">{{bytes .SizeBytes}}</td>
+          <td>{{dateptr .AddedAt}}</td>
+          <td class="actions"><button type="button" class="danger small" hx-get="{{mediaPath .Kind}}/{{.ID}}/delete" hx-target="#confirm-body">Supprimer</button></td>
+        </tr>
+      {{end}}
+      </tbody>
+    </table>
+  </div>
+  {{else}}<p class="muted">Aucun candidat : tout est regardé, protégé ou récent.</p>{{end}}
+</section>
+
+{{if $d.Seasons}}
+<section class="card">
+  <h2>Saisons jamais vues</h2>
+  <p class="small muted">Saisons que personne n'a regardées, dans des séries vues par ailleurs.</p>
+  <div class="table-wrap">
+    <table class="table">
+      <thead><tr><th>Série</th><th>Saison</th><th class="num">Épisodes</th><th class="num">Taille</th><th>Série vue pour la dernière fois</th><th></th></tr></thead>
+      <tbody>
+      {{range $d.Seasons}}
+        <tr>
+          <td><a href="/series/{{.MediaID}}" hx-get="/series/{{.MediaID}}" hx-target="#modal-body">{{.Title}}</a></td>
+          <td>Saison {{.Season}}</td>
+          <td class="num">{{.Files}}</td>
+          <td class="num">{{bytes .SizeBytes}}</td>
+          <td>{{relptr .LastViewedAt}}</td>
+          <td class="actions"><button type="button" class="danger small" hx-get="/series/{{.MediaID}}/delete?season={{.Season}}" hx-target="#confirm-body">Supprimer la saison</button></td>
+        </tr>
+      {{end}}
+      </tbody>
+    </table>
+  </div>
+</section>
+{{end}}
+{{end}}

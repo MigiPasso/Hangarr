@@ -1,0 +1,4 @@
+[
+  { "id": 1, "name": "HD-1080p", "upgradeAllowed": true, "cutoff": 7, "items": [] },
+  { "id": 4, "name": "Ultra-HD", "upgradeAllowed": false, "cutoff": 19, "items": [] }
+]

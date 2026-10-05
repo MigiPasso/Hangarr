@@ -1,0 +1,35 @@
+{{define "content"}}
+<section class="card narrow">{{template "delete_form" .}}</section>
+{{end}}
+
+{{define "delete_form"}}{{$d := .Data}}
+<form id="delete-form" class="stack" method="post" action="{{$d.Path}}/{{$d.M.ID}}/delete"
+      hx-post="{{$d.Path}}/{{$d.M.ID}}/delete" hx-target="this" hx-swap="outerHTML">
+  <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+  {{if $d.Season}}<input type="hidden" name="season" value="{{deref $d.Season}}">{{end}}
+  <h2>{{if $d.Season}}Supprimer la saison {{deref $d.Season}}{{else if eq $d.M.Kind "series"}}Supprimer la série{{else}}Supprimer le film{{end}}</h2>
+  <p>
+    {{if $d.Season}}La saison {{deref $d.Season}} de <strong>{{$d.M.Title}}</strong> : ses fichiers seront supprimés puis
+      la saison sera démonitorée dans Sonarr pour ne pas être retéléchargée.
+    {{else if eq $d.M.Kind "series"}}<strong>{{$d.M.Title}}</strong> sera retirée de Sonarr.
+    {{else}}<strong>{{$d.M.Title}}</strong> sera retiré de Radarr.{{end}}
+  </p>
+  <p>Espace libéré : <strong>{{if $d.SizeBytes}}{{bytes $d.SizeBytes}}{{else}}aucun{{end}}</strong> (si les fichiers sont supprimés).</p>
+  {{if $d.DryRun}}<p class="alert alert-warning">Mode simulation (DRY_RUN) : l'action sera journalisée mais rien ne sera supprimé.</p>{{end}}
+  {{if $d.Protected}}<p class="alert alert-error">Cet élément porte un tag de protection : la suppression sera refusée.</p>{{end}}
+  {{with $d.Error}}<p class="alert alert-error" role="alert">{{.}}</p>{{end}}
+
+  <label class="check"><input type="checkbox" name="delete_files" value="1"{{if $d.DeleteFiles}} checked{{end}}> Supprimer les fichiers du disque</label>
+  {{if not $d.Season}}
+  <label class="check"><input type="checkbox" name="import_exclusion" value="1"{{if $d.ImportExclusion}} checked{{end}}> Ajouter une exclusion de liste d'import</label>
+  {{end}}
+  {{if $d.ConfirmByTyping}}
+  <label for="confirm_title">Pour confirmer, saisissez le titre : <strong>{{$d.M.Title}}</strong></label>
+  <input id="confirm_title" name="confirm_title" type="text" autocomplete="off" spellcheck="false" required>
+  {{end}}
+  <div class="form-actions">
+    <a class="button" href="{{$d.Path}}/{{$d.M.ID}}" data-close>Annuler</a>
+    <button type="submit" class="danger-solid"{{if $d.Protected}} disabled{{end}}>{{if $d.DryRun}}Simuler la suppression{{else}}Supprimer définitivement{{end}}</button>
+  </div>
+</form>
+{{end}}

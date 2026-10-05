@@ -1,0 +1,198 @@
+# Development and test environment. Everything runs here: nothing is
+# installed on the host besides Docker (see CLAUDE.md / README.md).
+name: arrstats
+
+x-upstreams-mock: &upstreams-mock
+  SONARR_URL: http://mock:8989
+  SONARR_API_KEY: mock-api-key
+  RADARR_URL: http://mock:7878
+  RADARR_API_KEY: mock-api-key
+  PLEX_URL: http://mock:32400
+  PLEX_TOKEN: mock-api-key
+  TAUTULLI_URL: http://mock:8181
+  TAUTULLI_API_KEY: mock-api-key
+
+services:
+  # Hot-reloaded app against the mock upstreams: `make dev`.
+  app:
+    build:
+      context: .
+      target: dev
+    working_dir: /src
+    environment:
+      <<: *upstreams-mock
+      DATA_DIR: /data
+      DRY_RUN: "true"
+      COOKIE_SECURE: "false"
+      LOG_FORMAT: text
+      LOG_LEVEL: debug
+    ports:
+      - "8080:8080"
+    volumes:
+      - .:/src
+      - gomod:/go/pkg/mod
+      - gocache:/root/.cache/go-build
+      - devdata:/data
+    depends_on:
+      - mock
+
+  mock:
+    build:
+      context: .
+      target: mock
+    environment:
+      MOCK_API_KEY: mock-api-key
+      # Fixture history is anchored on 2026-10-01: shift it to today.
+      MOCK_SHIFT_DATES: "true"
+
+  # Same app against real instances configured in .env: `make dev-real`.
+  app-real:
+    profiles: [real]
+    build:
+      context: .
+      target: dev
+    working_dir: /src
+    # Makefile passes ARRSTATS_ENV_FILE=.env; the default keeps compose valid without .env.
+    env_file: ${ARRSTATS_ENV_FILE:-.env.example}
+    environment:
+      DATA_DIR: /data
+      DRY_RUN: ${DRY_RUN:-true}
+      COOKIE_SECURE: "false"
+      LOG_FORMAT: text
+    ports:
+      - "8080:8080"
+    volumes:
+      - .:/src
+      - gomod:/go/pkg/mod
+      - gocache:/root/.cache/go-build
+      - realdata:/data
+
+  test:
+    profiles: [tools]
+    build:
+      context: .
+      target: test
+    volumes:
+      - gocache:/root/.cache/go-build
+
+  lint:
+    profiles: [tools]
+    build:
+      context: .
+      target: lint
+    volumes:
+      - gocache:/root/.cache/go-build
+      - lintcache:/root/.cache/golangci-lint
+
+  # Records anonymized responses of the real instances: `make capture-fixtures`.
+  capture:
+    profiles: [real]
+    image: golang:1.27.1-bookworm
+    working_dir: /src
+    env_file: ${ARRSTATS_ENV_FILE:-.env.example}
+    environment:
+      GOFLAGS: -buildvcs=false
+    volumes:
+      - .:/src
+      - gomod:/go/pkg/mod
+      - gocache:/root/.cache/go-build
+    command: ["go", "run", "./cmd/capture-fixtures", "-out", "testdata/captured"]
+
+  # Go toolbox with the source mounted, for go mod tidy and friends. Plain
+  # image (not the deps stage) so it works before go.sum exists; keep the tag
+  # in sync with GO_VERSION in the Dockerfile.
+  gotools:
+    profiles: [tools]
+    image: golang:1.27.1-bookworm
+    environment:
+      GOFLAGS: -buildvcs=false
+    working_dir: /src
+    volumes:
+      - .:/src
+      - gomod:/go/pkg/mod
+      - gocache:/root/.cache/go-build
+
+  # The real runtime image (distroless, nonroot, read-only rootfs) on a blank
+  # tmpfs database: e2e tests also prove Kubernetes compatibility.
+  app-e2e:
+    profiles: [e2e]
+    build:
+      context: .
+      target: runtime
+    read_only: true
+    user: "65532:65532"
+    tmpfs:
+      - /data:uid=65532,gid=65532,mode=0700
+    environment:
+      <<: *upstreams-mock
+      DRY_RUN: "true"
+      COOKIE_SECURE: "false"
+      LOG_FORMAT: json
+      LOGIN_MAX_PER_IP: "50"
+    healthcheck:
+      test: ["CMD", "/arrstats", "healthcheck"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    depends_on:
+      - mock
+
+  # Same image with DRY_RUN=false: e2e checks real deletions against the mock.
+  app-e2e-live:
+    profiles: [e2e]
+    build:
+      context: .
+      target: runtime
+    read_only: true
+    user: "65532:65532"
+    tmpfs:
+      - /data:uid=65532,gid=65532,mode=0700
+    environment:
+      <<: *upstreams-mock
+      DRY_RUN: "false"
+      COOKIE_SECURE: "false"
+      LOG_FORMAT: json
+      LOGIN_MAX_PER_IP: "50"
+    healthcheck:
+      test: ["CMD", "/arrstats", "healthcheck"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    depends_on:
+      - mock
+
+  e2e:
+    profiles: [e2e]
+    image: mcr.microsoft.com/playwright:v1.63.0-noble
+    working_dir: /e2e
+    environment:
+      BASE_URL: http://app-e2e:8080
+      BASE_URL_LIVE: http://app-e2e-live:8080
+      MOCK_URL: http://mock:8989
+      ADMIN_USERNAME: admin
+      ADMIN_INITIAL_PASSWORD: ${ADMIN_INITIAL_PASSWORD:-}
+      ADMIN_INITIAL_PASSWORD_LIVE: ${ADMIN_INITIAL_PASSWORD_LIVE:-}
+      CI: "1"
+    volumes:
+      - ./e2e:/e2e
+      - e2e-node-modules:/e2e/node_modules
+      - npmcache:/root/.npm
+    command: ["sh", "-c", "npm ci --no-audit --no-fund && npx playwright test"]
+    ipc: host
+
+  # curl for vendoring static assets.
+  fetch:
+    profiles: [tools]
+    image: curlimages/curl:8.22.0
+    working_dir: /work
+    volumes:
+      - .:/work
+
+volumes:
+  gomod:
+  gocache:
+  lintcache:
+  devdata:
+  realdata:
+  e2e-node-modules:
+  npmcache:

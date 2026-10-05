@@ -1,0 +1,50 @@
+{{define "content"}}{{$d := .Data}}
+<h1>Journal</h1>
+<nav class="tabs" aria-label="Onglets">
+  <a href="/journal?tab=actions"{{if eq $d.Tab "actions"}} aria-current="page"{{end}}>Actions</a>
+  <a href="/journal?tab=security"{{if eq $d.Tab "security"}} aria-current="page"{{end}}>Sécurité</a>
+</nav>
+<section class="card">
+{{if eq $d.Tab "actions"}}
+  {{if $d.Actions}}
+  <div class="table-wrap"><table class="table">
+    <thead><tr><th>Date</th><th>Action</th><th>Titre</th><th class="num">Espace libéré</th><th>Options</th><th>Résultat</th><th>Par</th></tr></thead>
+    <tbody>
+    {{range $d.Actions}}
+      <tr>
+        <td>{{datetime .At}}</td>
+        <td>{{if eq .Action "delete_series"}}Série supprimée{{else if eq .Action "delete_season"}}Saison supprimée{{else}}Film supprimé{{end}}</td>
+        <td>{{.Title}}{{if .SeasonNumber}} · saison {{deref .SeasonNumber}}{{end}}</td>
+        <td class="num">{{if .SizeFreedBytes}}{{bytes .SizeFreedBytes}}{{else}}–{{end}}</td>
+        <td class="small">{{if .DeleteFiles}}fichiers{{else}}sans fichiers{{end}}{{if .ImportExclusion}} · exclusion{{end}}</td>
+        <td>{{if not .Success}}<span class="error-text" title="{{.Error}}">Échec : {{.Error}}</span>{{else if .DryRun}}<span class="warn">Simulation</span>{{else}}<span class="ok-text">Effectuée</span>{{end}}</td>
+        <td>{{.Username}}</td>
+      </tr>
+    {{end}}
+    </tbody>
+  </table></div>
+  {{else}}<p class="muted">Aucune action pour l'instant.</p>{{end}}
+{{else}}
+  {{if $d.Events}}
+  <div class="table-wrap"><table class="table">
+    <thead><tr><th>Date</th><th>Événement</th><th>Utilisateur</th><th>Adresse IP</th><th>Navigateur</th></tr></thead>
+    <tbody>
+    {{range $d.Events}}
+      <tr class="event-{{.Event}}">
+        <td>{{datetime .At}}</td>
+        <td>{{authLabel .Event}}</td>
+        <td>{{.Username}}</td>
+        <td>{{.IP}}</td>
+        <td title="{{.UserAgent}}">{{if .UserAgent}}{{browser .UserAgent}}{{end}}</td>
+      </tr>
+    {{end}}
+    </tbody>
+  </table></div>
+  {{else}}<p class="muted">Aucun événement.</p>{{end}}
+{{end}}
+  <p class="pager">
+    {{with $d.PrevURL}}<a class="button" href="{{.}}">← Plus récents</a>{{end}}
+    {{with $d.NextURL}}<a class="button" href="{{.}}">Plus anciens →</a>{{end}}
+  </p>
+</section>
+{{end}}

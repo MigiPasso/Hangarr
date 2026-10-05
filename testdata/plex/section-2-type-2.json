@@ -1,0 +1,7 @@
+{"MediaContainer":{"size":5,"totalSize":5,"offset":0,"librarySectionID":2,"Metadata":[
+ {"ratingKey":"201","key":"/library/metadata/201/children","guid":"plex://show/5d9c086c46115600200aa2fe","type":"show","title":"Breaking Bad","year":2008,"leafCount":6,"viewedLeafCount":6,"childCount":2,"addedAt":1705343400,"Guid":[{"id":"imdb://tt0903747"},{"id":"tmdb://1396"},{"id":"tvdb://81189"}]},
+ {"ratingKey":"202","key":"/library/metadata/202/children","guid":"plex://show/5d9c0874ffd9ef001e99607a","type":"show","title":"The Expanse","year":2015,"leafCount":6,"childCount":2,"addedAt":1685613600,"Guid":[{"id":"imdb://tt3230854"},{"id":"tmdb://63639"},{"id":"tvdb://280619"}]},
+ {"ratingKey":"203","key":"/library/metadata/203/children","guid":"plex://show/5eb6b5ffac1f2e0041e1fb1e","type":"show","title":"Severance","year":2022,"leafCount":3,"childCount":1,"addedAt":1738400400,"Guid":[{"id":"tvdb://371980"}]},
+ {"ratingKey":"204","key":"/library/metadata/204/children","guid":"com.plexapp.agents.none://204?lang=xn","type":"show","title":"Shogun","year":2024,"leafCount":2,"childCount":1,"addedAt":1787259600},
+ {"ratingKey":"205","key":"/library/metadata/205/children","guid":"local://205","type":"show","title":"Home Videos","year":2019,"leafCount":4,"childCount":1,"addedAt":1600000000}
+]}}

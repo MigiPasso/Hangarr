@@ -1,0 +1,47 @@
+{{define "content"}}
+<h1>Réglages</h1>
+<section class="card narrow">
+  <h2>Synchronisation</h2>
+  <p class="muted">Sonarr, Radarr, Plex et Tautulli sont interrogés une fois par jour, à l'heure choisie. Le bouton
+    « Synchroniser » de la barre de navigation lance une synchronisation immédiate.</p>
+  {{template "settings_form" .}}
+</section>
+<section class="card narrow">
+  <h2>Score de nettoyage</h2>
+  <p class="muted small">score = (jours d'inactivité ÷ 365, plafonné à 2 ans) × log2(1 + taille en Go) ÷ (1 + lectures),
+    multiplié selon les règles ci-dessous. Un score de 1 correspond par exemple à 3 Go vus une fois, il y a un an.</p>
+  {{template "score_form" .}}
+</section>
+{{end}}
+
+{{define "settings_form"}}{{$s := .Data.Sync}}
+<form id="settings-form" method="post" action="/settings" class="stack"
+      hx-post="/settings" hx-target="this" hx-swap="outerHTML">
+  <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+  <label for="sync_time">Heure de la synchronisation quotidienne</label>
+  <input id="sync_time" name="sync_time" type="time" required value="{{$s.SyncTime}}"
+         {{if $s.Error}}aria-invalid="true" aria-describedby="sync-time-error"{{end}}>
+  {{with $s.Error}}<p id="sync-time-error" class="field-error">{{.}}</p>{{end}}
+  {{with $s.NextRun}}<p class="small muted">Prochaine synchronisation : {{.}}</p>{{end}}
+  {{if $s.Saved}}<p class="small ok-text" role="status">Enregistré.</p>{{end}}
+  <button type="submit" class="primary">Enregistrer</button>
+</form>
+{{end}}
+
+{{define "score_form"}}{{$s := .Data.Score}}
+<form id="score-form" method="post" action="/settings/score" class="stack"
+      hx-post="/settings/score" hx-target="this" hx-swap="outerHTML">
+  <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+  <label for="threshold">Seuil « récupérable » (score minimal)</label>
+  <input id="threshold" name="threshold" type="number" min="0" max="1000" step="0.1" required value="{{dec $s.Threshold}}">
+  <label for="never_watched">Multiplicateur « jamais vu »</label>
+  <input id="never_watched" name="never_watched" type="number" min="0" max="10" step="0.1" required value="{{dec $s.NeverWatched}}">
+  <label for="continuing">Multiplicateur « série en cours de diffusion regardée récemment »</label>
+  <input id="continuing" name="continuing" type="number" min="0" max="10" step="0.1" required value="{{dec $s.Continuing}}">
+  <label for="window_days">« Récemment » = dans les … derniers jours</label>
+  <input id="window_days" name="window_days" type="number" min="1" max="365" step="1" required value="{{$s.WindowDays}}">
+  {{with $s.Error}}<p class="field-error" role="alert">{{.}}</p>{{end}}
+  {{if $s.Saved}}<p class="small ok-text" role="status">Enregistré, scores recalculés.</p>{{end}}
+  <button type="submit" class="primary">Enregistrer</button>
+</form>
+{{end}}

@@ -1,0 +1,4 @@
+[
+  { "path": "/", "label": "", "freeSpace": 20000000000, "totalSpace": 64000000000 },
+  { "path": "/media", "label": "media", "freeSpace": 1450000000000, "totalSpace": 8000000000000 }
+]

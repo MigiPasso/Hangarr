@@ -1,0 +1,39 @@
+{{define "content"}}
+<h1>Compte</h1>
+<section class="card">
+  <h2>Mot de passe</h2>
+  <p><a class="button" href="/account/password">Changer mon mot de passe</a></p>
+</section>
+
+<section class="card">
+  <h2>Sessions actives</h2>
+  <div class="table-wrap">
+    <table class="table" id="sessions">
+      <thead>
+        <tr><th>Adresse IP</th><th>Navigateur</th><th>Ouverte le</th><th>Dernière activité</th><th></th></tr>
+      </thead>
+      <tbody>
+        {{range .Data.Sessions}}
+        <tr id="session-{{.ID}}">
+          <td>{{if .IP}}{{.IP}}{{else}}inconnue{{end}}</td>
+          <td title="{{.UserAgent}}">{{browser .UserAgent}}</td>
+          <td>{{datetime .CreatedAt}}</td>
+          <td>{{reltime .LastSeenAt}}</td>
+          <td class="actions">
+            {{if eq .ID $.Data.CurrentID}}
+              <span class="badge">Session actuelle</span>
+            {{else}}
+              <form method="post" action="/account/sessions/{{.ID}}/revoke" class="inline"
+                    hx-post="/account/sessions/{{.ID}}/revoke" hx-target="closest tr" hx-swap="outerHTML">
+                <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+                <button type="submit" class="danger small">Révoquer</button>
+              </form>
+            {{end}}
+          </td>
+        </tr>
+        {{end}}
+      </tbody>
+    </table>
+  </div>
+</section>
+{{end}}

@@ -1,0 +1,6 @@
+{"MediaContainer":{"size":4,"identifier":"com.plexapp.system.accounts","Account":[
+ {"id":0,"key":"/accounts/0","name":"","defaultAudioLanguage":"fr","autoSelectAudio":true},
+ {"id":1001,"key":"/accounts/1001","name":"alice","defaultAudioLanguage":"fr"},
+ {"id":1002,"key":"/accounts/1002","name":"bob"},
+ {"id":1003,"key":"/accounts/1003","name":"carol"}
+]}}

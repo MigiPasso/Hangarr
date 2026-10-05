@@ -1,0 +1,152 @@
+{{define "content"}}{{$d := .Data}}
+<div id="stats">
+<div class="section-head">
+  <h1>Statistiques</h1>
+  <form class="filters-row" method="get" action="/stats" hx-get="/stats" hx-target="#stats" hx-select="#stats"
+        hx-swap="outerHTML" hx-push-url="true" hx-trigger="change">
+    <label class="inline-field">Période
+      <select name="p">{{range $d.Periods}}<option value="{{.V}}"{{if eq .V $d.Period}} selected{{end}}>{{.L}}</option>{{end}}</select>
+    </label>
+    <label class="inline-field">Spectateur
+      <select name="user">
+        <option value="">Tous</option>
+        {{range $d.Users}}<option value="{{.ID}}"{{if eq .ID $d.User}} selected{{end}}>{{.Name}}</option>{{end}}
+      </select>
+    </label>
+    <label class="inline-field">Classer par
+      <select name="by">
+        <option value="plays"{{if not $d.ByHours}} selected{{end}}>Lectures</option>
+        <option value="hours"{{if $d.ByHours}} selected{{end}}>Heures</option>
+      </select>
+    </label>
+    <noscript><button type="submit">Appliquer</button></noscript>
+  </form>
+</div>
+
+<div class="tiles">
+  <div class="tile"><span class="tile-label">Heures regardées</span><span class="tile-value">{{$d.Hours}}</span><span class="tile-hint">{{$d.PeriodLabel}}{{with $d.UserName}} · {{.}}{{end}}</span></div>
+  <div class="tile"><span class="tile-label">Lectures</span><span class="tile-value">{{$d.Plays}}</span></div>
+  <div class="tile"><span class="tile-label">Titres différents</span><span class="tile-value">{{$d.Titles}}</span></div>
+  <div class="tile"><span class="tile-label">Films terminés</span><span class="tile-value">{{$d.CompletePct}} %</span>
+    <span class="tile-hint">{{$d.Completion.Completed}} sur {{$d.Completion.Started}} commencés</span></div>
+</div>
+
+<div class="dash-grid">
+  <section class="card">
+    <h2>Les plus regardés ({{if $d.ByHours}}heures{{else}}lectures{{end}})</h2>
+    <div class="two-cols">
+      {{template "top_table" (list2 "Séries" $d.TopSeries)}}
+      {{template "top_table" (list2 "Films" $d.TopMovies)}}
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>Quand regarde-t-on ?</h2>
+    {{$d.Heatmap}}
+    <p class="legend small muted"><span class="ramp" aria-hidden="true"><i class="h1"></i><i class="h2"></i><i class="h3"></i><i class="h4"></i><i class="h5"></i></span> moins → plus de sessions (début de lecture)</p>
+    <details class="data-table"><summary>Voir les données</summary>
+      <div class="table-wrap"><table class="table compact"><thead><tr><th></th>{{range $h := hoursOfDay}}<th class="num">{{$h}}h</th>{{end}}</tr></thead><tbody>
+      {{range $d.HeatRows}}<tr>{{range $i, $c := .}}{{if eq $i 0}}<th>{{$c}}</th>{{else}}<td class="num">{{$c}}</td>{{end}}{{end}}</tr>{{end}}
+      </tbody></table></div>
+    </details>
+  </section>
+
+  <section class="card">
+    <h2>Genres stockés vs genres regardés</h2>
+    <p class="legend small"><span class="swatch s1"></span> Espace stocké <span class="swatch s2"></span> Lectures{{with $d.UserName}} de {{.}}{{end}}</p>
+    {{$d.Genres}}
+    <p class="small muted">Un titre à plusieurs genres compte pour une fraction dans chacun ; les parts totalisent 100 %.</p>
+    <details class="data-table"><summary>Voir les données</summary>
+      <div class="table-wrap"><table class="table compact"><thead><tr><th>Genre</th><th class="num">Espace</th><th class="num">Lectures</th></tr></thead><tbody>
+      {{range $d.GenreRows}}<tr><td>{{.Genre}}</td><td class="num">{{share .StoredShare}}</td><td class="num">{{share .PlaysShare}}</td></tr>{{end}}
+      </tbody></table></div>
+    </details>
+  </section>
+
+  <section class="card">
+    <h2>Coût par lecture</h2>
+    <p class="small muted">Espace stocké divisé par le nombre de lectures (tout l'historique) : les plus « chers » en tête.</p>
+    {{if $d.Cost}}
+    <table class="table compact">
+      <thead><tr><th>Titre</th><th class="num">Taille</th><th class="num">Lectures</th><th class="num">Par lecture</th></tr></thead>
+      <tbody>{{range $d.Cost}}<tr>
+        <td><a href="{{mediaPath .Kind}}/{{.MediaID}}" hx-get="{{mediaPath .Kind}}/{{.MediaID}}" hx-target="#modal-body">{{.Title}}</a></td>
+        <td class="num">{{bytes .SizeBytes}}</td><td class="num">{{.Plays}}</td><td class="num">{{bytes .BytesPerPlay}}</td></tr>{{end}}</tbody>
+    </table>
+    {{else}}<p class="muted">Aucune donnée.</p>{{end}}
+  </section>
+
+  <section class="card">
+    <h2>Classement des spectateurs</h2>
+    {{if $d.Ranking}}
+    <table class="table compact">
+      <thead><tr><th>Spectateur</th><th class="num">Heures</th><th class="num">Lectures</th><th class="num">Titres</th><th>Dernière activité</th></tr></thead>
+      <tbody>{{range $d.Ranking}}<tr>
+        <td><a href="/stats/users/{{.UserID}}">{{with .Name}}{{.}}{{else}}#{{.UserID}}{{end}}</a></td>
+        <td class="num">{{hours .WatchSeconds}}</td><td class="num">{{.Plays}}</td><td class="num">{{.Titles}}</td><td>{{reltime .LastAt}}</td></tr>{{end}}</tbody>
+    </table>
+    {{else}}<p class="muted">Aucune activité sur la période.</p>{{end}}
+  </section>
+
+  <section class="card">
+    <h2>À reprendre</h2>
+    {{range $d.Resume}}
+      <h3>{{.User}}</h3>
+      <ul class="plain">{{range .Items}}<li>
+        <a href="/series/{{.ID}}" hx-get="/series/{{.ID}}" hx-target="#modal-body">{{.Title}}</a>
+        <span class="small muted">{{with .Last}}vu jusqu'à {{.}}{{end}}{{with .Next}} · prochain ≈ {{.}}{{end}} · {{relptr .LastViewedAt}}</span>
+      </li>{{end}}</ul>
+    {{else}}<p class="muted">Aucune série en cours.</p>{{end}}
+  </section>
+
+  <section class="card">
+    <h2>Abandonnés</h2>
+    <p class="small muted">Commencés puis plus regardés depuis plus de {{abandonDays}} jours.</p>
+    {{if $d.Abandoned}}
+    <table class="table compact">
+      <thead><tr><th>Titre</th><th>Progression</th><th>Dernier visionnage</th><th class="num">Taille</th></tr></thead>
+      <tbody>{{range $d.Abandoned}}<tr>
+        <td><a href="{{mediaPath .Kind}}/{{.ID}}" hx-get="{{mediaPath .Kind}}/{{.ID}}" hx-target="#modal-body">{{.Title}}</a></td>
+        <td>{{stateLabel .}}</td><td>{{relptr .LastViewedAt}}{{with .LastViewedBy}} · {{.}}{{end}}</td><td class="num">{{bytes .SizeBytes}}</td></tr>{{end}}</tbody>
+    </table>
+    {{else}}<p class="muted">Rien d'abandonné.</p>{{end}}
+  </section>
+
+  <section class="card wide">
+    <h2>Qui regarde quoi</h2>
+    <p class="small muted">Les plus grosses séries stockées et leurs spectateurs (épisodes vus / téléchargés).</p>
+    {{if $d.WhoWatches}}
+    <table class="table compact">
+      <thead><tr><th>Série</th><th class="num">Taille</th><th>État</th><th>Spectateurs</th></tr></thead>
+      <tbody>{{range $sv := $d.WhoWatches}}<tr>
+        <td><a href="/series/{{$sv.MediaID}}" hx-get="/series/{{$sv.MediaID}}" hx-target="#modal-body">{{$sv.Title}}</a></td>
+        <td class="num">{{bytes $sv.SizeBytes}}</td><td>{{stateName $sv.State}}</td>
+        <td>{{range $sv.Viewers}}<span class="viewer">{{with .Name}}{{.}}{{else}}#{{.UserID}}{{end}} {{.Watched}}/{{$sv.Downloaded}} <span class="muted">({{reltime .LastAt}})</span></span>{{else}}<span class="muted">personne</span>{{end}}</td></tr>{{end}}</tbody>
+    </table>
+    {{end}}
+  </section>
+
+  <section class="card">
+    <h2>Films commencés, jamais finis</h2>
+    {{with $d.Completion.Unfinished}}
+    <table class="table compact">
+      <thead><tr><th>Film</th><th class="num">Sessions</th><th class="num">% max atteint</th></tr></thead>
+      <tbody>{{range .}}<tr>
+        <td><a href="/movies/{{.MediaID}}" hx-get="/movies/{{.MediaID}}" hx-target="#modal-body">{{.Title}}</a></td>
+        <td class="num">{{.Plays}}</td><td class="num">{{.Viewers}} %</td></tr>{{end}}</tbody>
+    </table>
+    {{else}}<p class="muted">Tous les films commencés ont été terminés.</p>{{end}}
+  </section>
+
+  <section class="card">
+    <h2>Technique</h2>
+    <div class="three-cols">
+      {{template "count_list" (list2 "Mode de lecture" $d.Transcode true)}}
+      {{template "count_list" (list2 "Plateformes" $d.Platforms false)}}
+      {{template "count_list" (list2 "Lecteurs" $d.Players false)}}
+    </div>
+  </section>
+</div>
+</div>
+{{end}}
+

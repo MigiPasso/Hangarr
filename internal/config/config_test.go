@@ -1,0 +1,177 @@
+package config
+
+import (
+	"errors"
+	"io/fs"
+	"net/netip"
+	"strings"
+	"testing"
+	"time"
+)
+
+func env(m map[string]string) LookupFunc {
+	return func(k string) (string, bool) {
+		v, ok := m[k]
+		return v, ok
+	}
+}
+
+func files(m map[string]string) ReadFileFunc {
+	return func(name string) ([]byte, error) {
+		v, ok := m[name]
+		if !ok {
+			return nil, fs.ErrNotExist
+		}
+		return []byte(v), nil
+	}
+}
+
+func upstreams() map[string]string {
+	return map[string]string{
+		"SONARR_URL": "http://sonarr:8989/", "SONARR_API_KEY": "s",
+		"RADARR_URL": "http://radarr:7878", "RADARR_API_KEY": "r",
+		"PLEX_URL": "http://plex:32400", "PLEX_TOKEN": "p",
+	}
+}
+
+func TestDefaults(t *testing.T) {
+	c, err := Load(env(upstreams()), files(nil))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := c.RequireUpstreams(); err != nil {
+		t.Fatal(err)
+	}
+	if !c.DryRun || !c.CookieSecure || !c.ConfirmByTyping {
+		t.Error("DRY_RUN, COOKIE_SECURE and CONFIRM_BY_TYPING must default to true")
+	}
+	if c.ListenAddr != ":8080" || c.DataDir != "/data" || c.AdminUsername != "admin" {
+		t.Errorf("unexpected defaults: %+v", c)
+	}
+	if c.SessionIdleTimeout != 12*time.Hour || c.SessionMaxAge != 168*time.Hour {
+		t.Errorf("unexpected session durations: %s %s", c.SessionIdleTimeout, c.SessionMaxAge)
+	}
+	if c.LoginMaxPerIP != 10 || c.SyncTime != "04:00" {
+		t.Errorf("unexpected limits: %d %s", c.LoginMaxPerIP, c.SyncTime)
+	}
+	if len(c.ProtectedTags) != 1 || c.ProtectedTags[0] != "keep" {
+		t.Errorf("PROTECTED_TAGS default: %v", c.ProtectedTags)
+	}
+	if c.Location.String() != "Europe/Paris" {
+		t.Errorf("TZ default: %s", c.Location)
+	}
+	if c.SonarrURL != "http://sonarr:8989" {
+		t.Errorf("trailing slash not trimmed: %s", c.SonarrURL)
+	}
+	if c.HistorySource != HistoryPlex {
+		t.Errorf("auto without tautulli should resolve to plex, got %s", c.HistorySource)
+	}
+}
+
+func TestRequireUpstreams(t *testing.T) {
+	c, err := Load(env(map[string]string{}), files(nil))
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = c.RequireUpstreams()
+	if err == nil || !strings.Contains(err.Error(), "SONARR_URL") || !strings.Contains(err.Error(), "PLEX_TOKEN") {
+		t.Fatalf("expected missing upstream errors, got %v", err)
+	}
+}
+
+func TestSecretFile(t *testing.T) {
+	m := upstreams()
+	delete(m, "SONARR_API_KEY")
+	m["SONARR_API_KEY_FILE"] = "/run/secrets/sonarr"
+	c, err := Load(env(m), files(map[string]string{"/run/secrets/sonarr": "from-file\n"}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.SonarrAPIKey != "from-file" {
+		t.Errorf("got %q", c.SonarrAPIKey)
+	}
+}
+
+func TestSecretBothDefined(t *testing.T) {
+	m := upstreams()
+	m["SONARR_API_KEY_FILE"] = "/run/secrets/sonarr"
+	_, err := Load(env(m), files(map[string]string{"/run/secrets/sonarr": "x"}))
+	if err == nil || !strings.Contains(err.Error(), "both set") {
+		t.Fatalf("expected conflict error, got %v", err)
+	}
+}
+
+func TestSecretFileMissing(t *testing.T) {
+	m := upstreams()
+	delete(m, "PLEX_TOKEN")
+	m["PLEX_TOKEN_FILE"] = "/nope"
+	_, err := Load(env(m), files(nil))
+	if !errors.Is(err, fs.ErrNotExist) {
+		t.Fatalf("expected not-exist error, got %v", err)
+	}
+}
+
+func TestHistorySource(t *testing.T) {
+	m := upstreams()
+	m["TAUTULLI_URL"] = "http://tautulli:8181"
+	m["TAUTULLI_API_KEY"] = "t"
+	c, err := Load(env(m), files(nil))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.HistorySource != HistoryTautulli {
+		t.Errorf("auto with tautulli: got %s", c.HistorySource)
+	}
+
+	m = upstreams()
+	m["HISTORY_SOURCE"] = "tautulli"
+	if _, err := Load(env(m), files(nil)); err == nil {
+		t.Error("HISTORY_SOURCE=tautulli without tautulli config must fail")
+	}
+}
+
+func TestInvalidValues(t *testing.T) {
+	cases := map[string]string{
+		"DRY_RUN":                 "maybe",
+		"SYNC_TIME":               "25:00",
+		"SONARR_URL":              "ftp://x",
+		"TRUSTED_PROXIES":         "10.0.0.0/8,nope",
+		"LOG_FORMAT":              "xml",
+		"LOG_LEVEL":               "loud",
+		"TZ":                      "Mars/Olympus",
+		"TAUTULLI_WEBHOOK_SECRET": "short",
+		"LOGIN_MAX_PER_IP":        "0",
+		"SESSION_MAX_AGE":         "1h",
+	}
+	for k, v := range cases {
+		t.Run(k, func(t *testing.T) {
+			m := upstreams()
+			m[k] = v
+			if _, err := Load(env(m), files(nil)); err == nil || !strings.Contains(err.Error(), k) {
+				t.Errorf("%s=%q: expected error mentioning the key, got %v", k, v, err)
+			}
+		})
+	}
+}
+
+func TestTrustedProxies(t *testing.T) {
+	m := upstreams()
+	m["TRUSTED_PROXIES"] = "10.0.0.0/8, 192.168.1.10 ,fd00::/8"
+	c, err := Load(env(m), files(nil))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []netip.Prefix{
+		netip.MustParsePrefix("10.0.0.0/8"),
+		netip.MustParsePrefix("192.168.1.10/32"),
+		netip.MustParsePrefix("fd00::/8"),
+	}
+	if len(c.TrustedProxies) != len(want) {
+		t.Fatalf("got %v", c.TrustedProxies)
+	}
+	for i := range want {
+		if c.TrustedProxies[i] != want[i] {
+			t.Errorf("proxy %d: got %s want %s", i, c.TrustedProxies[i], want[i])
+		}
+	}
+}

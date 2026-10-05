@@ -1,0 +1,5 @@
+# Builder used by `make image`. One step at a time: compiling
+# modernc.org/sqlite for two architectures in parallel exhausts small
+# Docker Desktop VMs (1-2 GiB).
+[worker.oci]
+  max-parallelism = 1

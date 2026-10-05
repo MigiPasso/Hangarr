@@ -1,0 +1,7 @@
+.git
+.env
+tmp
+e2e
+deploy
+*.md
+!internal/**/*.md
