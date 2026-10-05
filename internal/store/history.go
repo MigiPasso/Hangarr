@@ -173,3 +173,29 @@ func (s *Store) LatestSyncRuns(ctx context.Context) ([]SyncRun, error) {
 	}
 	return out, rows.Err()
 }
+
+// DropOtherHistory keeps a single history source: it deletes the watch
+// events of every source but keep, and the given cursors of those sources
+// (so that switching back re-imports their whole history). It returns the
+// number of events deleted.
+func (s *Store) DropOtherHistory(ctx context.Context, keep string, otherCursors ...string) (int64, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, err
+	}
+	defer func() { _ = tx.Rollback() }()
+	res, err := tx.ExecContext(ctx, `DELETE FROM watch_events WHERE source <> ?`, keep)
+	if err != nil {
+		return 0, err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return 0, err
+	}
+	for _, c := range otherCursors {
+		if _, err := tx.ExecContext(ctx, `DELETE FROM sync_cursors WHERE source = ?`, c); err != nil {
+			return 0, err
+		}
+	}
+	return n, tx.Commit()
+}

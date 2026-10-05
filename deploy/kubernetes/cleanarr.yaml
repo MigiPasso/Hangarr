@@ -1,29 +1,24 @@
-# Cleanarr on Kubernetes: plain manifests (no kustomize).
+# Cleanarr on Kubernetes: plain manifests (no kustomize). No namespace is
+# set: they go to the namespace of `kubectl -n <ns>` or of your Argo CD
+# application.
 #
 #   1. Put the image in a registry the nodes can pull from, and set it below
 #      (search "image:"). See README, « Kubernetes ».
-#   2. Create the master key secret (never commit it):
-#        kubectl create namespace cleanarr
-#        kubectl -n cleanarr create secret generic cleanarr-master-key \
-#          --from-literal=master-key="$(docker run --rm <image> master-key)"
-#   3. kubectl apply -f deploy/kubernetes/cleanarr.yaml
+#   2. Create the master key secret in the same namespace (never commit it):
+#        kubectl -n <ns> create secret generic cleanarr-master-key \
+#          --from-literal=master-key="$(openssl rand -base64 32)"
+#   3. kubectl -n <ns> apply -f deploy/kubernetes/cleanarr.yaml (or sync Argo CD)
 #   4. Initial admin password (shown once):
-#        kubectl -n cleanarr logs deploy/cleanarr | grep -A4 "INITIAL ADMIN"
+#        kubectl -n <ns> logs deploy/cleanarr | grep -A4 "INITIAL ADMIN"
 #   5. Open the app (port-forward, or the Service / Ingress you choose), then
 #      configure Sonarr, Radarr, Plex and Tautulli in « Services » with their
-#      in-cluster addresses, e.g. http://sonarr.media.svc.cluster.local:8989.
+#      in-cluster addresses, e.g. http://sonarr:8989 in the same namespace.
 #
 # One replica only (SQLite on a ReadWriteOnce volume), Recreate strategy.
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: cleanarr
----
 apiVersion: v1
 kind: ConfigMap
 metadata:
   name: cleanarr-config
-  namespace: cleanarr
 data:
   # Keep true until you really want deletions to happen.
   DRY_RUN: "true"
@@ -42,7 +37,6 @@ apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
   name: cleanarr-data
-  namespace: cleanarr
 spec:
   accessModes: ["ReadWriteOnce"]
   resources:
@@ -54,7 +48,6 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: cleanarr
-  namespace: cleanarr
   labels:
     app.kubernetes.io/name: cleanarr
 spec:
@@ -128,7 +121,6 @@ apiVersion: v1
 kind: Service
 metadata:
   name: cleanarr
-  namespace: cleanarr
   # With the Tailscale operator, expose the app in your tailnet:
   # annotations:
   #   tailscale.com/expose: "true"
@@ -141,4 +133,4 @@ spec:
       port: 8080
       targetPort: http
 # Tautulli webhook (optional): in Tautulli, use
-#   http://cleanarr.cleanarr.svc.cluster.local:8080/webhooks/tautulli
+#   http://cleanarr.<ns>.svc.cluster.local:8080/webhooks/tautulli

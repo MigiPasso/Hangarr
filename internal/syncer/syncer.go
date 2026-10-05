@@ -590,6 +590,9 @@ func TautulliEvent(r tautulli.HistoryRow) (store.WatchEvent, bool) {
 // page is older than the cursor minus 24 h; the overlap catches long
 // sessions that finished late, and the upsert keeps it idempotent.
 func (s *Syncer) syncTautulliHistory(ctx context.Context, c *tautulli.Client) (int, error) {
+	if err := s.keepHistory(ctx, SourceTautulli, cursorPlexHistory); err != nil {
+		return 0, err
+	}
 	users, err := c.Users(ctx)
 	if err != nil {
 		return 0, err
@@ -626,6 +629,20 @@ func (s *Syncer) syncTautulliHistory(ctx context.Context, c *tautulli.Client) (i
 	}, pageSize)
 }
 
+// keepHistory makes source the only history in the database: the events of
+// the other source are deleted (after switching from Plex history, which
+// has no durations, to Tautulli, both would otherwise count every play).
+func (s *Syncer) keepHistory(ctx context.Context, source, otherCursor string) error {
+	n, err := s.Store.DropOtherHistory(ctx, source, otherCursor)
+	if err != nil {
+		return err
+	}
+	if n > 0 {
+		s.Log.Info("history from the previous source dropped", "kept", source, "deleted_events", n)
+	}
+	return nil
+}
+
 // PlexEvent converts a Plex history entry (Plex only records watched items).
 func PlexEvent(h plex.HistoryEntry) (store.WatchEvent, bool) {
 	if h.ID() <= 0 || (h.Type != "movie" && h.Type != "episode") {
@@ -644,6 +661,9 @@ func PlexEvent(h plex.HistoryEntry) (store.WatchEvent, bool) {
 }
 
 func (s *Syncer) syncPlexHistory(ctx context.Context, c *plex.Client) (int, error) {
+	if err := s.keepHistory(ctx, SourcePlexHistory, cursorTautulli); err != nil {
+		return 0, err
+	}
 	accs, err := c.Accounts(ctx)
 	if err != nil {
 		return 0, err

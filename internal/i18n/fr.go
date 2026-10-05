@@ -592,4 +592,7 @@ var fr = map[string]string{ //nolint:gosec // G101: UI texts mentioning keys and
 	// Placeholders
 	"(none)":    "(aucun)",
 	"(unknown)": "(inconnu)",
+
+	// Dashboard
+	"Plex history has no durations: configure Tautulli to get the hours watched.": "L'historique de Plex n'a pas de durées : configurez Tautulli pour obtenir les heures regardées.",
 }

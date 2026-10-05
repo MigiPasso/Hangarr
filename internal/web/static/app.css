@@ -374,9 +374,14 @@ button:disabled { opacity: .45; cursor: not-allowed; }
 .tile-label { color: var(--muted); font-size: .85rem; }
 .tile-value { font-size: 1.6rem; font-weight: 600; font-variant-numeric: tabular-nums; }
 .tile-hint { color: var(--muted); font-size: .8rem; }
-.dash-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(460px, 1fr)); gap: 1rem; align-items: start; }
-.dash-grid .card { margin: 0; min-width: 0; }
-.dash-grid .wide { grid-column: 1 / -1; }
+/* Masonry-like columns: each card goes right under the previous one, so a
+   short card never leaves a gap next to a tall one (a grid aligns rows). */
+.dash-grid { columns: 2 34rem; column-gap: var(--space); }
+.dash-grid > .card { display: block; width: 100%; margin: 0 0 var(--space); min-width: 0; break-inside: avoid; }
+.dash-grid > .wide { column-span: all; }
+.container:has(.dash-grid) { max-width: 1600px; }
+/* Numbers, sizes and durations never wrap inside a table cell. */
+.table td.num, .table th.num, .table td.nowrap { white-space: nowrap; }
 .two-cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1rem; }
 .three-cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 1rem; }
 h3 { font-size: .95rem; margin: .5rem 0; color: var(--muted); font-weight: 600; }
@@ -423,7 +428,7 @@ meter { width: 100%; height: .6rem; }
 .ramp i { display: inline-block; width: .8rem; height: .8rem; border-radius: 2px; }
 
 @media (max-width: 800px) {
-  .dash-grid { grid-template-columns: 1fr; }
+  .dash-grid { columns: 1; }
 }
 .chart.heatmap .axis { font-size: 11px; }
 
@@ -531,3 +536,22 @@ h1 .info, h2 .info, h3 .info { vertical-align: .25em; }
 .title-row > h1, .title-row > h2, .title-row > h3 { margin-right: .1rem; }
 .title-row > label { margin-top: .5rem; font-weight: 600; font-size: .9rem; }
 .config-field .title-row > label { margin-top: 0; }
+
+/* --- top bar on small screens: brand, then links, then actions --- */
+
+.nav-end button, .nav-end a, .sync-status .small { white-space: nowrap; }
+@media (max-width: 800px) {
+  .topbar { padding: .6rem 1rem; gap: .5rem; }
+  .brand { flex: 1 1 100%; }
+  .nav { gap: .35rem .9rem; }
+  .nav-end { flex: 1 1 100%; justify-content: flex-end; gap: .6rem; margin-left: 0;
+    padding-top: .4rem; border-top: 1px solid var(--border); }
+  .nav-end .sync-status > .small.muted { display: none; }
+}
+
+/* --- sortable table headers --- */
+
+.sort-link { color: inherit; display: inline-flex; align-items: center; gap: .25rem; white-space: nowrap; }
+.sort-link:hover { color: var(--text); text-decoration: none; }
+.sort-arrow { font-size: .7em; min-width: .7em; color: var(--accent); }
+th[aria-sort] .sort-link { color: var(--text); }

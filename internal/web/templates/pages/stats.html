@@ -104,23 +104,11 @@
       <thead><tr><th>{{t "Title"}}</th><th>{{t "Progress"}}</th><th>{{t "Last watched"}}</th><th class="num">{{t "Size"}}</th></tr></thead>
       <tbody>{{range $d.Abandoned}}<tr>
         <td><a href="{{mediaPath .Kind}}/{{.ID}}" hx-get="{{mediaPath .Kind}}/{{.ID}}" hx-target="#modal-body">{{.Title}}</a></td>
-        <td>{{stateLabel .}}</td><td>{{relptr .LastViewedAt}}{{with .LastViewedBy}} · {{.}}{{end}}</td><td class="num">{{bytes .SizeBytes}}</td></tr>{{end}}</tbody>
+        <td class="nowrap">{{stateLabel .}}</td><td>{{relptr .LastViewedAt}}{{with .LastViewedBy}} · {{.}}{{end}}</td><td class="num">{{bytes .SizeBytes}}</td></tr>{{end}}</tbody>
     </table>
     {{else}}<p class="muted">{{t "Nothing abandoned."}}</p>{{end}}
   </section>
 
-  <section class="card wide">
-    <div class="title-row"><h2>{{t "Who watches what"}}</h2>{{template "info" (t "Largest series and their viewers (episodes watched / downloaded).")}}</div>
-    {{if $d.WhoWatches}}
-    <table class="table compact">
-      <thead><tr><th>{{t "Series|one"}}</th><th class="num">{{t "Size"}}</th><th>{{t "State"}}</th><th>{{t "Viewers|many"}}</th></tr></thead>
-      <tbody>{{range $sv := $d.WhoWatches}}<tr>
-        <td><a href="/series/{{$sv.MediaID}}" hx-get="/series/{{$sv.MediaID}}" hx-target="#modal-body">{{$sv.Title}}</a></td>
-        <td class="num">{{bytes $sv.SizeBytes}}</td><td>{{stateName $sv.State}}</td>
-        <td>{{range $sv.Viewers}}<span class="viewer">{{with .Name}}{{.}}{{else}}#{{.UserID}}{{end}} {{.Watched}}/{{$sv.Downloaded}} <span class="muted">({{reltime .LastAt}})</span></span>{{else}}<span class="muted">{{t "nobody"}}</span>{{end}}</td></tr>{{end}}</tbody>
-    </table>
-    {{end}}
-  </section>
 
   <section class="card">
     <h2>{{t "Movies started, never finished"}}</h2>
@@ -141,6 +129,19 @@
       {{template "count_list" (list2 (t "Platforms") $d.Platforms false)}}
       {{template "count_list" (list2 (t "Players") $d.Players false)}}
     </div>
+  </section>
+
+  <section class="card wide">
+    <div class="title-row"><h2>{{t "Who watches what"}}</h2>{{template "info" (t "Largest series and their viewers (episodes watched / downloaded).")}}</div>
+    {{if $d.WhoWatches}}
+    <table class="table compact">
+      <thead><tr><th>{{t "Series|one"}}</th><th class="num">{{t "Size"}}</th><th>{{t "State"}}</th><th>{{t "Viewers|many"}}</th></tr></thead>
+      <tbody>{{range $sv := $d.WhoWatches}}<tr>
+        <td><a href="/series/{{$sv.MediaID}}" hx-get="/series/{{$sv.MediaID}}" hx-target="#modal-body">{{$sv.Title}}</a></td>
+        <td class="num">{{bytes $sv.SizeBytes}}</td><td>{{stateName $sv.State}}</td>
+        <td>{{range $sv.Viewers}}<span class="viewer">{{with .Name}}{{.}}{{else}}#{{.UserID}}{{end}} {{.Watched}}/{{$sv.Downloaded}} <span class="muted">({{reltime .LastAt}})</span></span>{{else}}<span class="muted">{{t "nobody"}}</span>{{end}}</td></tr>{{end}}</tbody>
+    </table>
+    {{end}}
   </section>
 </div>
 </div>

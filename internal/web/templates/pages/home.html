@@ -8,7 +8,7 @@
     <span class="tile-hint">{{t "%s of the space" (pctOf $o.NeverWatchedBytes $o.TotalBytes)}}</span></div>
   <a class="tile tile-link" href="/cleanup"><span class="tile-label">{{t "Recoverable"}}</span><span class="tile-value">{{bytes $o.RecoverableBytes}}</span>
     <span class="tile-hint">{{tn $o.RecoverableCount "%d item unwatched for %d days" "%d items unwatched for %d days" $d.CleanupDays}}</span></a>
-  <div class="tile"><span class="tile-label">{{t "Watched (30 days)"}}</span><span class="tile-value">{{hours $o.WatchSeconds30d}}</span></div>
+  <div class="tile"><div class="title-row"><span class="tile-label">{{t "Watched (30 days)"}}</span>{{if $d.NoDurations}}{{template "info" (t "Plex history has no durations: configure Tautulli to get the hours watched.")}}{{end}}</div><span class="tile-value">{{if $d.NoDurations}}–{{else}}{{hours $o.WatchSeconds30d}}{{end}}</span></div>
 </div>
 
 <div class="dash-grid">

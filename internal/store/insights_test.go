@@ -3,6 +3,7 @@ package store_test
 import (
 	"context"
 	"math"
+	"strings"
 	"testing"
 
 	"cleanarr/internal/store"
@@ -114,7 +115,7 @@ func TestGenresCompletionWho(t *testing.T) {
 func TestCleanupLists(t *testing.T) {
 	st := synced(t)
 	ctx := context.Background()
-	items, total, err := st.CleanupCandidates(ctx, scope(), "", 100)
+	items, total, err := st.CleanupCandidates(ctx, scope(), "", "", false, 100)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -129,7 +130,7 @@ func TestCleanupLists(t *testing.T) {
 	// A longer delay drops The Expanse (left 140 days ago).
 	strict := scope()
 	strict.Cutoff = now.Unix() - 150*dayS
-	if items, _, _ := st.CleanupCandidates(ctx, strict, "", 100); len(items) != 2 {
+	if items, _, _ := st.CleanupCandidates(ctx, strict, "", "", false, 100); len(items) != 2 {
 		t.Errorf("150 days: %d candidates, want 2", len(items))
 	}
 	for _, it := range items {
@@ -137,7 +138,7 @@ func TestCleanupLists(t *testing.T) {
 			t.Errorf("%s must be excluded", it.Title)
 		}
 	}
-	series, _, _ := st.CleanupCandidates(ctx, scope(), "series", 100)
+	series, _, _ := st.CleanupCandidates(ctx, scope(), "series", "", false, 100)
 	for _, it := range series {
 		if it.Kind != "series" {
 			t.Errorf("kind filter: %+v", it)
@@ -176,5 +177,40 @@ func TestDataHealth(t *testing.T) {
 	runs, err := st.RecentSyncRuns(context.Background(), 100)
 	if err != nil || len(runs) == 0 || runs[0].ID < runs[len(runs)-1].ID {
 		t.Errorf("recent runs (newest first): %v %v", runs, err)
+	}
+}
+
+func TestCleanupCandidatesSort(t *testing.T) {
+	st := synced(t)
+	ctx := context.Background()
+	titles := func(sort string, desc bool) string {
+		t.Helper()
+		items, _, err := st.CleanupCandidates(ctx, scope(), "", sort, desc, 100)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var out []string
+		for _, it := range items {
+			out = append(out, it.Title)
+		}
+		return strings.Join(out, ",")
+	}
+	for _, c := range []struct {
+		sort string
+		desc bool
+		want string
+	}{
+		{"", false, "Interstellar,Tenet,The Expanse"},      // default: largest first
+		{"bogus", false, "Interstellar,Tenet,The Expanse"}, // unknown key: default
+		{"title", false, "The Expanse,Interstellar,Tenet"}, // title_norm ignores "The": "expanse" first
+		{"title", true, "Tenet,Interstellar,The Expanse"},
+		{"size", false, "The Expanse,Tenet,Interstellar"},
+		{"plays", true, "The Expanse,Interstellar,Tenet"},      // 4, 1, 0 plays
+		{"state", false, "Tenet,Interstellar,The Expanse"},     // never, then abandoned (size desc)
+		{"inactivity", true, "Tenet,Interstellar,The Expanse"}, // added 2025-01, viewed ~200 / 140 days ago
+	} {
+		if got := titles(c.sort, c.desc); got != c.want {
+			t.Errorf("sort=%q desc=%v: %s, want %s", c.sort, c.desc, got, c.want)
+		}
 	}
 }
