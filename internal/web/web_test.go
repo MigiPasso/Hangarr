@@ -192,6 +192,11 @@ func TestSecurityHeaders(t *testing.T) {
 	if r.header.Get("Permissions-Policy") == "" {
 		t.Error("Permissions-Policy missing")
 	}
+	for _, d := range []string{"script-src 'self'", "object-src 'none'", "base-uri 'none'", "frame-ancestors 'none'"} {
+		if !strings.Contains(r.header.Get("Content-Security-Policy"), d) {
+			t.Errorf("CSP lacks %q", d)
+		}
+	}
 	if !strings.Contains(r.body, `"allowEval":false`) {
 		t.Error("htmx-config meta missing")
 	}
@@ -435,5 +440,23 @@ func TestInsecureCookieWarning(t *testing.T) {
 	page := h.do(h.client(), "GET", "/login", nil, nil)
 	if strings.Contains(page.body, "Connexion impossible en HTTP") {
 		t.Error("warning shown with COOKIE_SECURE=false")
+	}
+}
+
+func TestPasswordChangeRateLimited(t *testing.T) {
+	// Budget of 4 per IP: the login and the forced change of loggedIn use 2.
+	h := newHarness(t, func(c *config.Config) { c.LoginMaxPerIP = 4 })
+	c := h.loggedIn()
+	tok := csrfFrom(t, h.do(c, "GET", "/account/password", nil, nil).body)
+	wrong := url.Values{"csrf_token": {tok}, "current_password": {"not-the-password"},
+		"new_password": {"An0ther-Strong-Pass!"}, "confirm_password": {"An0ther-Strong-Pass!"}}
+	for i := range 2 {
+		if r := h.do(c, "POST", "/account/password", wrong, nil); r.status != http.StatusUnprocessableEntity {
+			t.Fatalf("attempt %d: %d", i+1, r.status)
+		}
+	}
+	r := h.do(c, "POST", "/account/password", wrong, nil)
+	if r.status != http.StatusTooManyRequests || !strings.Contains(r.body, "Trop de tentatives") || r.header.Get("Retry-After") == "" {
+		t.Errorf("guessing the current password must be rate-limited: %d", r.status)
 	}
 }

@@ -69,6 +69,10 @@ Pas de framework web, pas de build Node pour l'app, pas de CDN.
 - Auth (SPEC §11) : admin créé une seule fois au premier démarrage, mot de passe affiché une seule fois sur stdout,
   changement forcé, argon2id (PHC), sessions stockées hachées (SHA-256), verrouillage progressif, rate limit par IP,
   `X-Forwarded-For` seulement depuis `TRUSTED_PROXIES`.
+- Requêtes sortantes : clients amont via `httpx` uniquement (redirections suivies seulement vers le même hôte,
+  `httpx.SameHostOnly`, sinon la clé partirait ailleurs) ; images distantes : https seulement, redirections https, 3 max.
+  Jamais `http.DefaultClient` pour un appel authentifié.
+- Rate limit par IP partagé entre connexion et changement de mot de passe ; CSP avec `object-src 'none'; base-uri 'none'`.
 - Kubernetes : image distroless nonroot (65532), rootfs en lecture seule, seul `/data` est inscriptible,
   `/healthz` (liveness) et `/readyz` (readiness, sans dépendre des *arr*), arrêt propre sur SIGTERM (20 s).
   Une seule réplique (SQLite).

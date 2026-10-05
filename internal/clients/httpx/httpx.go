@@ -37,10 +37,36 @@ type Client struct {
 	Backoff time.Duration
 }
 
+// maxRedirects bounds the redirects followed on the same host.
+const maxRedirects = 5
+
+// SameHostOnly is the redirect policy of the upstream clients: Go forwards
+// custom headers (X-Api-Key, X-Plex-Token) to any redirect target, so a
+// redirect to another host is refused instead of leaking the credential.
+func SameHostOnly(req *http.Request, via []*http.Request) error {
+	if len(via) >= maxRedirects {
+		return fmt.Errorf("stopped after %d redirects", maxRedirects)
+	}
+	if req.URL.Hostname() != via[0].URL.Hostname() {
+		return &RedirectError{Host: req.URL.Hostname()}
+	}
+	return nil
+}
+
+// RedirectError is a refused redirect to another host.
+type RedirectError struct{ Host string }
+
+func (e *RedirectError) Error() string {
+	return fmt.Sprintf("redirect to another host (%s) refused: check the URL", e.Host)
+}
+
+// defaultHTTP is shared by every upstream client.
+var defaultHTTP = &http.Client{CheckRedirect: SameHostOnly}
+
 // New returns a client with default timeout and retry policy.
 func New(name, baseURL string, auth func(*http.Request)) *Client {
 	return &Client{
-		Name: name, BaseURL: strings.TrimRight(baseURL, "/"), HTTP: http.DefaultClient, Auth: auth,
+		Name: name, BaseURL: strings.TrimRight(baseURL, "/"), HTTP: defaultHTTP, Auth: auth,
 		Timeout: DefaultTimeout, Retries: DefaultRetries, Backoff: DefaultBackoff,
 	}
 }

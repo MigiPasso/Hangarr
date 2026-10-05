@@ -182,7 +182,7 @@ func serve() error {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		janitor(ctx, log, svc, limiter)
+		janitor(ctx, log, svc, func() { limiter.Sweep(); srv.SweepLimiters() })
 	}()
 	wg.Add(1)
 	go func() {
@@ -201,7 +201,7 @@ func serve() error {
 }
 
 // janitor purges expired sessions and rate-limit entries until ctx ends.
-func janitor(ctx context.Context, log *slog.Logger, svc *auth.Service, limiter *auth.RateLimiter) {
+func janitor(ctx context.Context, log *slog.Logger, svc *auth.Service, sweep func()) {
 	t := time.NewTicker(10 * time.Minute)
 	defer t.Stop()
 	for {
@@ -210,7 +210,7 @@ func janitor(ctx context.Context, log *slog.Logger, svc *auth.Service, limiter *
 		} else if n > 0 {
 			log.Info("expired sessions purged", "count", n)
 		}
-		limiter.Sweep()
+		sweep()
 		select {
 		case <-ctx.Done():
 			return

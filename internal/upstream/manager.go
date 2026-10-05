@@ -414,6 +414,7 @@ func Describe(err error) string {
 	var se *httpx.StatusError
 	var te *tautulli.APIError
 	var we *WrongServiceError
+	var re *httpx.RedirectError
 	var syn *json.SyntaxError
 	var ut *json.UnmarshalTypeError
 	switch {
@@ -421,6 +422,9 @@ func Describe(err error) string {
 		return ""
 	case errors.Is(err, ErrNotConfigured):
 		return "Champs obligatoires manquants (URL et clé)."
+	case errors.As(err, &re):
+		return fmt.Sprintf("Cette adresse redirige vers un autre hôte (%s) : refusé pour ne pas lui envoyer la clé. "+
+			"Indiquez directement l'adresse finale.", re.Host)
 	case errors.As(err, &we):
 		return fmt.Sprintf("Cette adresse répond comme %s, pas comme %s.", we.Got, we.Want)
 	case errors.As(err, &se) && (se.Status == http.StatusUnauthorized || se.Status == http.StatusForbidden):

@@ -177,6 +177,20 @@ func (s *Server) passwordPage(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) passwordSubmit(w http.ResponseWriter, r *http.Request) {
 	sess := sessionFrom(r)
+	// The current password is checked here too: same per-IP budget as the
+	// login, so a stolen session cannot guess it without limit.
+	if ok, retry := s.LoginLimiter.Allow(s.clientMeta(r).IP); !ok {
+		w.Header().Set("Retry-After", strconv.Itoa(int(retry/time.Second)+1))
+		data := passwordData{Forced: sess.MustChangePassword, Username: sess.Username,
+			CurrentError: fmt.Sprintf("Trop de tentatives. Réessayez dans %d min.", int(retry/time.Minute)+1)}
+		pd := s.page(r, "Changer le mot de passe", "account", data)
+		if isHTMX(r) {
+			s.render(w, r, http.StatusOK, "password", "password_form", pd)
+			return
+		}
+		s.render(w, r, http.StatusTooManyRequests, "password", "", pd)
+		return
+	}
 	ns, violations, err := s.Auth.ChangePassword(r.Context(), sess,
 		r.PostFormValue("current_password"), r.PostFormValue("new_password"), r.PostFormValue("confirm_password"),
 		s.clientMeta(r))

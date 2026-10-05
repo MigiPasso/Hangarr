@@ -504,7 +504,7 @@ Toute variable secrète (`*_API_KEY`, `PLEX_TOKEN`, `TAUTULLI_WEBHOOK_SECRET`) a
   - ne fait que déclencher une sync.
 - **CSRF** sur tous les `POST` / `PUT` / `DELETE`, formulaire de login compris : jeton lié à la session (cookie de pré-session pour `/login`), envoyé par HTMX via `hx-headers` défini dans le layout.
 - En-têtes de sécurité :
-  - `Content-Security-Policy: default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; frame-ancestors 'none'; form-action 'self'`
+  - `Content-Security-Policy: default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'`
   - HTMX compatible CSP via `<meta name="htmx-config" content='{"includeIndicatorStyles":false,"allowEval":false}'>` (styles d'indicateur dans `app.css`).
   - `X-Content-Type-Options: nosniff`, `Referrer-Policy: same-origin`, `Permissions-Policy` restrictive, `Strict-Transport-Security` si `COOKIE_SECURE=true`.
 - `http.Server` avec `ReadHeaderTimeout`, `ReadTimeout`, `WriteTimeout`, `IdleTimeout` ; taille des corps de requête limitée.

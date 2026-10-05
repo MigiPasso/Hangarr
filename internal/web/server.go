@@ -75,6 +75,10 @@ func (s *Server) baseContext() context.Context {
 	return context.Background()
 }
 
+// SweepLimiters drops expired entries of the server's own rate limiters
+// (the login limiter belongs to the caller).
+func (s *Server) SweepLimiters() { s.webhookLimiter.Sweep() }
+
 // SetDraining makes /readyz fail so no new traffic is routed during shutdown.
 func (s *Server) SetDraining() { s.draining.Store(true) }
 

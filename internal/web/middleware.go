@@ -20,7 +20,7 @@ const (
 )
 
 const contentSecurityPolicy = "default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; " +
-	"frame-ancestors 'none'; form-action 'self'"
+	"object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'"
 
 const permissionsPolicy = "accelerometer=(), camera=(), geolocation=(), gyroscope=(), magnetometer=(), " +
 	"microphone=(), payment=(), usb=(), browsing-topics=()"
