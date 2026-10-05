@@ -3,6 +3,7 @@ package syncer
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 )
 
@@ -55,33 +56,25 @@ func (s *Syncer) RunHistory(ctx context.Context) (int, error) {
 	}
 	defer s.running.Store(false)
 
-	source := SourcePlexHistory
-	if up.HistoryClient() != nil {
-		source = SourceTautulli
-	}
 	start := s.now()
-	id, err := s.Store.StartSyncRun(ctx, source, start)
-	if err != nil {
-		return 0, err
-	}
-	var n int
-	if source == SourceTautulli {
-		n, err = s.syncTautulliHistory(ctx, up.HistoryClient())
-	} else {
-		n, err = s.syncPlexHistory(ctx, up.Plex)
-	}
-	if ferr := s.Store.FinishSyncRun(context.WithoutCancel(ctx), id, s.now(), n, err); ferr != nil {
-		s.Log.Error("sync run not recorded", "source", source, "err", ferr)
-	}
-	if err != nil {
-		return 0, err
+	n := 0
+	var sources []string
+	for _, r := range s.syncHistories(ctx, up) {
+		if r.Err != nil {
+			return 0, fmt.Errorf("%s: %w", r.Source, r.Err)
+		}
+		n += r.Items
+		sources = append(sources, r.Source)
 	}
 	if err := s.linkEvents(ctx); err != nil {
+		return 0, err
+	}
+	if err := s.mergeHistory(ctx, up); err != nil {
 		return 0, err
 	}
 	if err := s.recompute(ctx); err != nil {
 		return 0, err
 	}
-	s.Log.Info("history sync finished", "source", source, "sessions", n, "duration_ms", s.now().Sub(start).Milliseconds())
+	s.Log.Info("history sync finished", "sources", sources, "sessions", n, "duration_ms", s.now().Sub(start).Milliseconds())
 	return n, nil
 }

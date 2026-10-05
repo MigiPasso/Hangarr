@@ -72,8 +72,13 @@ Pas de framework web, pas de build Node pour l'app, pas de CDN.
 
 - `DRY_RUN=true` par défaut ; dry-run et tag de protection (`PROTECTED_TAGS`) vérifiés **côté serveur**.
 - Suppression de saison : supprimer les fichiers **puis** démonitorer la saison (`PUT` de la série complète).
-- **Tautulli est la source de vérité** du visionnage (lectures, vu / pas vu, par utilisateur). Ne jamais utiliser
-  `viewCount` / `lastViewedAt` / `viewedLeafCount` de Plex pour ça : ils ne concernent que le compte du token.
+- Visionnage = **historique fusionné** (`HISTORY_SOURCE=auto` → `merged` si Tautulli est configuré, décision
+  utilisateur) : l'historique Plex (`/status/sessions/history/all`) dit ce qui a été vu ; Tautulli enrichit les lectures
+  qu'il connaît (durées, appareils, lectures partielles). Doublons rapprochés par utilisateur + élément + date
+  (`store.MergePlexHistory`, après `linkEvents`) ; lecture connue de Plex seul : durée estimée depuis la durée Sonarr/Radarr.
+  Comptes Plex traduits en ids Tautulli par nom (le propriétaire vaut 1 côté Plex). Modes `tautulli` / `plex` : une
+  seule source, l'autre est purgée. Ne jamais utiliser `viewCount` / `lastViewedAt` / `viewedLeafCount` de Plex : ils
+  ne concernent que le compte du token.
 - Auth (SPEC §11) : admin créé une seule fois au premier démarrage, mot de passe affiché une seule fois sur stdout,
   changement forcé, argon2id (PHC), sessions stockées hachées (SHA-256), verrouillage progressif, rate limit par IP,
   `X-Forwarded-For` seulement depuis `TRUSTED_PROXIES`.

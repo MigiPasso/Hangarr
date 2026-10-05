@@ -413,7 +413,7 @@ var fr = map[string]string{ //nolint:gosec // G101: UI texts mentioning keys and
 	"No master key: keys and tokens cannot be saved.":                                  "Aucune clé maître n'est définie : clés et tokens ne peuvent pas être enregistrés.",
 	"Set CLEANARR_MASTER_KEY (or _FILE) and restart; `cleanarr master-key` makes one.": "Définissez CLEANARR_MASTER_KEY (ou _FILE) et redémarrez ; `cleanarr master-key` en génère une.",
 	"History source:": "Source de l'historique :",
-	"Set by HISTORY_SOURCE. Plex only knows the plays still in its library.": "Réglé par HISTORY_SOURCE. Plex ne connaît que les lectures encore présentes dans sa bibliothèque.",
+	"Set by HISTORY_SOURCE. Plex + Tautulli: Plex says what was watched, Tautulli adds durations and devices. Plex only knows the plays still in its library.": "Réglé par HISTORY_SOURCE. Plex + Tautulli : Plex dit ce qui a été vu, Tautulli ajoute durées et appareils. Plex ne connaît que les lectures encore présentes dans sa bibliothèque.",
 	"Configured":             "Configuré",
 	"Set by the environment": "Défini par l'environnement",
 	"%s (empty = keep)":      "%s (vide = conserver)",

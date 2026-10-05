@@ -152,7 +152,7 @@ type Clients struct {
 	Radarr   *radarr.Client
 	Plex     *plex.Client
 	Tautulli *tautulli.Client
-	// HistorySource is "tautulli" or "plex" (resolved HISTORY_SOURCE).
+	// HistorySource is "merged", "tautulli" or "plex" (resolved HISTORY_SOURCE).
 	HistorySource string
 	// Missing lists the services the synchronization still needs.
 	Missing []string
@@ -177,8 +177,10 @@ func Build(v Values, mode string) *Clients {
 	switch {
 	case mode == config.HistoryPlex:
 		c.HistorySource = config.HistoryPlex
-	case mode == config.HistoryTautulli || c.Tautulli != nil:
+	case mode == config.HistoryTautulli:
 		c.HistorySource = config.HistoryTautulli
+	case mode == config.HistoryMerged || c.Tautulli != nil:
+		c.HistorySource = config.HistoryMerged
 	default:
 		c.HistorySource = config.HistoryPlex
 	}
@@ -187,7 +189,7 @@ func Build(v Values, mode string) *Clients {
 			c.Missing = append(c.Missing, ServiceLabel(svc))
 		}
 	}
-	if c.HistorySource == config.HistoryTautulli && c.Tautulli == nil {
+	if c.HistorySource != config.HistoryPlex && c.Tautulli == nil {
 		c.Missing = append(c.Missing, ServiceLabel(Tautulli))
 	}
 	return c
@@ -196,13 +198,22 @@ func Build(v Values, mode string) *Clients {
 // Ready reports whether the synchronization can run.
 func (c *Clients) Ready() bool { return len(c.Missing) == 0 }
 
-// HistoryClient returns the Tautulli client when it is the history source.
+// HistoryClient returns the Tautulli client when Tautulli feeds the history
+// (tautulli or merged).
 func (c *Clients) HistoryClient() *tautulli.Client {
 	if c.HistorySource == config.HistoryPlex {
 		return nil
 	}
 	return c.Tautulli
 }
+
+// PlexHistory reports whether the Plex history is read (plex or merged).
+func (c *Clients) PlexHistory() bool {
+	return c.Plex != nil && c.HistorySource != config.HistoryTautulli
+}
+
+// Merged reports whether both histories are read and merged.
+func (c *Clients) Merged() bool { return c.HistorySource == config.HistoryMerged }
 
 // SonarrWebURL is the Sonarr URL for browser links.
 func (c *Clients) SonarrWebURL() string {
