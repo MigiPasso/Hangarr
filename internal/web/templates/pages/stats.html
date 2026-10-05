@@ -62,6 +62,7 @@
     </details>
   </section>
 
+  {{if not $d.User}}
   <section class="card">
     <div class="title-row"><h2>{{t "Cost per play"}}</h2>{{template "info" (t "Stored size divided by the number of plays (all time). Most expensive first.")}}</div>
     {{if $d.Cost}}
@@ -73,7 +74,9 @@
     </table>
     {{else}}<p class="muted">{{t "No data"}}</p>{{end}}
   </section>
+  {{end}}
 
+  {{if not $d.User}}
   <section class="card">
     <h2>{{t "Viewer ranking"}}</h2>
     {{if $d.Ranking}}
@@ -85,6 +88,7 @@
     </table>
     {{else}}<p class="muted">{{t "No activity in this period."}}</p>{{end}}
   </section>
+  {{end}}
 
   <section class="card">
     <h2>{{t "Continue watching"}}</h2>
@@ -131,6 +135,7 @@
     </div>
   </section>
 
+  {{if not $d.User}}
   <section class="card wide">
     <div class="title-row"><h2>{{t "Who watches what"}}</h2>{{template "info" (t "Largest series and their viewers (episodes watched / downloaded).")}}</div>
     {{if $d.WhoWatches}}
@@ -143,6 +148,7 @@
     </table>
     {{end}}
   </section>
+  {{end}}
 </div>
 </div>
 {{end}}
