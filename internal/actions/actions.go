@@ -27,14 +27,17 @@ const (
 	DeleteMovie  = "delete_movie"
 )
 
-// Errors shown to the user.
+// Errors explained to the user (the web layer translates them).
 var (
-	ErrNotFound        = errors.New("élément introuvable")
-	ErrUnconfigured    = errors.New("service non configuré")
-	ErrNotDeletable    = errors.New("élément non géré par Sonarr/Radarr : suppression impossible")
-	ErrProtected       = errors.New("élément protégé par un tag")
-	ErrConfirmMismatch = errors.New("le titre saisi ne correspond pas")
-	ErrNoSuchSeason    = errors.New("saison introuvable")
+	ErrNotFound        = errors.New("item not found")
+	ErrUnconfigured    = errors.New("service not configured")
+	ErrNotDeletable    = errors.New("not managed by Sonarr/Radarr: cannot be deleted")
+	ErrProtected       = errors.New("protected by a tag")
+	ErrConfirmMismatch = errors.New("the typed title does not match")
+	ErrNoSuchSeason    = errors.New("season not found")
+	// ErrUnmonitorAfterDelete: the season files were deleted but the season
+	// could not be unmonitored (Sonarr may download it again).
+	ErrUnmonitorAfterDelete = errors.New("files deleted but the season was not unmonitored")
 )
 
 // Refresher updates local data after a deletion (implemented by the syncer).
@@ -210,11 +213,11 @@ func (s *Service) Delete(ctx context.Context, req Request) (*Result, error) {
 // execute checks the live protection tags, then deletes unless dry-run.
 func (s *Service) execute(ctx context.Context, up *upstream.Clients, m *store.Media, req Request, res *Result) error {
 	if (m.Kind == "movie" && up.Radarr == nil) || (m.Kind != "movie" && up.Sonarr == nil) {
-		return fmt.Errorf("%w : %s", ErrUnconfigured, arrName(m.Kind))
+		return fmt.Errorf("%w: %s", ErrUnconfigured, arrName(m.Kind))
 	}
 	labels, err := s.liveTags(ctx, up, m.Kind, m.ArrID)
 	if isNotFound(err) {
-		return fmt.Errorf("%w dans %s", ErrNotFound, arrName(m.Kind))
+		return fmt.Errorf("%w in %s", ErrNotFound, arrName(m.Kind))
 	}
 	if err != nil {
 		return err
@@ -258,14 +261,14 @@ func (s *Service) deleteSeason(ctx context.Context, c *sonarr.Client, seriesID i
 	// Re-read the series after the deletion so the PUT carries fresh data.
 	_, raw, err := c.SeriesByID(ctx, seriesID)
 	if err != nil {
-		return fmt.Errorf("fichiers supprimés mais saison non démonitorée : %w", err)
+		return fmt.Errorf("%w: %w", ErrUnmonitorAfterDelete, err)
 	}
 	updated, ok, err := sonarr.UnmonitorSeason(raw, season)
 	if err != nil || !ok {
-		return fmt.Errorf("fichiers supprimés mais saison non démonitorée : %w", errors.Join(err, ErrNoSuchSeason))
+		return fmt.Errorf("%w: %w", ErrUnmonitorAfterDelete, errors.Join(err, ErrNoSuchSeason))
 	}
 	if err := c.UpdateSeriesRaw(ctx, seriesID, updated); err != nil {
-		return fmt.Errorf("fichiers supprimés mais saison non démonitorée : %w", err)
+		return fmt.Errorf("%w: %w", ErrUnmonitorAfterDelete, err)
 	}
 	return nil
 }

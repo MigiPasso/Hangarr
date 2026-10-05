@@ -449,11 +449,11 @@ Toute variable secrète (`*_API_KEY`, `PLEX_TOKEN`, `TAUTULLI_WEBHOOK_SECRET`) a
 - Le mot de passe en clair est écrit **une seule fois**, sur stdout, en texte brut (même si `LOG_FORMAT=json`) pour rester lisible dans `docker logs` / `kubectl logs` :
   ```
   ================================================================
-   CLEANARR : COMPTE ADMIN INITIAL CRÉÉ
-   Utilisateur  : admin
-   Mot de passe : xxxxxxxxxxxxxxxxxxxxxxxx
-   Ce mot de passe ne sera plus jamais affiché.
-   Il devra être changé à la première connexion.
+   CLEANARR: INITIAL ADMIN ACCOUNT CREATED
+   Username : admin
+   Password : xxxxxxxxxxxxxxxxxxxxxxxx
+   This password will never be shown again.
+   It must be changed at the first sign-in.
   ================================================================
   ```
   Il n'est ni stocké, ni écrit ailleurs, ni relogué ensuite. Une ligne slog `admin_created` (sans le mot de passe) et une entrée `auth_events` sont ajoutées.
@@ -535,7 +535,7 @@ Toute variable secrète (`*_API_KEY`, `PLEX_TOKEN`, `TAUTULLI_WEBHOOK_SECRET`) a
 
 Le Deployment impose : `runAsNonRoot`, `runAsUser/runAsGroup/fsGroup: 65532`, `readOnlyRootFilesystem: true`, `allowPrivilegeEscalation: false`, `capabilities.drop: [ALL]`, `seccompProfile: RuntimeDefault`, `automountServiceAccountToken: false`.
 
-Récupérer le mot de passe initial : `kubectl -n cleanarr logs deploy/cleanarr | grep -A4 "COMPTE ADMIN"`. Les logs étant souvent collectés (Loki, etc.), le changement à la première connexion est obligatoire.
+Récupérer le mot de passe initial : `kubectl -n cleanarr logs deploy/cleanarr | grep -A4 "INITIAL ADMIN"`. Les logs étant souvent collectés (Loki, etc.), le changement à la première connexion est obligatoire.
 
 ## 14. Développement et tests : tout dans Docker
 

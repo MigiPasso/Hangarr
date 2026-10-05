@@ -40,7 +40,7 @@ func TestConfigPage(t *testing.T) {
 	c := h.loggedIn()
 
 	home := h.do(c, "GET", "/", nil, nil)
-	if !strings.Contains(home.body, "Configuration incomplète (Sonarr, Radarr, Plex)") ||
+	if !strings.Contains(home.body, "Services non configurés (Sonarr, Radarr, Plex)") ||
 		!strings.Contains(home.body, `href="/config">Configurer les services`) {
 		t.Error("the banner must invite to configure the services")
 	}
@@ -49,7 +49,7 @@ func TestConfigPage(t *testing.T) {
 		t.Fatalf("status %d", page.status)
 	}
 	for _, want := range []string{`name="sonarr.api_key" type="password" autocomplete="new-password"`,
-		`value="http://env-radarr:7878" disabled`, "Défini par l'environnement (<code>RADARR_URL</code>)",
+		`value="http://env-radarr:7878" disabled`, "Défini par l&#39;environnement (<code>RADARR_URL</code>)",
 		`hx-post="/config/sonarr/test"`} {
 		if !strings.Contains(page.body, want) {
 			t.Errorf("missing %q", want)
@@ -69,7 +69,7 @@ func TestConfigPage(t *testing.T) {
 		t.Error("the credential must never be sent back, only its masked hint")
 	}
 	if !strings.Contains(r.body, `id="config-banner" hx-swap-oob="true"`) ||
-		!strings.Contains(r.body, "Configuration incomplète (Radarr, Plex)") {
+		!strings.Contains(r.body, "Services non configurés (Radarr, Plex)") {
 		t.Error("the banner must be updated out of band")
 	}
 	if r := h.do(c, "GET", "/config", nil, nil); strings.Contains(r.body, testAPIKey) {
@@ -108,7 +108,7 @@ func TestConfigWithoutMasterKey(t *testing.T) {
 	h := newConfigHarness(t, nil, false)
 	c := h.loggedIn()
 	page := h.do(c, "GET", "/config", nil, nil)
-	if !strings.Contains(page.body, "Aucune clé maître n'est définie") {
+	if !strings.Contains(page.body, "Aucune clé maître n&#39;est définie") {
 		t.Error("missing master key warning")
 	}
 	if !strings.Contains(page.body, `placeholder="Non défini"

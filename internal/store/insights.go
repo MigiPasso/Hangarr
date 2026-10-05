@@ -31,6 +31,12 @@ func protectedClause(alias string, tags []string) (string, []any) {
 		placeholders(len(tags)) + "))", args
 }
 
+// Placeholder labels, translated by the web layer.
+const (
+	NoGenre = "(none)"    // item without genre
+	Unknown = "(unknown)" // empty player / platform / transcode decision
+)
+
 // Overview are the dashboard tiles.
 type Overview struct {
 	Series            int
@@ -276,7 +282,7 @@ func (s *Store) GenreShares(ctx context.Context, since, user int64) ([]GenreShar
 			}
 			var genres []string
 			if json.Unmarshal([]byte(raw), &genres) != nil || len(genres) == 0 {
-				genres = []string{"(aucun)"}
+				genres = []string{NoGenre}
 			}
 			for _, g := range genres {
 				get(g).StoredBytes += float64(size) / float64(len(genres))
@@ -297,7 +303,7 @@ func (s *Store) GenreShares(ctx context.Context, since, user int64) ([]GenreShar
 		}
 		var genres []string
 		if json.Unmarshal([]byte(raw), &genres) != nil || len(genres) == 0 {
-			genres = []string{"(aucun)"}
+			genres = []string{NoGenre}
 		}
 		for _, g := range genres {
 			get(g).Plays += float64(plays) / float64(len(genres))
@@ -460,7 +466,7 @@ func (s *Store) Breakdown(ctx context.Context, column string, since, user int64,
 	uc, uargs := userClause("w", user)
 	args := append([]any{since}, uargs...)
 	//nolint:gosec // G202: column is checked against a whitelist above
-	rows, err := s.db.QueryContext(ctx, `SELECT COALESCE(NULLIF(w.`+column+`, ''), '(inconnu)'), COUNT(*)
+	rows, err := s.db.QueryContext(ctx, `SELECT COALESCE(NULLIF(w.`+column+`, ''), '`+Unknown+`'), COUNT(*)
 		FROM watch_events w WHERE w.stopped_at >= ?`+uc+` GROUP BY 1 ORDER BY 2 DESC LIMIT ?`, append(args, limit)...)
 	if err != nil {
 		return nil, err

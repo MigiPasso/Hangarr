@@ -1,33 +1,33 @@
 {{define "content"}}{{$d := .Data}}
-<h1>Journal</h1>
-<nav class="tabs" aria-label="Onglets">
-  <a href="/journal?tab=actions"{{if eq $d.Tab "actions"}} aria-current="page"{{end}}>Actions</a>
-  <a href="/journal?tab=security"{{if eq $d.Tab "security"}} aria-current="page"{{end}}>Sécurité</a>
+<h1>{{t "Log"}}</h1>
+<nav class="tabs" aria-label="{{t "Tabs"}}">
+  <a href="/journal?tab=actions"{{if eq $d.Tab "actions"}} aria-current="page"{{end}}>{{t "Actions"}}</a>
+  <a href="/journal?tab=security"{{if eq $d.Tab "security"}} aria-current="page"{{end}}>{{t "Security"}}</a>
 </nav>
 <section class="card">
 {{if eq $d.Tab "actions"}}
   {{if $d.Actions}}
   <div class="table-wrap"><table class="table">
-    <thead><tr><th>Date</th><th>Action</th><th>Titre</th><th class="num">Espace libéré</th><th>Options</th><th>Résultat</th><th>Par</th></tr></thead>
+    <thead><tr><th>{{t "Date"}}</th><th>{{t "Action"}}</th><th>{{t "Title"}}</th><th class="num">{{t "Space freed"}}</th><th>{{t "Options"}}</th><th>{{t "Result"}}</th><th>{{t "By"}}</th></tr></thead>
     <tbody>
     {{range $d.Actions}}
       <tr>
         <td>{{datetime .At}}</td>
-        <td>{{if eq .Action "delete_series"}}Série supprimée{{else if eq .Action "delete_season"}}Saison supprimée{{else if eq .Action "delete_movie"}}Film supprimé{{else if eq .Action "protect"}}Protégé{{else if eq .Action "unprotect"}}Protection retirée{{else}}{{.Action}}{{end}}</td>
-        <td>{{.Title}}{{if .SeasonNumber}} · saison {{deref .SeasonNumber}}{{end}}</td>
+        <td>{{if eq .Action "delete_series"}}{{t "Series deleted"}}{{else if eq .Action "delete_season"}}{{t "Season deleted"}}{{else if eq .Action "delete_movie"}}{{t "Movie deleted"}}{{else if eq .Action "protect"}}{{t "Protected"}}{{else if eq .Action "unprotect"}}{{t "Protection removed"}}{{else}}{{.Action}}{{end}}</td>
+        <td>{{.Title}}{{if .SeasonNumber}} · {{t "season %d" (deref .SeasonNumber)}}{{end}}</td>
         <td class="num">{{if .SizeFreedBytes}}{{bytes .SizeFreedBytes}}{{else}}–{{end}}</td>
-        <td class="small">{{if or (eq .Action "protect") (eq .Action "unprotect")}}–{{else}}{{if .DeleteFiles}}fichiers{{else}}sans fichiers{{end}}{{if .ImportExclusion}} · exclusion{{end}}{{end}}</td>
-        <td>{{if not .Success}}<span class="error-text" title="{{.Error}}">Échec : {{.Error}}</span>{{else if .DryRun}}<span class="warn">Simulation</span>{{else}}<span class="ok-text">Effectuée</span>{{end}}</td>
+        <td class="small">{{if or (eq .Action "protect") (eq .Action "unprotect")}}–{{else}}{{if .DeleteFiles}}{{t "files"}}{{else}}{{t "without files"}}{{end}}{{if .ImportExclusion}} · {{t "exclusion"}}{{end}}{{end}}</td>
+        <td>{{if not .Success}}<span class="error-text" title="{{.Error}}">{{t "Failed: %s" .Error}}</span>{{else if .DryRun}}<span class="warn">{{t "Simulation"}}</span>{{else}}<span class="ok-text">{{t "Done"}}</span>{{end}}</td>
         <td>{{.Username}}</td>
       </tr>
     {{end}}
     </tbody>
   </table></div>
-  {{else}}<p class="muted">Aucune action pour l'instant.</p>{{end}}
+  {{else}}<p class="muted">{{t "No action yet."}}</p>{{end}}
 {{else}}
   {{if $d.Events}}
   <div class="table-wrap"><table class="table">
-    <thead><tr><th>Date</th><th>Événement</th><th>Utilisateur</th><th>Adresse IP</th><th>Navigateur</th></tr></thead>
+    <thead><tr><th>{{t "Date"}}</th><th>{{t "Event"}}</th><th>{{t "User"}}</th><th>{{t "IP address"}}</th><th>{{t "Browser"}}</th></tr></thead>
     <tbody>
     {{range $d.Events}}
       <tr class="event-{{.Event}}">
@@ -40,11 +40,11 @@
     {{end}}
     </tbody>
   </table></div>
-  {{else}}<p class="muted">Aucun événement.</p>{{end}}
+  {{else}}<p class="muted">{{t "No event."}}</p>{{end}}
 {{end}}
   <p class="pager">
-    {{with $d.PrevURL}}<a class="button" href="{{.}}">← Plus récents</a>{{end}}
-    {{with $d.NextURL}}<a class="button" href="{{.}}">Plus anciens →</a>{{end}}
+    {{with $d.PrevURL}}<a class="button" href="{{.}}">← {{t "Newer"}}</a>{{end}}
+    {{with $d.NextURL}}<a class="button" href="{{.}}">{{t "Older"}} →</a>{{end}}
   </p>
 </section>
 {{end}}

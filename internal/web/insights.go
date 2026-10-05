@@ -27,10 +27,6 @@ func (s *Server) cleanupScope(ctx context.Context, now time.Time) (store.Cleanup
 	}, days
 }
 
-func hours(secs int64) string {
-	return trimFloat(float64(secs)/3600) + " h"
-}
-
 func startOfDay(t time.Time) time.Time {
 	y, m, d := t.Date()
 	return time.Date(y, m, d, 0, 0, 0, 0, t.Location())
@@ -130,7 +126,7 @@ func (s *Server) home(w http.ResponseWriter, r *http.Request) {
 		s.serverError(w, r, err)
 		return
 	}
-	pd := s.page(r, "Tableau de bord", "dashboard", &d)
+	pd := s.page(r, "Dashboard", "dashboard", &d)
 	if isHTMX(r) && r.Header.Get("HX-Target") == "top" {
 		s.render(w, r, http.StatusOK, "home", "dashboard_top", pd)
 		return
@@ -158,21 +154,23 @@ func (s *Server) home(w http.ResponseWriter, r *http.Request) {
 			perDay[i] += x.PlaySeconds
 		}
 	}
+	l := s.loc(r)
 	bars := make([]bar, 30)
 	for i, secs := range perDay {
 		date := first.AddDate(0, 0, i)
-		bars[i] = bar{Label: date.Format("02/01"), Tick: i%7 == 1 || i == 29, Value: float64(secs) / 3600,
-			Tip: date.Format("02/01") + " : " + hours(secs)}
-		d.ActivityRows = append(d.ActivityRows, dayPoint{Date: date.Format("02/01/2006"), Hours: hours(secs)})
+		bars[i] = bar{Label: l.DayMonth(date), Tick: i%7 == 1 || i == 29, Value: float64(secs) / 3600,
+			Tip: l.DayMonth(date) + " · " + l.Hours(secs)}
+		d.ActivityRows = append(d.ActivityRows, dayPoint{Date: l.Date(date), Hours: l.Hours(secs)})
 	}
-	d.Activity = barChart(bars, " h", "Heures regardées par jour sur 30 jours")
+	d.Activity = barChart(l, bars, " h", l.T("Hours watched per day over 30 days"))
 	d.Disks = s.diskSpace(ctx)
 	s.render(w, r, http.StatusOK, "home", "", pd)
 }
 
 // --- statistics ---------------------------------------------------------------------
 
-var periods = []pair{{"7", "7 jours"}, {"30", "30 jours"}, {"90", "90 jours"}, {"365", "12 mois"}, {"all", "Tout"}}
+// periods are the stats windows (labels translated by the template).
+var periods = []pair{{"7", "7 days"}, {"30", "30 days"}, {"90", "90 days"}, {"365", "12 months"}, {"all", "All time"}}
 
 type resumeItem struct {
 	store.LibraryItem
@@ -224,7 +222,7 @@ func parsePeriod(v string, now time.Time) (string, string, int64) {
 			return v, p.L, now.Add(-time.Duration(n) * day).Unix()
 		}
 	}
-	return "30", "30 jours", now.Add(-30 * day).Unix()
+	return "30", "30 days", now.Add(-30 * day).Unix()
 }
 
 // nextEpisode approximates the next episode from the last one watched and
@@ -323,17 +321,19 @@ func (s *Server) stats(w http.ResponseWriter, r *http.Request) {
 		wd := (int(t.Weekday()) + 6) % 7 // Monday first
 		grid[wd][t.Hour()].Count++
 	}
+	l := s.loc(r)
 	for wd := range 7 {
-		row := []string{weekdays[wd]}
+		name := l.T(weekdayKeys[wd])
+		row := []string{name}
 		for h := range 24 {
 			c := &grid[wd][h]
-			c.Tip = fmt.Sprintf("%s %dh–%dh : %s", weekdays[wd], h, h+1, plural(int64(c.Count), "session", "sessions"))
+			c.Tip = fmt.Sprintf("%s %d–%d h · %s", name, h, h+1, l.N(int64(c.Count), "%d session", "%d sessions"))
 			row = append(row, strconv.Itoa(c.Count))
 		}
 		d.HeatRows = append(d.HeatRows, row)
 	}
-	d.Heatmap = heatmap(grid, "Sessions de lecture par jour de la semaine et par heure")
-	d.Hours = hours(secs)
+	d.Heatmap = heatmap(l, grid, l.T("Play sessions by weekday and hour"))
+	d.Hours = l.Hours(secs)
 
 	if d.Ranking, err = s.Store.UserRanking(ctx, since); fail(err) {
 		return
@@ -361,9 +361,17 @@ func (s *Server) stats(w http.ResponseWriter, r *http.Request) {
 	d.GenreRows = genres
 	rows := make([]pairRow, 0, len(genres))
 	for _, g := range genres {
-		rows = append(rows, pairRow{Label: g.Genre, A: g.StoredShare, B: g.PlaysShare})
+		label := g.Genre
+		if label == store.NoGenre {
+			label = l.T(label)
+		}
+		rows = append(rows, pairRow{Label: label, A: g.StoredShare, B: g.PlaysShare})
 	}
-	d.Genres = pairedBars(rows, "Espace stocké", "Lectures", "Part de l'espace stocké et des lectures par genre")
+	playsName := l.T("Plays")
+	if d.UserName != "" {
+		playsName = l.T("Plays by %s", d.UserName)
+	}
+	d.Genres = pairedBars(l, rows, l.T("Stored space"), playsName, l.T("Share of stored space and plays per genre"))
 	if d.Cost, err = s.Store.CostPerPlay(ctx, 15); fail(err) {
 		return
 	}
@@ -400,7 +408,7 @@ func (s *Server) stats(w http.ResponseWriter, r *http.Request) {
 	if d.Players, err = s.Store.Breakdown(ctx, "player", since, d.User, 8); fail(err) {
 		return
 	}
-	s.render(w, r, http.StatusOK, "stats", "", s.page(r, "Statistiques", "stats", d))
+	s.render(w, r, http.StatusOK, "stats", "", s.page(r, "Statistics", "stats", d))
 }
 
 // --- per-user page --------------------------------------------------------------------
@@ -424,7 +432,8 @@ type userStatsData struct {
 	Platforms  []store.Count
 }
 
-var monthNames = []string{"janv.", "févr.", "mars", "avr.", "mai", "juin", "juil.", "août", "sept.", "oct.", "nov.", "déc."}
+// monthKeys are the short month names (translated).
+var monthKeys = []string{"Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"}
 
 func (s *Server) userStats(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
@@ -465,16 +474,17 @@ func (s *Server) userStats(w http.ResponseWriter, r *http.Request) {
 			total += x.PlaySeconds
 		}
 	}
+	l := s.loc(r)
 	bars := make([]bar, 12)
 	for i, secs := range perMonth {
 		m := firstMonth.AddDate(0, i, 0)
-		label := monthNames[m.Month()-1]
+		label := l.T(monthKeys[m.Month()-1])
 		bars[i] = bar{Label: label, Tick: true, Value: float64(secs) / 3600,
-			Tip: label + " " + strconv.Itoa(m.Year()) + " : " + hours(secs)}
-		d.MonthRows = append(d.MonthRows, monthPoint{Month: label + " " + strconv.Itoa(m.Year()), Hours: hours(secs)})
+			Tip: label + " " + strconv.Itoa(m.Year()) + " · " + l.Hours(secs)}
+		d.MonthRows = append(d.MonthRows, monthPoint{Month: label + " " + strconv.Itoa(m.Year()), Hours: l.Hours(secs)})
 	}
-	d.Hours = barChart(bars, " h", "Heures regardées par mois")
-	d.TotalHours = hours(total)
+	d.Hours = barChart(l, bars, " h", l.T("Hours watched per month"))
+	d.TotalHours = l.Hours(total)
 	if d.TopSeries, err = s.Store.TopMedia(ctx, "series", 0, id, false, 5); err != nil {
 		s.serverError(w, r, err)
 		return
@@ -519,7 +529,7 @@ func (s *Server) userStats(w http.ResponseWriter, r *http.Request) {
 		s.serverError(w, r, err)
 		return
 	}
-	s.render(w, r, http.StatusOK, "userstats", "", s.page(r, d.Name, "stats", d))
+	s.render(w, r, http.StatusOK, "userstats", "", s.pageRaw(r, d.Name, "stats", d))
 }
 
 // --- cleanup --------------------------------------------------------------------------
@@ -551,7 +561,7 @@ func (s *Server) cleanup(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	s.render(w, r, http.StatusOK, "cleanup", "", s.page(r, "Nettoyage", "cleanup", d))
+	s.render(w, r, http.StatusOK, "cleanup", "", s.page(r, "Cleanup", "cleanup", d))
 }
 
 // --- cleanup settings -----------------------------------------------------------------
@@ -584,7 +594,7 @@ func (s *Server) cleanupSubmit(w http.ResponseWriter, r *http.Request) {
 	n, err := strconv.Atoi(strings.TrimSpace(r.PostFormValue("days")))
 	if err != nil || n < minCleanupDays || n > maxCleanupDays {
 		st.Days = s.cleanupDays(ctx)
-		st.Error = fmt.Sprintf("Nombre de jours invalide : entre %d et %d.", minCleanupDays, maxCleanupDays)
+		st.Error = s.loc(r).T("Invalid number of days: %d to %d.", minCleanupDays, maxCleanupDays)
 		status = http.StatusUnprocessableEntity
 	} else {
 		if err := s.Store.SetSetting(ctx, store.SettingCleanupDays, strconv.Itoa(n), time.Now()); err != nil {
@@ -594,7 +604,7 @@ func (s *Server) cleanupSubmit(w http.ResponseWriter, r *http.Request) {
 		s.Log.Info("cleanup rule changed", "days", n, "by", sessionFrom(r).Username)
 		st.Days, st.Saved = n, true
 	}
-	pd := s.page(r, "Réglages", "settings", settingsPage{Sync: s.settingsData("", false), Cleanup: st})
+	pd := s.page(r, "Settings", "settings", settingsPage{Sync: s.settingsData(s.loc(r), "", false), Cleanup: st})
 	if isHTMX(r) {
 		s.render(w, r, http.StatusOK, "settings", "cleanup_form", pd)
 		return

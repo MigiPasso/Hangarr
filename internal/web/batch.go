@@ -16,13 +16,16 @@ import (
 // batchTimeout bounds a batch request (items are processed one by one).
 const batchTimeout = 10 * time.Minute
 
+// errTooManyItems is returned for a selection above actions.MaxBatch.
+var errTooManyItems = errors.New("too many items")
+
 // batchEntry is a selected item in the confirmation.
 type batchEntry struct {
 	ID        int64
 	Kind      string
 	Title     string
 	SizeBytes int64
-	Reason    string // why it is excluded
+	Reason    string // why it is excluded (English key)
 }
 
 type batchData struct {
@@ -35,7 +38,7 @@ type batchData struct {
 	DryRun          bool
 	DeleteFiles     bool
 	ImportExclusion bool
-	Error           string
+	Error           string // English key, translated by the template
 
 	Report    []actions.BatchItem
 	Freed     int64
@@ -59,7 +62,7 @@ func selectedIDs(r *http.Request) ([]int64, error) {
 		}
 	}
 	if len(ids) > actions.MaxBatch {
-		return nil, fmt.Errorf("%d éléments au plus par lot", actions.MaxBatch)
+		return nil, errTooManyItems
 	}
 	return ids, nil
 }
@@ -70,7 +73,7 @@ func (s *Server) classify(r *http.Request, ids []int64, protectAction bool) (*ba
 	for _, id := range ids {
 		m, err := s.Store.MediaByID(r.Context(), id)
 		if errors.Is(err, store.ErrNotFound) {
-			d.Excluded = append(d.Excluded, batchEntry{ID: id, Title: fmt.Sprintf("#%d", id), Reason: "introuvable"})
+			d.Excluded = append(d.Excluded, batchEntry{ID: id, Title: fmt.Sprintf("#%d", id), Reason: "not found"})
 			continue
 		}
 		if err != nil {
@@ -79,11 +82,11 @@ func (s *Server) classify(r *http.Request, ids []int64, protectAction bool) (*ba
 		e := batchEntry{ID: m.ID, Kind: m.Kind, Title: m.Title, SizeBytes: m.SizeBytes}
 		switch {
 		case m.ArrID == 0:
-			e.Reason = "présent seulement dans Plex"
+			e.Reason = "in Plex only"
 		case isProtected(m.Tags, s.Config.ProtectedTags):
-			e.Reason = "déjà protégé"
+			e.Reason = "already protected"
 			if !protectAction {
-				e.Reason = "protégé par un tag"
+				e.Reason = "protected by a tag"
 			}
 		}
 		if e.Reason != "" {
@@ -98,9 +101,9 @@ func (s *Server) classify(r *http.Request, ids []int64, protectAction bool) (*ba
 }
 
 func (s *Server) renderBatch(w http.ResponseWriter, r *http.Request, status int, name string, d *batchData) {
-	title := "Supprimer la sélection"
+	title := "Delete selection"
 	if d.Action == "protect" {
-		title = "Protéger la sélection"
+		title = "Protect selection"
 	}
 	pd := s.page(r, title, "", d)
 	if isHTMX(r) {
@@ -124,9 +127,9 @@ func (s *Server) batchDelete(w http.ResponseWriter, r *http.Request) {
 	}
 	ids, err := selectedIDs(r)
 	if err != nil || len(ids) == 0 {
-		msg := "Aucun élément sélectionné."
+		msg := "No item selected."
 		if err != nil {
-			msg = "Sélection invalide : " + err.Error() + "."
+			msg = "Invalid selection."
 		}
 		s.renderBatch(w, r, http.StatusUnprocessableEntity, "batch_confirm", &batchData{Action: "delete", Error: msg})
 		return
@@ -146,12 +149,12 @@ func (s *Server) batchDelete(w http.ResponseWriter, r *http.Request) {
 	d.DeleteFiles = r.PostFormValue("delete_files") == "1"
 	d.ImportExclusion = r.PostFormValue("import_exclusion") == "1"
 	if len(d.Items) == 0 {
-		d.Error = "Aucun élément supprimable dans la sélection."
+		d.Error = "No deletable item in the selection."
 		s.renderBatch(w, r, http.StatusUnprocessableEntity, "batch_confirm", d)
 		return
 	}
 	if d.ConfirmByTyping && strings.TrimSpace(r.PostFormValue("confirm_count")) != strconv.Itoa(len(d.Items)) {
-		d.Error = "Le nombre saisi ne correspond pas au nombre d'éléments à supprimer."
+		d.Error = "The number typed does not match the number of items to delete."
 		s.renderBatch(w, r, http.StatusUnprocessableEntity, "batch_confirm", d)
 		return
 	}
@@ -174,15 +177,14 @@ func (s *Server) batchDelete(w http.ResponseWriter, r *http.Request) {
 			d.FailCount++
 		}
 	}
-	var msg string
-	switch {
-	case d.DryRun:
-		msg = fmt.Sprintf("Simulation : %s, %s. Rien n'a été modifié.", plural(int64(d.OKCount), "élément aurait été supprimé", "éléments auraient été supprimés"), formatBytes(d.Freed))
-	default:
-		msg = fmt.Sprintf("%s, %s libérés.", plural(int64(d.OKCount), "élément supprimé", "éléments supprimés"), formatBytes(d.Freed))
+	l := s.loc(r)
+	msg := l.N(int64(d.OKCount), "%d item deleted, %s freed.", "%d items deleted, %s freed.", l.Bytes(d.Freed))
+	if d.DryRun {
+		msg = l.N(int64(d.OKCount), "Simulation: %d item would be deleted (%s). Nothing changed.",
+			"Simulation: %d items would be deleted (%s). Nothing changed.", l.Bytes(d.Freed))
 	}
 	if d.FailCount > 0 {
-		msg += fmt.Sprintf(" %s.", plural(int64(d.FailCount), "échec", "échecs"))
+		msg += " " + l.N(int64(d.FailCount), "%d failure.", "%d failures.")
 	}
 	s.batchTrigger(w, msg, d, deleted, false)
 	s.renderBatch(w, r, http.StatusOK, "batch_report", d)
@@ -198,7 +200,7 @@ func (s *Server) batchProtect(w http.ResponseWriter, r *http.Request) {
 	ids, err := selectedIDs(r)
 	if err != nil || len(ids) == 0 {
 		s.renderBatch(w, r, http.StatusUnprocessableEntity, "batch_report",
-			&batchData{Action: "protect", Error: "Aucun élément sélectionné."})
+			&batchData{Action: "protect", Error: "No item selected."})
 		return
 	}
 	d, err := s.classify(r, ids, true)
@@ -220,12 +222,14 @@ func (s *Server) batchProtect(w http.ResponseWriter, r *http.Request) {
 			d.FailCount++
 		}
 	}
-	msg := fmt.Sprintf("%s.", plural(int64(d.OKCount), "élément protégé", "éléments protégés"))
+	l := s.loc(r)
+	msg := l.N(int64(d.OKCount), "%d item protected.", "%d items protected.")
 	if d.DryRun {
-		msg = fmt.Sprintf("Simulation : %s. Rien n'a été modifié.", plural(int64(d.OKCount), "élément aurait été protégé", "éléments auraient été protégés"))
+		msg = l.N(int64(d.OKCount), "Simulation: %d item would be protected. Nothing changed.",
+			"Simulation: %d items would be protected. Nothing changed.")
 	}
 	if d.FailCount > 0 {
-		msg += fmt.Sprintf(" %s.", plural(int64(d.FailCount), "échec", "échecs"))
+		msg += " " + l.N(int64(d.FailCount), "%d failure.", "%d failures.")
 	}
 	s.batchTrigger(w, msg, d, nil, !d.DryRun && d.OKCount > 0)
 	s.renderBatch(w, r, http.StatusOK, "batch_report", d)

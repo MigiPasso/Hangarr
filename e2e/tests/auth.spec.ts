@@ -25,7 +25,7 @@ test("wrong credentials show a generic error", async ({ page }) => {
 test("first login forces a password change and rejects weak passwords", async ({ page }) => {
   await login(page, username, initialPassword);
   await expect(page).toHaveURL(/\/account\/password$/);
-  await expect(page.getByText("vous devez choisir un nouveau mot de passe")).toBeVisible();
+  await expect(page.getByText("Choisissez un nouveau mot de passe")).toBeVisible();
 
   // Every other page redirects back while the change is pending.
   await page.goto("/account");

@@ -16,6 +16,7 @@ import (
 	"strings"
 	"time"
 
+	"cleanarr/internal/i18n"
 	"cleanarr/internal/store"
 )
 
@@ -30,12 +31,12 @@ var pages = []string{"login", "password", "account", "home", "notfound", "librar
 	"stats", "userstats", "cleanup", "config", "health", "batch"}
 
 type views struct {
-	pages  map[string]*template.Template
+	pages  map[i18n.Lang]map[string]*template.Template
 	assets map[string]string // file name -> content hash, for cache busting
 }
 
 func newViews(loc *time.Location, protectedTags []string, abandonDays int) (*views, error) {
-	v := &views{pages: map[string]*template.Template{}, assets: map[string]string{}}
+	v := &views{pages: map[i18n.Lang]map[string]*template.Template{}, assets: map[string]string{}}
 	err := fs.WalkDir(staticFS, "static", func(p string, d fs.DirEntry, err error) error {
 		if err != nil || d.IsDir() {
 			return err
@@ -51,8 +52,38 @@ func newViews(loc *time.Location, protectedTags []string, abandonDays int) (*vie
 	if err != nil {
 		return nil, err
 	}
+	for _, lang := range i18n.Langs {
+		funcs := v.funcs(i18n.For(lang), loc, protectedTags, abandonDays)
+		v.pages[lang] = map[string]*template.Template{}
+		for _, p := range pages {
+			t, err := template.New("").Funcs(funcs).ParseFS(templatesFS,
+				"templates/layout.html", "templates/partials/*.html", "templates/pages/"+p+".html")
+			if err != nil {
+				return nil, fmt.Errorf("parse page %s: %w", p, err)
+			}
+			v.pages[lang][p] = t
+		}
+	}
+	return v, nil
+}
 
-	funcs := template.FuncMap{
+// toInt64 accepts the integer types templates pass around.
+func toInt64(n any) int64 {
+	switch v := n.(type) {
+	case int:
+		return int64(v)
+	case int64:
+		return v
+	case int32:
+		return int64(v)
+	}
+	return 0
+}
+
+// funcs are the template functions of one language.
+func (v *views) funcs(l i18n.Localizer, loc *time.Location, protectedTags []string, abandonDays int) template.FuncMap {
+	at := func(unix int64) time.Time { return time.Unix(unix, 0).In(loc) }
+	return template.FuncMap{
 		"asset": func(name string) (string, error) {
 			h, ok := v.assets[name]
 			if !ok {
@@ -60,45 +91,45 @@ func newViews(loc *time.Location, protectedTags []string, abandonDays int) (*vie
 			}
 			return "/static/" + name + "?v=" + h, nil
 		},
-		"datetime": func(unix int64) string { return time.Unix(unix, 0).In(loc).Format("02/01/2006 15:04") },
-		"reltime":  func(unix int64) string { return relativeTime(time.Now(), time.Unix(unix, 0)) },
-		"browser":  browserSummary,
+		"lang": func() string { return string(l.Lang) },
+		"t":    l.T,
+		// tv translates a key with a slice of arguments (sync progress).
+		"tv": func(key string, args []any) string { return l.T(key, args...) },
+		// tn picks the singular or plural form: tn .Count "%d item" "%d items".
+		"tn":       func(n any, one, many string, args ...any) string { return l.N(toInt64(n), one, many, args...) },
+		"datetime": func(unix int64) string { return l.DateTime(at(unix)) },
+		"reltime":  func(unix int64) string { return l.Relative(time.Now(), time.Unix(unix, 0)) },
+		"browser":  func(ua string) string { return browserSummary(l, ua) },
 		"relptr": func(unix *int64) string {
 			if unix == nil {
 				return ""
 			}
-			return relativeTime(time.Now(), time.Unix(*unix, 0))
+			return l.Relative(time.Now(), time.Unix(*unix, 0))
 		},
 		"dateptr": func(unix *int64) string {
 			if unix == nil {
 				return ""
 			}
-			return time.Unix(*unix, 0).In(loc).Format("02/01/2006")
+			return l.Date(at(*unix))
 		},
-		"bytes":      formatBytes,
-		"stateLabel": stateLabel,
-		"plural":     func(n int, one, many string) string { return plural(int64(n), one, many) },
-		"word": func(n int, one, many string) string {
-			if n > 1 {
-				return many
-			}
-			return one
-		},
-		"protected": func(tags []string) bool { return isProtected(tags, protectedTags) },
-		"has":       func(list []string, v string) bool { return slices.Contains(list, v) },
-		"hasID":     func(list []int64, v int64) bool { return slices.Contains(list, v) },
-		"list":      func(v ...string) []string { return v },
-		"pairs":     pairs,
-		"mediaPath": kindPath,
-		"hours":     hours,
-		"share":     func(f float64) string { return trimFloat(f*100) + " %" },
+		"bytes":      l.Bytes,
+		"stateLabel": func(it store.LibraryItem) string { return stateLabel(l, it) },
+		"protected":  func(tags []string) bool { return isProtected(tags, protectedTags) },
+		"has":        func(list []string, v string) bool { return slices.Contains(list, v) },
+		"hasID":      func(list []int64, v int64) bool { return slices.Contains(list, v) },
+		"list":       func(v ...string) []string { return v },
+		"join":       strings.Join,
+		"pairs":      pairs,
+		"mediaPath":  kindPath,
+		"hours":      l.Hours,
+		"share":      l.PctShort,
 		"pctOf": func(a, b int64) string {
 			if b <= 0 {
-				return "0 %"
+				return l.PctShort(0)
 			}
-			return trimFloat(float64(a)*100/float64(b)) + " %"
+			return l.PctShort(float64(a) / float64(b))
 		},
-		"num":         func(f float64) string { return trimFloat(f) },
+		"num":         l.Num,
 		"dec":         func(f float64) string { return strconv.FormatFloat(f, 'f', -1, 64) },
 		"list2":       func(v ...any) []any { return v },
 		"inc":         func(i int) int { return i + 1 },
@@ -117,36 +148,41 @@ func newViews(loc *time.Location, protectedTags []string, abandonDays int) (*vie
 			}
 			return h
 		},
-		"stateName": func(s string) string {
-			return map[string]string{"never": "Jamais vu", "in_progress": "En cours", "completed": "Terminé",
-				"abandoned": "Abandonné"}[s]
-		},
+		"stateName": func(s string) string { return l.T(stateNames[s]) },
 		"episode": func(season, episode *int) string {
 			if season == nil || episode == nil {
 				return ""
 			}
 			return episodeLabel(*season, *episode)
 		},
-		"duration": formatDuration,
+		"duration": l.Duration,
 		"sourceLabel": func(src string) string {
-			if l, ok := map[string]string{"sonarr": "Sonarr", "radarr": "Radarr", "plex": "Plex (catalogue)",
-				"tautulli": "Tautulli (historique)", "plex_history": "Plex (historique)"}[src]; ok {
-				return l
+			if name, ok := sourceLabels[src]; ok {
+				return l.T(name)
 			}
 			return src
 		},
 		"runDuration": func(r store.SyncRun) string {
 			if r.FinishedAt == nil {
-				return "en cours"
+				return l.T("running")
 			}
-			return formatDuration(*r.FinishedAt - r.StartedAt)
+			return l.Duration(*r.FinishedAt - r.StartedAt)
 		},
-		"transcode": transcodeLabel,
+		"transcode": func(v string) string { return transcodeLabel(l, v) },
 		"authLabel": func(e string) string {
-			if l, ok := authEventLabels[e]; ok {
-				return l
+			if name, ok := authEventLabels[e]; ok {
+				return l.T(name)
 			}
 			return e
+		},
+		// explain turns an actions error into a sentence (batch report).
+		"explain": func(err error) string { return explain(l, err, "Failed: %s") },
+		// label translates the placeholder labels of the store ("(none)").
+		"label": func(v string) string {
+			if v == store.NoGenre || v == store.Unknown {
+				return l.T(v)
+			}
+			return v
 		},
 		"deref": func(p *int) int {
 			if p == nil {
@@ -155,16 +191,15 @@ func newViews(loc *time.Location, protectedTags []string, abandonDays int) (*vie
 			return *p
 		},
 	}
-	for _, p := range pages {
-		t, err := template.New("").Funcs(funcs).ParseFS(templatesFS,
-			"templates/layout.html", "templates/partials/*.html", "templates/pages/"+p+".html")
-		if err != nil {
-			return nil, fmt.Errorf("parse page %s: %w", p, err)
-		}
-		v.pages[p] = t
-	}
-	return v, nil
 }
+
+// stateNames are the watch states (translated by the templates).
+var stateNames = map[string]string{"never": "Never watched", "in_progress": "In progress", "completed": "Completed",
+	"abandoned": "Abandoned"}
+
+// sourceLabels name the sync sources.
+var sourceLabels = map[string]string{"sonarr": "Sonarr", "radarr": "Radarr", "plex": "Plex (catalog)",
+	"tautulli": "Tautulli (history)", "plex_history": "Plex (history)"}
 
 // pageData is passed to every template.
 type pageData struct {
@@ -178,8 +213,24 @@ type pageData struct {
 	// Missing lists the services the synchronization still needs (banner).
 	Missing []string
 	// OOB marks the banner and the sync status for an HTMX out-of-band swap.
-	OOB  bool
+	OOB bool
+	// Theme is "light" or "dark" when chosen with the theme button, "" to
+	// follow the system.
+	Theme string
+	// Lang is the interface language; Path the current path (language links).
+	Lang i18n.Lang
+	Path string
 	Data any
+}
+
+// themeCookie remembers the theme chosen with the button (set by app.js).
+const themeCookie = "cleanarr_theme"
+
+func themeFrom(r *http.Request) string {
+	if c, err := r.Cookie(themeCookie); err == nil && (c.Value == "light" || c.Value == "dark") {
+		return c.Value
+	}
+	return ""
 }
 
 // HXHeaders is the JSON for hx-headers: HTMX sends the CSRF token on every request.
@@ -188,8 +239,17 @@ func (p pageData) HXHeaders() string {
 	return string(b)
 }
 
+// page builds the data of a page; title is an English key, translated here.
 func (s *Server) page(r *http.Request, title, active string, data any) pageData {
-	pd := pageData{Title: title, Active: active, DryRun: s.Config.DryRun, Version: s.Version, Data: data}
+	return s.pageRaw(r, s.loc(r).T(title), active, data)
+}
+
+// pageRaw is page with a title that is not translated (a media title, a
+// user name).
+func (s *Server) pageRaw(r *http.Request, title, active string, data any) pageData {
+	l := s.loc(r)
+	pd := pageData{Title: title, Active: active, DryRun: s.Config.DryRun, Version: s.Version, Data: data,
+		Theme: themeFrom(r), Lang: l.Lang, Path: r.URL.Path}
 	if sess := sessionFrom(r); sess != nil {
 		pd.Session = sess
 		pd.CSRFToken = sess.CSRFToken
@@ -203,7 +263,10 @@ func (s *Server) page(r *http.Request, title, active string, data any) pageData 
 // empty, a single named template (HTMX partial). Output is buffered so a
 // template error never produces a half-written page.
 func (s *Server) render(w http.ResponseWriter, r *http.Request, status int, page, name string, data pageData) {
-	t, ok := s.views.pages[page]
+	t, ok := s.views.pages[data.Lang][page]
+	if !ok {
+		t, ok = s.views.pages[i18n.EN][page]
+	}
 	if !ok {
 		s.serverError(w, r, fmt.Errorf("unknown page %q", page))
 		return
@@ -238,38 +301,9 @@ func (s *Server) static() http.Handler {
 	})
 }
 
-func plural(n int64, one, many string) string {
-	if n > 1 {
-		return fmt.Sprintf("%d %s", n, many)
-	}
-	return fmt.Sprintf("%d %s", n, one)
-}
-
-// relativeTime formats t relative to now in French ("il y a 2 h").
-func relativeTime(now, t time.Time) string {
-	d := now.Sub(t)
-	if d < 0 {
-		d = 0
-	}
-	switch {
-	case d < time.Minute:
-		return "à l'instant"
-	case d < time.Hour:
-		return fmt.Sprintf("il y a %d min", int64(d/time.Minute))
-	case d < 24*time.Hour:
-		return fmt.Sprintf("il y a %d h", int64(d/time.Hour))
-	case d < 30*24*time.Hour:
-		return "il y a " + plural(int64(d/(24*time.Hour)), "jour", "jours")
-	case d < 365*24*time.Hour:
-		return fmt.Sprintf("il y a %d mois", int64(d/(30*24*time.Hour)))
-	default:
-		return "il y a " + plural(int64(d/(365*24*time.Hour)), "an", "ans")
-	}
-}
-
 // browserSummary turns a User-Agent into "Firefox · Linux".
-func browserSummary(ua string) string {
-	browser := "Navigateur inconnu"
+func browserSummary(l i18n.Localizer, ua string) string {
+	browser := l.T("Unknown browser")
 	for _, b := range []struct{ token, name string }{
 		{"Edg/", "Edge"}, {"OPR/", "Opera"}, {"Firefox/", "Firefox"}, {"Chrome/", "Chrome"},
 		{"Safari/", "Safari"}, {"curl/", "curl"},
@@ -290,40 +324,21 @@ func browserSummary(ua string) string {
 	return browser
 }
 
-// formatBytes renders sizes the French way: "12,5 Go", "1,2 To".
-func formatBytes(n int64) string {
-	units := []string{"o", "Ko", "Mo", "Go", "To", "Po"}
-	f := float64(n)
-	i := 0
-	for f >= 1000 && i < len(units)-1 {
-		f /= 1000
-		i++
-	}
-	if i == 0 {
-		return fmt.Sprintf("%d o", n)
-	}
-	prec := 1
-	if f >= 100 {
-		prec = 0
-	}
-	return strings.Replace(strconv.FormatFloat(f, 'f', prec, 64), ".", ",", 1) + " " + units[i]
-}
-
-// stateLabel is the badge text: "Jamais vu", "En cours 3/10", "Terminé", "Abandonné".
-func stateLabel(it store.LibraryItem) string {
+// stateLabel is the badge text: "Never watched", "In progress 3/10"…
+func stateLabel(l i18n.Localizer, it store.LibraryItem) string {
 	progress := ""
 	if it.Kind == "series" && it.DownloadedEpisodes > 0 {
 		progress = fmt.Sprintf(" %d/%d", it.WatchedEpisodes, it.DownloadedEpisodes)
 	}
 	switch it.State {
 	case "in_progress":
-		return "En cours" + progress
+		return l.T("In progress") + progress
 	case "completed":
-		return "Terminé"
+		return l.T("Completed")
 	case "abandoned":
-		return "Abandonné" + progress
+		return l.T("Abandoned") + progress
 	default:
-		return "Jamais vu"
+		return l.T("Never watched")
 	}
 }
 
@@ -351,27 +366,15 @@ func pairs(kv ...string) []pair {
 	return out
 }
 
-// formatDuration renders seconds as "1 h 05 min" or "42 min".
-func formatDuration(secs int64) string {
-	if secs < 60 {
-		return fmt.Sprintf("%d s", secs)
-	}
-	h, m := secs/3600, secs%3600/60
-	if h == 0 {
-		return fmt.Sprintf("%d min", m)
-	}
-	return fmt.Sprintf("%d h %02d min", h, m)
-}
-
 // transcodeLabel translates Tautulli's transcode_decision.
-func transcodeLabel(v string) string {
+func transcodeLabel(l i18n.Localizer, v string) string {
 	switch strings.ToLower(v) {
 	case "direct play":
-		return "Direct"
+		return l.T("Direct play")
 	case "copy", "direct stream":
-		return "Direct stream"
+		return l.T("Direct stream")
 	case "transcode":
-		return "Transcodage"
+		return l.T("Transcode")
 	default:
 		return v
 	}

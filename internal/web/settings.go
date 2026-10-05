@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"cleanarr/internal/i18n"
 	"cleanarr/internal/store"
 	"cleanarr/internal/syncer"
 )
@@ -25,19 +26,19 @@ type settingsPage struct {
 	Cleanup cleanupSettings
 }
 
-func (s *Server) settingsData(errMsg string, saved bool) settingsData {
+func (s *Server) settingsData(l i18n.Localizer, errMsg string, saved bool) settingsData {
 	d := settingsData{Error: errMsg, Saved: saved}
 	if s.Sync != nil {
 		at := s.Sync.DailyTime()
 		d.Hour, d.Minute = fmt.Sprintf("%02d", at.Hour), fmt.Sprintf("%02d", at.Minute)
-		d.NextRun = s.Sync.NextRun().Format("02/01/2006 à 15:04") // already in the schedule time zone
+		d.NextRun = l.DateTime(s.Sync.NextRun()) // already in the schedule time zone
 	}
 	return d
 }
 
 func (s *Server) settingsPage(w http.ResponseWriter, r *http.Request) {
-	data := settingsPage{Sync: s.settingsData("", false), Cleanup: cleanupSettings{Days: s.cleanupDays(r.Context())}}
-	s.render(w, r, http.StatusOK, "settings", "", s.page(r, "Réglages", "settings", data))
+	data := settingsPage{Sync: s.settingsData(s.loc(r), "", false), Cleanup: cleanupSettings{Days: s.cleanupDays(r.Context())}}
+	s.render(w, r, http.StatusOK, "settings", "", s.page(r, "Settings", "settings", data))
 }
 
 // parseClockFields reads the hour and minute fields; both accept one or two
@@ -54,7 +55,7 @@ func parseClockFields(hour, minute string) (syncer.ClockTime, bool) {
 func (s *Server) settingsSubmit(w http.ResponseWriter, r *http.Request) {
 	at, ok := parseClockFields(r.PostFormValue("sync_hour"), r.PostFormValue("sync_minute"))
 	if !ok || s.Sync == nil {
-		s.renderSettings(w, r, http.StatusUnprocessableEntity, "Heure invalide : heure entre 0 et 23, minute entre 0 et 59.", false)
+		s.renderSettings(w, r, http.StatusUnprocessableEntity, "Invalid time: hour 0 to 23, minute 0 to 59.", false)
 		return
 	}
 	if err := s.Store.SetSetting(r.Context(), store.SettingSyncTime, at.String(), time.Now()); err != nil {
@@ -67,8 +68,8 @@ func (s *Server) settingsSubmit(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) renderSettings(w http.ResponseWriter, r *http.Request, status int, errMsg string, saved bool) {
-	data := settingsPage{Sync: s.settingsData(errMsg, saved), Cleanup: cleanupSettings{Days: s.cleanupDays(r.Context())}}
-	pd := s.page(r, "Réglages", "settings", data)
+	data := settingsPage{Sync: s.settingsData(s.loc(r), errMsg, saved), Cleanup: cleanupSettings{Days: s.cleanupDays(r.Context())}}
+	pd := s.page(r, "Settings", "settings", data)
 	if isHTMX(r) {
 		s.render(w, r, http.StatusOK, "settings", "settings_form", pd)
 		return

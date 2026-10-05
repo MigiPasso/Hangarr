@@ -66,7 +66,8 @@ type Syncer struct {
 	historyPending bool
 	running        atomic.Bool
 	mu             sync.Mutex
-	progress       string
+	progress       string // English message key (translated by the UI)
+	progressArgs   []any
 	last           *Result
 	daily          ClockTime
 	wake           chan struct{}
@@ -102,21 +103,22 @@ func (r *Result) Failed() bool {
 
 // Status is the live state shown by the UI.
 type Status struct {
-	Running  bool
-	Progress string
-	Last     *Result
+	Running      bool
+	Progress     string // English message key with fmt verbs
+	ProgressArgs []any
+	Last         *Result
 }
 
 // Status returns the current state.
 func (s *Syncer) Status() Status {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return Status{Running: s.running.Load(), Progress: s.progress, Last: s.last}
+	return Status{Running: s.running.Load(), Progress: s.progress, ProgressArgs: s.progressArgs, Last: s.last}
 }
 
 func (s *Syncer) setProgress(format string, args ...any) {
 	s.mu.Lock()
-	s.progress = fmt.Sprintf(format, args...)
+	s.progress, s.progressArgs = format, args
 	s.mu.Unlock()
 }
 
@@ -168,7 +170,7 @@ func (s *Syncer) Start(ctx context.Context) bool {
 
 func (s *Syncer) run(ctx context.Context, up *upstream.Clients) (*Result, error) {
 	start := s.now()
-	s.setProgress("démarrage")
+	s.setProgress("starting")
 	s.Log.Info("sync started")
 
 	res := &Result{StartedAt: start}
@@ -266,7 +268,7 @@ func (s *Syncer) run(ctx context.Context, up *upstream.Clients) (*Result, error)
 	}
 
 	// Store phase, sequential: catalogs first, then matching against them.
-	s.setProgress("enregistrement du catalogue")
+	s.setProgress("saving the catalog")
 	if up.Sonarr != nil {
 		err := seriesErr
 		if err == nil {
@@ -291,11 +293,11 @@ func (s *Syncer) run(ctx context.Context, up *upstream.Clients) (*Result, error)
 		finish(SourceResult{Source: SourcePlex, Items: items, Duration: time.Since(plexStart), Err: err})
 	}
 
-	s.setProgress("rapprochement de l'historique")
+	s.setProgress("linking the history")
 	if err := s.linkEvents(ctx); err != nil {
 		return nil, fmt.Errorf("link history: %w", err)
 	}
-	s.setProgress("calcul des statistiques")
+	s.setProgress("computing statistics")
 	if err := s.recompute(ctx); err != nil {
 		return nil, fmt.Errorf("recompute: %w", err)
 	}
@@ -309,7 +311,7 @@ func (s *Syncer) run(ctx context.Context, up *upstream.Clients) (*Result, error)
 	}
 	res.Duration = s.now().Sub(start)
 	s.mu.Lock()
-	s.last, s.progress = res, ""
+	s.last, s.progress, s.progressArgs = res, "", nil
 	s.mu.Unlock()
 	s.Log.Info("sync finished", "duration_ms", res.Duration.Milliseconds(), "failed", res.Failed(),
 		"linked_events", res.Linked, "orphan_events", res.Orphans)
@@ -704,9 +706,9 @@ func (s *Syncer) pageHistory(ctx context.Context, cursorName string, fetch pageF
 		start += rows
 		if cursor == 0 {
 			if total > 0 {
-				s.setProgress("historique : %d / %d", start, total)
+				s.setProgress("history: %d / %d", start, total)
 			} else {
-				s.setProgress("historique : %d", start)
+				s.setProgress("history: %d", start)
 			}
 		}
 		if (cursor > 0 && allOld) || rows < pageSize || (total > 0 && start >= total) {

@@ -90,6 +90,7 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("GET /static/", s.static())
 
 	mux.HandleFunc("POST /webhooks/tautulli", s.tautulliWebhook)
+	mux.HandleFunc("GET /lang/{code}", s.setLang)
 	mux.HandleFunc("GET /login", s.loginPage)
 	mux.HandleFunc("POST /login", s.loginSubmit)
 	mux.Handle("POST /logout", s.authed(s.logout, allowMustChange))
@@ -97,8 +98,8 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("POST /account/password", s.authed(s.passwordSubmit, allowMustChange))
 
 	mux.Handle("GET /account", s.authed(s.accountPage, 0))
-	mux.Handle("GET /series", s.authed(s.library("series", "/series", "Séries"), 0))
-	mux.Handle("GET /movies", s.authed(s.library("movie", "/movies", "Films"), 0))
+	mux.Handle("GET /series", s.authed(s.library("series", "/series", "Series"), 0))
+	mux.Handle("GET /movies", s.authed(s.library("movie", "/movies", "Movies"), 0))
 	mux.Handle("GET /img/{kind}/{id}/{variant}", s.authed(s.image, 0))
 	mux.Handle("POST /sync", s.authed(s.syncStart, 0))
 	for _, k := range []struct{ kind, path string }{{"series", "/series"}, {"movie", "/movies"}} {

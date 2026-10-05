@@ -315,11 +315,12 @@ func (s *Server) image(w http.ResponseWriter, r *http.Request) {
 // --- sync -----------------------------------------------------------------------
 
 type syncView struct {
-	Disabled bool // services not configured
-	Running  bool
-	Progress string
-	LastAt   *int64
-	Failed   []string
+	Disabled     bool // services not configured
+	Running      bool
+	Progress     string
+	ProgressArgs []any
+	LastAt       *int64
+	Failed       []string
 }
 
 func (s *Server) syncStatus(ctx context.Context) *syncView {
@@ -327,7 +328,7 @@ func (s *Server) syncStatus(ctx context.Context) *syncView {
 		return nil
 	}
 	st := s.Sync.Status()
-	v := &syncView{Running: st.Running, Progress: st.Progress, Disabled: !s.Upstreams.Get().Ready()}
+	v := &syncView{Running: st.Running, Progress: st.Progress, ProgressArgs: st.ProgressArgs, Disabled: !s.Upstreams.Get().Ready()}
 	if st.Last != nil {
 		end := st.Last.StartedAt.Add(st.Last.Duration).Unix()
 		v.LastAt = &end

@@ -1,6 +1,6 @@
 # Development and test environment. Everything runs here: nothing is
 # installed on the host besides Docker (see CLAUDE.md / README.md).
-name: cleanarr
+name: cleanarr-dev
 
 x-upstreams-mock: &upstreams-mock
   SONARR_URL: http://mock:8989
@@ -132,6 +132,8 @@ services:
       COOKIE_SECURE: "false"
       LOG_FORMAT: json
       LOGIN_MAX_PER_IP: "50"
+      # The e2e assertions check the French interface (English is the default).
+      DEFAULT_LANG: fr
     healthcheck:
       test: ["CMD", "/cleanarr", "healthcheck"]
       interval: 2s
@@ -156,6 +158,8 @@ services:
       COOKIE_SECURE: "false"
       LOG_FORMAT: json
       LOGIN_MAX_PER_IP: "50"
+      # The e2e assertions check the French interface (English is the default).
+      DEFAULT_LANG: fr
     healthcheck:
       test: ["CMD", "/cleanarr", "healthcheck"]
       interval: 2s
@@ -183,6 +187,8 @@ services:
       COOKIE_SECURE: "false"
       LOG_FORMAT: json
       LOGIN_MAX_PER_IP: "50"
+      # The e2e assertions check the French interface (English is the default).
+      DEFAULT_LANG: fr
     healthcheck:
       test: ["CMD", "/cleanarr", "healthcheck"]
       interval: 2s

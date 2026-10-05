@@ -67,6 +67,10 @@ type Config struct {
 	TrustedProxies     []netip.Prefix
 	LoginMaxPerIP      int
 
+	// DefaultLang is the interface language when the user has not chosen one
+	// ("en" or "fr").
+	DefaultLang string
+
 	LogFormat string
 	LogLevel  slog.Level
 	Location  *time.Location
@@ -218,6 +222,8 @@ func Load(lookup LookupFunc, readFile ReadFileFunc) (*Config, error) {
 		SessionMaxAge:      l.duration("SESSION_MAX_AGE", 168*time.Hour, time.Minute),
 		LoginMaxPerIP:      l.integer("LOGIN_MAX_PER_IP", 10, 1),
 
+		DefaultLang: strings.ToLower(l.str("DEFAULT_LANG", "en")),
+
 		LogFormat: strings.ToLower(l.str("LOG_FORMAT", "json")),
 	}
 
@@ -248,6 +254,10 @@ func Load(lookup LookupFunc, readFile ReadFileFunc) (*Config, error) {
 			prefix = netip.PrefixFrom(addr.Unmap(), addr.Unmap().BitLen())
 		}
 		c.TrustedProxies = append(c.TrustedProxies, prefix.Masked())
+	}
+
+	if c.DefaultLang != "en" && c.DefaultLang != "fr" {
+		l.fail("DEFAULT_LANG: expected en or fr, got %q", c.DefaultLang)
 	}
 
 	switch c.LogFormat {

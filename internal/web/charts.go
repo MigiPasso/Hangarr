@@ -6,6 +6,8 @@ import (
 	"html/template"
 	"math"
 	"strings"
+
+	"cleanarr/internal/i18n"
 )
 
 // Server-side SVG charts: no JavaScript, CSP-safe (colors come from CSS
@@ -33,11 +35,6 @@ func niceMax(v float64) float64 {
 	return 10 * exp
 }
 
-func trimFloat(v float64) string {
-	s := strings.TrimRight(strings.TrimRight(fmt.Sprintf("%.1f", v), "0"), ".")
-	return strings.Replace(s, ".", ",", 1)
-}
-
 // topRoundedBar draws a bar anchored on the baseline with 4 px rounded top
 // corners (the data end).
 func topRoundedBar(x, y, w, h float64) string {
@@ -51,7 +48,7 @@ func topRoundedBar(x, y, w, h float64) string {
 
 // barChart renders a single-series vertical bar chart (one hue, no legend:
 // the section title names the series).
-func barChart(bars []bar, unit, label string) template.HTML {
+func barChart(l i18n.Localizer, bars []bar, unit, label string) template.HTML {
 	const (
 		slot   = 22.0
 		left   = 44.0
@@ -72,7 +69,7 @@ func barChart(bars []bar, unit, label string) template.HTML {
 		y := top + plotH - f*plotH
 		fmt.Fprintf(&sb, `<line class="grid" x1="%.0f" x2="%.0f" y1="%.1f" y2="%.1f"/>`, left, width-2, y, y)
 		fmt.Fprintf(&sb, `<text class="axis" x="%.0f" y="%.1f" text-anchor="end" dominant-baseline="middle">%s</text>`,
-			left-6, y, html.EscapeString(trimFloat(f*scale)+unit))
+			left-6, y, html.EscapeString(l.Num(f*scale)+unit))
 	}
 	for i, b := range bars {
 		x := left + float64(i)*slot + 1 // 2 px gap between bars
@@ -97,11 +94,12 @@ type heatCell struct {
 	Tip   string
 }
 
-var weekdays = []string{"Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"}
+// weekdayKeys are the short weekday names, Monday first (translated).
+var weekdayKeys = []string{"Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"}
 
 // heatmap renders a 7 × 24 grid; intensity uses a one-hue sequential ramp
 // in 5 steps (CSS classes h1..h5), empty cells stay on the surface.
-func heatmap(grid [7][24]heatCell, label string) template.HTML {
+func heatmap(l i18n.Localizer, grid [7][24]heatCell, label string) template.HTML {
 	const (
 		cell = 18.0
 		gap  = 2.0
@@ -124,7 +122,7 @@ func heatmap(grid [7][24]heatCell, label string) template.HTML {
 	for d := range 7 {
 		y := top + float64(d)*(cell+gap)
 		fmt.Fprintf(&sb, `<text class="axis" x="%.0f" y="%.1f" text-anchor="end" dominant-baseline="middle">%s</text>`,
-			left-6, y+cell/2, weekdays[d])
+			left-6, y+cell/2, html.EscapeString(l.T(weekdayKeys[d])))
 		for h := range 24 {
 			c := grid[d][h]
 			level := 0
@@ -147,44 +145,58 @@ type pairRow struct {
 	A, B  float64 // 0..1
 }
 
-// pairedBars renders two horizontal bars per row: series-1 (A) and series-2
-// (B), each with its value written at the bar end. The legend is in HTML.
-func pairedBars(rows []pairRow, nameA, nameB, label string) template.HTML {
+// pairedBars renders two thin horizontal bars per category (series 1 above
+// series 2) on a shared scale, and the two values in right-aligned columns
+// headed by the series names, so numbers line up and never collide.
+func pairedBars(l i18n.Localizer, rows []pairRow, nameA, nameB, label string) template.HTML {
 	const (
-		left  = 120.0
-		plotW = 360.0
-		rowH  = 30.0
-		barH  = 9.0
-		right = 48.0
+		left    = 118.0 // category labels
+		plotW   = 280.0
+		gap     = 16.0 // plot → value columns
+		colW    = 92.0 // each value column, right-aligned
+		head    = 22.0 // column headers
+		rowH    = 32.0
+		barH    = 9.0
+		pairGap = 3.0
 	)
 	maxV := 0.0
 	for _, r := range rows {
 		maxV = math.Max(maxV, math.Max(r.A, r.B))
 	}
 	scale := math.Max(niceMax(maxV*100)/100, 0.01)
-	width := left + plotW + right
-	height := float64(len(rows))*rowH + 4
+	width := left + plotW + gap + 2*colW
+	height := head + float64(len(rows))*rowH
+	colA, colB := left+plotW+gap+colW, left+plotW+gap+2*colW
 	var sb strings.Builder
 	fmt.Fprintf(&sb, `<svg class="chart" viewBox="0 0 %.0f %.0f" role="img" aria-label="%s">`, width, height, html.EscapeString(label))
+	fmt.Fprintf(&sb, `<text class="axis" x="%.0f" y="13" text-anchor="end">%s</text>`, colA, html.EscapeString(nameA))
+	fmt.Fprintf(&sb, `<text class="axis" x="%.0f" y="13" text-anchor="end">%s</text>`, colB, html.EscapeString(nameB))
+	fmt.Fprintf(&sb, `<line class="grid" x1="%.0f" x2="%.0f" y1="%.0f" y2="%.0f"/>`, left, left, head, height)
 	for i, r := range rows {
-		y := float64(i)*rowH + 4
-		fmt.Fprintf(&sb, `<text class="axis-label" x="%.0f" y="%.1f" text-anchor="end" dominant-baseline="middle">%s</text>`,
-			left-8, y+barH+1, html.EscapeString(r.Label))
+		top := head + float64(i)*rowH
+		y0 := top + (rowH-(2*barH+pairGap))/2
+		mid := y0 + barH + pairGap/2
+		fmt.Fprintf(&sb, `<g class="mark"><rect class="hit" x="0" y="%.1f" width="%.0f" height="%.0f"/>`, top, width, rowH)
 		for j, v := range []float64{r.A, r.B} {
-			by := y + float64(j)*(barH+2) // 2 px gap between the pair
-			w := v / scale * plotW
-			name, class := nameA, "bar"
+			class := "bar"
 			if j == 1 {
-				name, class = nameB, "bar2"
+				class = "bar2"
 			}
-			pct := trimFloat(v*100) + " %"
-			fmt.Fprintf(&sb, `<g class="mark"><rect class="hit" x="%.0f" y="%.1f" width="%.0f" height="%.0f"/>`, left, by, plotW, barH+2)
-			if w > 0 {
-				fmt.Fprintf(&sb, `<rect class="%s" x="%.0f" y="%.1f" width="%.1f" height="%.0f" rx="2"/>`, class, left, by, w, barH)
+			if w := v / scale * plotW; w > 0 {
+				fmt.Fprintf(&sb, `<rect class="%s" x="%.0f" y="%.1f" width="%.1f" height="%.0f" rx="2"/>`,
+					class, left+1, y0+float64(j)*(barH+pairGap), math.Max(w, 2), barH)
 			}
-			fmt.Fprintf(&sb, `<title>%s · %s : %s</title></g>`, html.EscapeString(r.Label), html.EscapeString(name), pct)
-			fmt.Fprintf(&sb, `<text class="value" x="%.1f" y="%.1f" dominant-baseline="middle">%s</text>`,
-				left+w+5, by+barH/2+0.5, html.EscapeString(pct))
+		}
+		fmt.Fprintf(&sb, `<title>%s · %s %s · %s %s</title></g>`, html.EscapeString(r.Label),
+			html.EscapeString(nameA), l.Pct(r.A), html.EscapeString(nameB), l.Pct(r.B))
+		fmt.Fprintf(&sb, `<text class="axis-label" x="%.0f" y="%.1f" text-anchor="end" dominant-baseline="middle">%s</text>`,
+			left-8, mid, html.EscapeString(r.Label))
+		for _, c := range []struct {
+			x float64
+			v float64
+		}{{colA, r.A}, {colB, r.B}} {
+			fmt.Fprintf(&sb, `<text class="value" x="%.0f" y="%.1f" text-anchor="end" dominant-baseline="middle">%s</text>`,
+				c.x, mid, l.Pct(c.v))
 		}
 	}
 	sb.WriteString(`</svg>`)

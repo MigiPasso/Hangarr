@@ -3,7 +3,7 @@
   <h3>{{index . 0}}</h3>
   {{with index . 1}}
   <table class="table compact">
-    <thead><tr><th>#</th><th>Titre</th><th class="num">Lectures</th><th class="num">Heures</th></tr></thead>
+    <thead><tr><th>#</th><th>{{t "Title"}}</th><th class="num">{{t "Plays"}}</th><th class="num">{{t "Hours"}}</th></tr></thead>
     <tbody>
     {{range $i, $t := .}}
       <tr><td class="muted">{{inc $i}}</td>
@@ -12,7 +12,7 @@
     {{end}}
     </tbody>
   </table>
-  {{else}}<p class="muted small">Aucune lecture sur la période.</p>{{end}}
+  {{else}}<p class="muted small">{{t "No plays in this period."}}</p>{{end}}
 </div>
 {{end}}
 
@@ -20,6 +20,6 @@
 <div>
   <h3>{{index . 0}}</h3>
   {{$tr := index . 2}}
-  <ul class="plain counts">{{range index . 1}}<li><span>{{if $tr}}{{transcode .Label}}{{else}}{{.Label}}{{end}}</span><span class="num muted">{{.N}}</span></li>{{else}}<li class="muted">Aucune donnée</li>{{end}}</ul>
+  <ul class="plain counts">{{range index . 1}}<li><span>{{if $tr}}{{transcode (label .Label)}}{{else}}{{label .Label}}{{end}}</span><span class="num muted">{{.N}}</span></li>{{else}}<li class="muted">{{t "No data"}}</li>{{end}}</ul>
 </div>
 {{end}}

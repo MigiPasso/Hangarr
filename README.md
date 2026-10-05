@@ -43,13 +43,13 @@ dans les logs :
 
 ```
 ================================================================
- CLEANARR : COMPTE ADMIN INITIAL CRÉÉ
- Utilisateur  : admin
- Mot de passe : …
+ CLEANARR: INITIAL ADMIN ACCOUNT CREATED
+ Username : admin
+ Password : …
  ...
 ```
 
-En dev : `docker compose -f compose.dev.yml logs app | grep -A4 "COMPTE ADMIN"`. Le changement est obligatoire à la
+En dev : `docker compose -f compose.dev.yml logs app | grep -A4 "INITIAL ADMIN"`. Le changement est obligatoire à la
 première connexion. Mot de passe perdu : `make reset-admin` (ou `cleanarr admin reset-password` via
 `docker exec` / `kubectl exec`), qui affiche un nouveau mot de passe temporaire uniquement dans la sortie de la commande.
 
@@ -68,7 +68,7 @@ fichiers en lecture seule, aucune capacité), un volume pour `/data`, redémarra
 ```sh
 cp .env.example .env            # facultatif : DRY_RUN, COOKIE_SECURE, TZ…
 docker compose up -d --build
-docker compose logs cleanarr | grep -A4 "COMPTE ADMIN"   # mot de passe initial, affiché une seule fois
+docker compose logs cleanarr | grep -A4 "INITIAL ADMIN"   # mot de passe initial, affiché une seule fois
 ```
 
 Ouvrir `http://<hôte>:8080`, changer le mot de passe, puis configurer Sonarr, Radarr, Plex et Tautulli dans
@@ -106,9 +106,14 @@ n'écrit que dans `/data` (volume persistant `ReadWriteOnce`, une seule répliqu
 Sondes : `GET /healthz` (liveness) et `GET /readyz` (readiness). Arrêt propre sur `SIGTERM` (20 s).
 Les secrets acceptent une variante `_FILE` (ex. `SONARR_API_KEY_FILE=/run/secrets/cleanarr/sonarr-api-key`).
 
-Mot de passe initial : `kubectl -n cleanarr logs deploy/cleanarr | grep -A4 "COMPTE ADMIN"`.
+Mot de passe initial : `kubectl -n cleanarr logs deploy/cleanarr | grep -A4 "INITIAL ADMIN"`.
 
 La même image s'y déploie telle quelle ; les manifests kustomize viendront plus tard.
+
+## Langue
+
+L'interface est en anglais par défaut, et en français avec le lien **FR** de la barre du haut (choix retenu par le
+navigateur). `DEFAULT_LANG=fr` fait démarrer une instance en français.
 
 ## Configuration des services
 

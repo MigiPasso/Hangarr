@@ -260,7 +260,7 @@ func newService(t *testing.T) (*Service, *clock) {
 	}, clk
 }
 
-var bannerPassword = regexp.MustCompile(`(?m)^ Mot de passe : (\S+)$`)
+var bannerPassword = regexp.MustCompile(`(?m)^ Password : (\S+)$`)
 
 func bootstrap(t *testing.T, s *Service) string {
 	t.Helper()
@@ -322,7 +322,7 @@ func TestBootstrapConcurrentProcesses(t *testing.T) {
 		if errs[i] != nil {
 			t.Fatal(errs[i])
 		}
-		banners += strings.Count(outs[i].String(), "COMPTE ADMIN INITIAL CRÉÉ")
+		banners += strings.Count(outs[i].String(), "INITIAL ADMIN ACCOUNT CREATED")
 	}
 	if banners != 1 {
 		t.Fatalf("banner printed %d times, want exactly 1", banners)

@@ -17,12 +17,13 @@ import (
 
 	"cleanarr/internal/auth"
 	"cleanarr/internal/config"
+	"cleanarr/internal/i18n"
 	"cleanarr/internal/store"
 )
 
 var (
 	csrfRe     = regexp.MustCompile(`name="csrf_token" value="([^"]+)"`)
-	passwordRe = regexp.MustCompile(`(?m)^ Mot de passe : (\S+)$`)
+	passwordRe = regexp.MustCompile(`(?m)^ Password : (\S+)$`)
 )
 
 const newPassword = "N3w-Strong-Pass!"
@@ -47,6 +48,7 @@ func newHarness(t *testing.T, mutate func(*config.Config), opts ...func(*Deps)) 
 		t.Fatal(err)
 	}
 	cfg.CookieSecure = false
+	cfg.DefaultLang = "fr" // the assertions check the French interface
 	if mutate != nil {
 		mutate(cfg)
 	}
@@ -402,7 +404,7 @@ func TestRelativeTime(t *testing.T) {
 		800 * 24 * time.Hour: "il y a 2 ans",
 	}
 	for d, want := range cases {
-		if got := relativeTime(now, now.Add(-d)); got != want {
+		if got := i18n.For(i18n.FR).Relative(now, now.Add(-d)); got != want {
 			t.Errorf("%s: got %q want %q", d, got, want)
 		}
 	}
@@ -458,5 +460,24 @@ func TestPasswordChangeRateLimited(t *testing.T) {
 	r := h.do(c, "POST", "/account/password", wrong, nil)
 	if r.status != http.StatusTooManyRequests || !strings.Contains(r.body, "Trop de tentatives") || r.header.Get("Retry-After") == "" {
 		t.Errorf("guessing the current password must be rate-limited: %d", r.status)
+	}
+}
+
+func TestThemeCookie(t *testing.T) {
+	h := newHarness(t, nil)
+	c := h.client()
+	page := h.do(c, "GET", "/login", nil, nil)
+	if !strings.Contains(page.body, `<html lang="fr">`) || !strings.Contains(page.body, "data-theme-toggle") {
+		t.Fatal("default: follow the system, button in the footer")
+	}
+	for value, want := range map[string]string{"dark": `data-theme="dark"`, "light": `data-theme="light"`, "evil\"><x": `<html lang="fr">`} {
+		r := h.do(c, "GET", "/login", nil, map[string]string{"Cookie": "cleanarr_theme=" + url.QueryEscape(value)})
+		if !strings.Contains(r.body, want) {
+			t.Errorf("cookie %q: missing %s", value, want)
+		}
+	}
+	logged := h.loggedIn()
+	if r := h.do(logged, "GET", "/", nil, nil); strings.Count(r.body, "data-theme-toggle") != 1 {
+		t.Error("one theme button in the navigation bar when logged in")
 	}
 }

@@ -118,11 +118,14 @@
 
   function boxes() { return document.querySelectorAll("input[name=ids][form=batch-form]"); }
 
+  // Same units and decimal separator as the server (i18n.Bytes).
   function formatBytes(n) {
-    var units = ["o", "Ko", "Mo", "Go", "To", "Po"], i = 0;
+    var fr = document.documentElement.lang === "fr";
+    var units = fr ? ["o", "Ko", "Mo", "Go", "To", "Po"] : ["B", "kB", "MB", "GB", "TB", "PB"], i = 0;
     while (n >= 1000 && i < units.length - 1) { n /= 1000; i++; }
-    if (i === 0) { return n + " o"; }
-    return n.toFixed(n >= 100 ? 0 : 1).replace(".", ",") + " " + units[i];
+    if (i === 0) { return n + " " + units[0]; }
+    var v = n.toFixed(n >= 100 ? 0 : 1);
+    return (fr ? v.replace(".", ",") : v) + " " + units[i];
   }
 
   function update() {
@@ -135,7 +138,9 @@
     bar.hidden = count === 0;
     var summary = bar.querySelector("[data-batch-summary]");
     if (summary) {
-      summary.textContent = count + (count > 1 ? " sélectionnés · " : " sélectionné · ") + formatBytes(size);
+      var fr = document.documentElement.lang === "fr";
+      var pattern = summary.getAttribute((count === 1 || (fr && count === 0)) ? "data-one" : "data-many");
+      summary.textContent = pattern.replace("{n}", count) + " · " + formatBytes(size);
     }
   }
 
@@ -165,4 +170,22 @@
   document.addEventListener("close", function (e) {
     if (reloadOnClose && e.target.id === "confirm") { location.reload(); }
   }, true);
+})();
+
+// Theme button: switches between light and dark (the default follows the
+// system) and remembers the choice in a cookie that the server reads to
+// render <html data-theme> without a flash.
+(function () {
+  "use strict";
+
+  document.addEventListener("click", function (e) {
+    if (!e.target.closest || !e.target.closest("[data-theme-toggle]")) { return; }
+    var root = document.documentElement;
+    var current = root.getAttribute("data-theme") ||
+      (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+    var next = current === "dark" ? "light" : "dark";
+    root.setAttribute("data-theme", next);
+    document.cookie = "cleanarr_theme=" + next + "; Path=/; Max-Age=31536000; SameSite=Lax" +
+      (location.protocol === "https:" ? "; Secure" : "");
+  });
 })();

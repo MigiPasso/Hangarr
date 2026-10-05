@@ -1,11 +1,11 @@
-{{define "select_box"}}{{if and .ArrID (not (protected .Tags))}}<label class="select-box" title="Sélectionner"><input type="checkbox" name="ids" value="{{.ID}}" form="batch-form" data-size="{{.SizeBytes}}" aria-label="Sélectionner {{.Title}}"></label>{{end}}{{end}}
+{{define "select_box"}}{{if and .ArrID (not (protected .Tags))}}<label class="select-box" title="{{t "Select"}}"><input type="checkbox" name="ids" value="{{.ID}}" form="batch-form" data-size="{{.SizeBytes}}" aria-label="{{t "Select %s" .Title}}"></label>{{end}}{{end}}
 
 {{define "batch_bar"}}
 <form id="batch-form" class="batch-bar" method="post" action="/batch/delete" hx-post="/batch/delete" hx-target="#confirm-body" hidden>
   <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
-  <span class="batch-summary" data-batch-summary aria-live="polite"></span>
-  <button type="button" data-batch-clear>Tout désélectionner</button>
-  <button type="submit" formaction="/batch/protect" hx-post="/batch/protect" hx-target="#confirm-body">Protéger</button>
-  <button type="submit" class="danger-solid">Supprimer la sélection</button>
+  <span class="batch-summary" data-batch-summary data-one="{{t "{n} item selected"}}" data-many="{{t "{n} items selected"}}" aria-live="polite"></span>
+  <button type="button" data-batch-clear>{{t "Clear selection"}}</button>
+  <button type="submit" formaction="/batch/protect" hx-post="/batch/protect" hx-target="#confirm-body">{{t "Protect"}}</button>
+  <button type="submit" class="danger-solid">{{t "Delete selection"}}</button>
 </form>
 {{end}}

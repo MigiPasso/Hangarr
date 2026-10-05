@@ -1,16 +1,11 @@
 {{define "content"}}
-<h1>Réglages</h1>
+<h1>{{t "Settings"}}</h1>
 <section class="card narrow">
-  <h2>Synchronisation</h2>
-  <p class="muted">Sonarr, Radarr, Plex et Tautulli sont interrogés une fois par jour, à l'heure choisie. Le bouton
-    « Synchroniser » de la barre de navigation lance une synchronisation immédiate.</p>
+  <div class="title-row"><h2>{{t "Synchronization"}}</h2>{{template "info" (t "Sonarr, Radarr, Plex and Tautulli are read once a day. “Sync now” in the top bar runs one immediately.")}}</div>
   {{template "settings_form" .}}
 </section>
 <section class="card narrow">
-  <h2>Nettoyage</h2>
-  <p class="muted small">Un film ou une série est proposé à la suppression quand personne ne l'a regardé depuis ce
-    nombre de jours. Un élément jamais vu compte à partir de sa date d'ajout. Les éléments protégés par un tag ne sont
-    jamais proposés.</p>
+  <div class="title-row"><h2>{{t "Cleanup"}}</h2>{{template "info" (t "Proposes what nobody watched for this many days (never watched: since added). Protected items are never proposed.")}}</div>
   {{template "cleanup_form" .}}
 </section>
 {{end}}
@@ -20,21 +15,21 @@
       hx-post="/settings" hx-target="this" hx-swap="outerHTML">
   <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
   <fieldset class="clock"{{if $s.Error}} aria-describedby="sync-time-error"{{end}}>
-    <legend>Heure de la synchronisation quotidienne</legend>
-    <label for="sync_hour" class="visually-hidden">Heure</label>
+    <legend>{{t "Daily sync time"}}</legend>
+    <label for="sync_hour" class="visually-hidden">{{t "Hour"}}</label>
     <select id="sync_hour" name="sync_hour" required{{if $s.Error}} aria-invalid="true"{{end}}>
       {{range hoursOfDay}}{{$v := printf "%02d" .}}<option value="{{$v}}"{{if eq $v $s.Hour}} selected{{end}}>{{$v}}</option>{{end}}
     </select>
-    <span aria-hidden="true">h</span>
-    <label for="sync_minute" class="visually-hidden">Minute</label>
+    <span aria-hidden="true">:</span>
+    <label for="sync_minute" class="visually-hidden">{{t "Minute"}}</label>
     <select id="sync_minute" name="sync_minute" required{{if $s.Error}} aria-invalid="true"{{end}}>
       {{range minutesOfHour}}{{$v := printf "%02d" .}}<option value="{{$v}}"{{if eq $v $s.Minute}} selected{{end}}>{{$v}}</option>{{end}}
     </select>
   </fieldset>
-  {{with $s.Error}}<p id="sync-time-error" class="field-error">{{.}}</p>{{end}}
-  {{with $s.NextRun}}<p class="small muted">Prochaine synchronisation : {{.}}</p>{{end}}
-  {{if $s.Saved}}<p class="small ok-text" role="status">Enregistré.</p>{{end}}
-  <button type="submit" class="primary">Enregistrer</button>
+  {{with $s.Error}}<p id="sync-time-error" class="field-error">{{t .}}</p>{{end}}
+  {{with $s.NextRun}}<p class="small muted">{{t "Next sync: %s" .}}</p>{{end}}
+  {{if $s.Saved}}<p class="small ok-text" role="status">{{t "Saved."}}</p>{{end}}
+  <button type="submit" class="primary">{{t "Save"}}</button>
 </form>
 {{end}}
 
@@ -42,11 +37,11 @@
 <form id="cleanup-form" method="post" action="/settings/cleanup" class="stack"
       hx-post="/settings/cleanup" hx-target="this" hx-swap="outerHTML">
   <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
-  <label for="cleanup_days">Proposer ce que personne n'a regardé depuis (jours)</label>
+  <label for="cleanup_days">{{t "Propose what nobody watched for (days)"}}</label>
   <input id="cleanup_days" name="days" type="number" min="7" max="3650" step="1" required value="{{$s.Days}}"
          {{if $s.Error}}aria-invalid="true"{{end}}>
   {{with $s.Error}}<p class="field-error" role="alert">{{.}}</p>{{end}}
-  {{if $s.Saved}}<p class="small ok-text" role="status">Enregistré.</p>{{end}}
-  <button type="submit" class="primary">Enregistrer</button>
+  {{if $s.Saved}}<p class="small ok-text" role="status">{{t "Saved."}}</p>{{end}}
+  <button type="submit" class="primary">{{t "Save"}}</button>
 </form>
 {{end}}

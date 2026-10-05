@@ -2,7 +2,6 @@ package web
 
 import (
 	"errors"
-	"fmt"
 	"net"
 	"net/http"
 	"strconv"
@@ -33,7 +32,7 @@ func (s *Server) readyz(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) notFound(w http.ResponseWriter, r *http.Request) {
-	s.render(w, r, http.StatusNotFound, "notfound", "", s.page(r, "Page introuvable", "", nil))
+	s.render(w, r, http.StatusNotFound, "notfound", "", s.page(r, "Page not found", "", nil))
 }
 
 // --- login -----------------------------------------------------------------
@@ -80,7 +79,7 @@ func (s *Server) renderLogin(w http.ResponseWriter, r *http.Request, status int,
 		return
 	}
 	data.InsecureCookies = s.insecureCookieSetup(r)
-	pd := s.page(r, "Connexion", "", data)
+	pd := s.page(r, "Sign in", "", data)
 	pd.CSRFToken = auth.PreSessionCSRF(s.PreSessionKey, pre)
 	s.render(w, r, status, "login", "", pd)
 }
@@ -103,7 +102,7 @@ func (s *Server) loginSubmit(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Retry-After", strconv.Itoa(int(retry/time.Second)+1))
 		s.Log.Warn("login rate limited", "ip", meta.IP)
 		s.renderLogin(w, r, http.StatusTooManyRequests, loginData{Username: username,
-			Error: fmt.Sprintf("Trop de tentatives. Réessayez dans %d min.", mins)})
+			Error: s.loc(r).T("Too many attempts. Try again in %d min.", mins)})
 		return
 	}
 	var pre string
@@ -113,12 +112,12 @@ func (s *Server) loginSubmit(w http.ResponseWriter, r *http.Request) {
 	if !auth.CheckPreSessionCSRF(s.PreSessionKey, pre, r.PostFormValue(csrfField)) {
 		s.Log.Warn("login csrf token rejected", "ip", meta.IP)
 		s.renderLogin(w, r, http.StatusForbidden, loginData{Username: username,
-			Error: "Votre session de connexion a expiré. Veuillez réessayer."})
+			Error: s.loc(r).T("Your sign-in session expired. Please try again.")})
 		return
 	}
 	ns, err := s.Auth.Login(r.Context(), username, r.PostFormValue("password"), meta)
 	if errors.Is(err, auth.ErrInvalidCredentials) {
-		s.renderLogin(w, r, http.StatusUnauthorized, loginData{Username: username, Error: "Identifiants invalides."})
+		s.renderLogin(w, r, http.StatusUnauthorized, loginData{Username: username, Error: s.loc(r).T("Invalid credentials.")})
 		return
 	}
 	if err != nil {
@@ -157,22 +156,23 @@ type passwordData struct {
 	ConfirmError string
 }
 
+// violationMessages explain the password policy violations (English keys).
 var violationMessages = map[auth.Violation]string{
-	auth.ViolationTooShort:         fmt.Sprintf("Le mot de passe doit contenir au moins %d caractères.", auth.MinPasswordLength),
-	auth.ViolationTooLong:          fmt.Sprintf("Le mot de passe doit contenir au plus %d caractères.", auth.MaxPasswordLength),
-	auth.ViolationNoLower:          "Il faut au moins une lettre minuscule.",
-	auth.ViolationNoUpper:          "Il faut au moins une lettre majuscule.",
-	auth.ViolationNoDigit:          "Il faut au moins un chiffre.",
-	auth.ViolationNoSpecial:        "Il faut au moins un caractère spécial.",
-	auth.ViolationContainsUsername: "Le mot de passe ne doit pas contenir le nom d'utilisateur.",
-	auth.ViolationCommon:           "Ce mot de passe est trop courant.",
-	auth.ViolationSameAsCurrent:    "Le nouveau mot de passe doit être différent de l'actuel.",
+	auth.ViolationTooShort:         "The password must have at least 12 characters.", // auth.MinPasswordLength
+	auth.ViolationTooLong:          "The password must have at most 128 characters.", // auth.MaxPasswordLength
+	auth.ViolationNoLower:          "At least one lowercase letter is needed.",
+	auth.ViolationNoUpper:          "At least one uppercase letter is needed.",
+	auth.ViolationNoDigit:          "At least one digit is needed.",
+	auth.ViolationNoSpecial:        "At least one special character is needed.",
+	auth.ViolationContainsUsername: "The password must not contain the username.",
+	auth.ViolationCommon:           "This password is too common.",
+	auth.ViolationSameAsCurrent:    "The new password must differ from the current one.",
 }
 
 func (s *Server) passwordPage(w http.ResponseWriter, r *http.Request) {
 	sess := sessionFrom(r)
 	data := passwordData{Forced: sess.MustChangePassword, Username: sess.Username}
-	s.render(w, r, http.StatusOK, "password", "", s.page(r, "Changer le mot de passe", "account", data))
+	s.render(w, r, http.StatusOK, "password", "", s.page(r, "Change password", "account", data))
 }
 
 func (s *Server) passwordSubmit(w http.ResponseWriter, r *http.Request) {
@@ -182,8 +182,8 @@ func (s *Server) passwordSubmit(w http.ResponseWriter, r *http.Request) {
 	if ok, retry := s.LoginLimiter.Allow(s.clientMeta(r).IP); !ok {
 		w.Header().Set("Retry-After", strconv.Itoa(int(retry/time.Second)+1))
 		data := passwordData{Forced: sess.MustChangePassword, Username: sess.Username,
-			CurrentError: fmt.Sprintf("Trop de tentatives. Réessayez dans %d min.", int(retry/time.Minute)+1)}
-		pd := s.page(r, "Changer le mot de passe", "account", data)
+			CurrentError: s.loc(r).T("Too many attempts. Try again in %d min.", int(retry/time.Minute)+1)}
+		pd := s.page(r, "Change password", "account", data)
 		if isHTMX(r) {
 			s.render(w, r, http.StatusOK, "password", "password_form", pd)
 			return
@@ -197,24 +197,24 @@ func (s *Server) passwordSubmit(w http.ResponseWriter, r *http.Request) {
 	data := passwordData{Forced: sess.MustChangePassword, Username: sess.Username}
 	switch {
 	case errors.Is(err, auth.ErrWrongPassword):
-		data.CurrentError = "Mot de passe actuel incorrect."
+		data.CurrentError = s.loc(r).T("Incorrect current password.")
 	case err != nil:
 		s.serverError(w, r, err)
 		return
 	case len(violations) > 0:
 		for _, v := range violations {
 			if v == auth.ViolationMismatch {
-				data.ConfirmError = "La confirmation ne correspond pas."
+				data.ConfirmError = s.loc(r).T("The confirmation does not match.")
 				continue
 			}
-			data.NewErrors = append(data.NewErrors, violationMessages[v])
+			data.NewErrors = append(data.NewErrors, s.loc(r).T(violationMessages[v]))
 		}
 	default:
 		s.setSessionCookie(w, ns.Token)
 		redirect(w, r, "/")
 		return
 	}
-	pd := s.page(r, "Changer le mot de passe", "account", data)
+	pd := s.page(r, "Change password", "account", data)
 	if isHTMX(r) {
 		s.render(w, r, http.StatusOK, "password", "password_form", pd)
 		return
@@ -237,7 +237,7 @@ func (s *Server) accountPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.render(w, r, http.StatusOK, "account", "",
-		s.page(r, "Compte", "account", accountData{Sessions: list, CurrentID: sess.ID}))
+		s.page(r, "Account", "account", accountData{Sessions: list, CurrentID: sess.ID}))
 }
 
 func (s *Server) revokeSession(w http.ResponseWriter, r *http.Request) {

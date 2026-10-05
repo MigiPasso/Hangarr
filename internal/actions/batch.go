@@ -2,9 +2,6 @@ package actions
 
 import (
 	"context"
-	"errors"
-	"strings"
-	"unicode/utf8"
 )
 
 // MaxBatch caps the number of items of a batch action.
@@ -17,8 +14,8 @@ type BatchItem struct {
 	Title     string
 	SizeFreed int64
 	OK        bool
-	Unchanged bool   // protection: already protected
-	Error     string // French, shown in the report
+	Unchanged bool  // protection: already protected
+	Err       error // explained by the web layer
 }
 
 // BatchOptions are the deletion options applied to every item.
@@ -46,7 +43,7 @@ func (s *Service) DeleteBatch(ctx context.Context, ids []int64, opt BatchOptions
 		res, err := s.Delete(ctx, Request{MediaID: id, DeleteFiles: opt.DeleteFiles, ImportExclusion: opt.ImportExclusion,
 			Confirmed: true, SkipPlexRefresh: true, Username: opt.Username})
 		if err != nil {
-			it.Error = Explain(err)
+			it.Err = err
 		} else {
 			it.OK, it.SizeFreed, it.Kind, it.Title = true, res.SizeFreed, res.Kind, res.Title
 			kinds[res.Kind] = true
@@ -69,7 +66,7 @@ func (s *Service) ProtectBatch(ctx context.Context, ids []int64, username string
 		it := BatchItem{MediaID: id}
 		res, err := s.SetProtected(ctx, ProtectRequest{MediaID: id, Protect: true, Username: username})
 		if err != nil {
-			it.Error = Explain(err)
+			it.Err = err
 			if m, merr := s.Store.MediaByID(ctx, id); merr == nil {
 				it.Kind, it.Title = m.Kind, m.Title
 			}
@@ -79,20 +76,4 @@ func (s *Service) ProtectBatch(ctx context.Context, ids []int64, username string
 		out = append(out, it)
 	}
 	return out
-}
-
-// Explain turns an error into a French sentence for the user.
-func Explain(err error) string {
-	for _, known := range []error{ErrNotFound, ErrNotDeletable, ErrProtected, ErrConfirmMismatch, ErrNoSuchSeason,
-		ErrNotManaged, ErrNoProtectedTag, ErrUnconfigured} {
-		if errors.Is(err, known) {
-			return capitalize(err.Error()) + "."
-		}
-	}
-	return "Échec : " + err.Error()
-}
-
-func capitalize(s string) string {
-	r, size := utf8.DecodeRuneInString(s)
-	return strings.ToUpper(string(r)) + s[size:]
 }

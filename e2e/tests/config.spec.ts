@@ -29,7 +29,7 @@ test("first start without configuration", async ({ page }) => {
   await page.getByLabel("Confirmation").fill(newPassword);
   await page.getByRole("button", { name: "Enregistrer" }).click();
   await expect(page.getByRole("heading", { name: "Tableau de bord" })).toBeVisible();
-  await expect(page.locator(".config-banner")).toContainText("Configuration incomplète (Sonarr, Radarr, Plex)");
+  await expect(page.locator(".config-banner")).toContainText("Services non configurés (Sonarr, Radarr, Plex)");
   await expect(page.getByRole("button", { name: "Synchroniser" })).toHaveCount(0);
 });
 
@@ -41,21 +41,21 @@ test("services are configured from the UI, credentials never come back", async (
 
   // A wrong key is reported by the connection test, nothing is saved.
   const sonarr = page.locator("#service-sonarr");
-  await sonarr.getByLabel("URL de l'API").fill("http://mock:8989");
-  await sonarr.getByLabel("Clé d'API").fill("wrong-key");
+  await sonarr.getByLabel("URL de l'API", { exact: true }).fill("http://mock:8989");
+  await sonarr.getByLabel("Clé d'API", { exact: true }).fill("wrong-key");
   await sonarr.getByRole("button", { name: "Tester la connexion" }).click();
   await expect(sonarr.locator(".test-result")).toContainText("Accès refusé (HTTP 401)");
   // Radarr's address in the Sonarr section is detected.
-  await sonarr.getByLabel("URL de l'API").fill("http://mock:7878");
-  await sonarr.getByLabel("Clé d'API").fill(mockKey);
+  await sonarr.getByLabel("URL de l'API", { exact: true }).fill("http://mock:7878");
+  await sonarr.getByLabel("Clé d'API", { exact: true }).fill(mockKey);
   await sonarr.getByRole("button", { name: "Tester la connexion" }).click();
   await expect(sonarr.locator(".test-result")).toContainText("répond comme Radarr, pas comme Sonarr");
   await expect(sonarr.locator(".badge")).toHaveText("Non configuré");
 
   await configure(page, "sonarr", { "URL de l'API": "http://mock:8989", "Clé d'API": mockKey });
-  await expect(page.locator(".config-banner")).toContainText("Configuration incomplète (Radarr, Plex)");
-  await expect(sonarr.getByLabel("Clé d'API")).toHaveAttribute("placeholder", "••••-key (vide = conserver)");
-  await expect(sonarr.getByLabel("Clé d'API")).toHaveValue("");
+  await expect(page.locator(".config-banner")).toContainText("Services non configurés (Radarr, Plex)");
+  await expect(sonarr.getByLabel("Clé d'API", { exact: true })).toHaveAttribute("placeholder", "••••-key (vide = conserver)");
+  await expect(sonarr.getByLabel("Clé d'API", { exact: true })).toHaveValue("");
 
   await configure(page, "radarr", { "URL de l'API": "http://mock:7878", "Clé d'API": mockKey });
   await configure(page, "tautulli", { "URL de l'API": "http://mock:8181", "Clé d'API": mockKey });
@@ -93,7 +93,7 @@ test("without CLEANARR_MASTER_KEY a key is generated in /data and the UI warns a
   await page.goto(`${base}/config`);
   await expect(page.getByText("Clé de chiffrement stockée avec les données.")).toBeVisible();
   // Services come from the environment there: locked fields.
-  await expect(page.locator("#service-sonarr").getByLabel("URL de l'API")).toBeDisabled();
+  await expect(page.locator("#service-sonarr").getByLabel("URL de l'API", { exact: true })).toBeDisabled();
 });
 
 test("Tautulli webhook: secret generated once, then the webhook accepts it", async ({ page, request }) => {

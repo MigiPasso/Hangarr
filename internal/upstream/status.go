@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"cleanarr/internal/clients/sonarr"
+	"cleanarr/internal/i18n"
 )
 
 // ServiceStatus is the live state of one service (Santé page).
@@ -16,13 +17,13 @@ type ServiceStatus struct {
 	OK         bool
 	Version    string
 	Latency    time.Duration
-	Error      string               // explained in French (Describe)
+	Error      string               // explained in the UI language (Describe)
 	Alerts     []sonarr.HealthCheck // Sonarr/Radarr health alerts other than "ok"
 }
 
 // CheckAll tests every service in parallel; each check is bounded by
 // CheckTimeout.
-func CheckAll(ctx context.Context, c *Clients) []ServiceStatus {
+func CheckAll(ctx context.Context, c *Clients, l i18n.Localizer) []ServiceStatus {
 	out := make([]ServiceStatus, len(Services))
 	var wg sync.WaitGroup
 	for i, svc := range Services {
@@ -36,7 +37,7 @@ func CheckAll(ctx context.Context, c *Clients) []ServiceStatus {
 			start := time.Now()
 			version, err := Check(ctx, c, st.Service)
 			st.Latency = time.Since(start).Round(time.Millisecond)
-			st.OK, st.Version, st.Error = err == nil, version, Describe(err)
+			st.OK, st.Version, st.Error = err == nil, version, Describe(l, err)
 			if err == nil {
 				st.Alerts = alerts(ctx, c, st.Service)
 			}

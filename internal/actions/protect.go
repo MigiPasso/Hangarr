@@ -21,8 +21,8 @@ const (
 
 // Protection errors shown to the user.
 var (
-	ErrNoProtectedTag = errors.New("aucun tag de protection n'est configuré (PROTECTED_TAGS)")
-	ErrNotManaged     = errors.New("élément non géré par Sonarr/Radarr : protection impossible")
+	ErrNoProtectedTag = errors.New("no protection tag configured (PROTECTED_TAGS)")
+	ErrNotManaged     = errors.New("not managed by Sonarr/Radarr: cannot be protected")
 )
 
 // ProtectRequest adds (Protect) or removes the protection of an item.
@@ -137,11 +137,11 @@ func arrFor(up *upstream.Clients, kind string) (*arrItem, bool) {
 func (s *Service) applyProtection(ctx context.Context, up *upstream.Clients, m *store.Media, res *ProtectResult) ([]string, error) {
 	arr, ok := arrFor(up, m.Kind)
 	if !ok {
-		return nil, fmt.Errorf("%w : %s", ErrUnconfigured, arrName(m.Kind))
+		return nil, fmt.Errorf("%w: %s", ErrUnconfigured, arrName(m.Kind))
 	}
 	ids, raw, err := arr.get(ctx, m.ArrID)
 	if isNotFound(err) {
-		return nil, fmt.Errorf("%w dans %s", ErrNotFound, arrName(m.Kind))
+		return nil, fmt.Errorf("%w in %s", ErrNotFound, arrName(m.Kind))
 	}
 	if err != nil {
 		return nil, err
@@ -181,7 +181,7 @@ func (s *Service) applyProtection(ctx context.Context, up *upstream.Clients, m *
 				return nil, nil // the tag would be created
 			}
 			if want, err = arr.createTag(ctx, wantLabel); err != nil {
-				return nil, fmt.Errorf("création du tag %q : %w", wantLabel, err)
+				return nil, fmt.Errorf("create tag %q: %w", wantLabel, err)
 			}
 			byID[want.ID] = want.Label
 		}

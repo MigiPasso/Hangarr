@@ -84,7 +84,7 @@ func TestLibraryPage(t *testing.T) {
 	if r.status != http.StatusOK {
 		t.Fatalf("status %d", r.status)
 	}
-	for _, want := range []string{"<strong>6</strong> séries", "19,4 Go", `name="genre" value="Crime"`,
+	for _, want := range []string{"<strong>6 séries</strong>", "19,4 Go", `name="genre" value="Crime"`,
 		`src="/img/series/1/poster"`, `aria-label="Protégé"`, `aria-current="page">Séries`, `id="sync-status"`} {
 		if !strings.Contains(r.body, want) {
 			t.Errorf("missing %q", want)
@@ -107,7 +107,7 @@ func TestLibraryHTMXPartial(t *testing.T) {
 	if r.status != http.StatusOK || strings.Contains(r.body, "<html") || strings.Contains(r.body, `id="library"`) {
 		t.Fatalf("expected the results partial only, got %d:\n%s", r.status, r.body)
 	}
-	if !slices.Equal(cardTitles(r.body), []string{"Breaking Bad"}) || !strings.Contains(r.body, "<strong>1</strong> série") {
+	if !slices.Equal(cardTitles(r.body), []string{"Breaking Bad"}) || !strings.Contains(r.body, "<strong>1 série</strong>") {
 		t.Errorf("partial: %q", cardTitles(r.body))
 	}
 	if !strings.Contains(r.header.Get("Vary"), "HX-Request") {
@@ -291,7 +291,7 @@ func TestSettingsSyncTime(t *testing.T) {
 		map[string]string{"HX-Request": "true"})
 	if r.status != http.StatusOK || !strings.Contains(r.body, `<option value="06" selected>`) ||
 		!strings.Contains(r.body, `<option value="07" selected>`) ||
-		!strings.Contains(r.body, "à 06:07") || strings.Contains(r.body, "<html") {
+		!strings.Contains(r.body, " 06:07") || strings.Contains(r.body, "<html") {
 		t.Fatalf("save: %d %s", r.status, r.body)
 	}
 	if v, _ := e.srv.Store.Setting(context.Background(), "sync_time", ""); v != "06:07" {

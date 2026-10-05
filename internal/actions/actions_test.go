@@ -192,7 +192,7 @@ func TestProtectionTag(t *testing.T) {
 	if !errors.Is(err, ErrProtected) {
 		t.Fatalf("got %v", err)
 	}
-	if a := e.lastAction(); a.Success || !strings.Contains(a.Error, "protégé") {
+	if a := e.lastAction(); a.Success || !strings.Contains(a.Error, "protected by a tag") {
 		t.Errorf("refusal must be journaled: %+v", a)
 	}
 

@@ -34,14 +34,14 @@ test("cleanup lists candidates and never-watched seasons", async ({ page }) => {
   await page.getByRole("link", { name: "Nettoyage" }).click();
   const rows = page.locator(".cleanup-table tbody tr");
   // Nobody watched for 180 days (default), largest first, with the reason.
-  await expect(page.getByText("Ce que personne n'a regardé depuis 180 jours")).toBeVisible();
+  await expect(page.locator(".tile-hint", { hasText: "non regardés depuis 180 jours" })).toBeVisible();
   await expect(rows.first()).toContainText("Interstellar");
   await expect(rows.first()).toContainText("Dernière lecture il y a");
   await expect(page.locator(".cleanup-table tr", { hasText: "Tenet" })).toContainText("Jamais vu, ajouté il y a");
   await expect(page.locator(".cleanup-table")).not.toContainText("Severance");
   await expect(page.getByRole("heading", { name: "Saisons jamais vues" })).toBeVisible();
   await rows.first().getByRole("button", { name: "Supprimer" }).click();
-  await expect(page.locator("#confirm")).toContainText("Mode simulation");
+  await expect(page.locator("#confirm")).toContainText("Simulation (DRY_RUN)");
 });
 
 test("health page: live services, sync runs and data gaps", async ({ page }) => {
@@ -69,7 +69,7 @@ test("batch selection on the cleanup page (dry-run)", async ({ page }) => {
   const confirm = page.locator("#confirm");
   await expect(confirm).toContainText("2 éléments seront retirés");
   await confirm.getByRole("button", { name: "Simuler la suppression" }).click();
-  await expect(confirm).toContainText("Suppression de la sélection (simulation)");
+  await expect(confirm).toContainText("Supprimer la sélection (simulation)");
   await expect(confirm).toContainText("2 réussites");
   await expect(page.locator(".toast")).toContainText("Simulation");
   await confirm.getByRole("link", { name: "Fermer" }).click();

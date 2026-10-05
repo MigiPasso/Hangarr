@@ -123,7 +123,7 @@ func run(out string, limit int) error {
 			return err
 		}
 	}
-	fmt.Printf("%d fichiers écrits dans %s : relisez-les avant de les commiter.\n", c.files, c.out)
+	fmt.Printf("%d files written to %s: review them before committing.\n", c.files, c.out)
 	return nil
 }
 
@@ -158,7 +158,7 @@ func (c *capturer) capture(file string, client *httpx.Client, p string, q url.Va
 		return err
 	}
 	c.files++
-	fmt.Println("écrit", dst)
+	fmt.Println("wrote", dst)
 	return nil
 }
 

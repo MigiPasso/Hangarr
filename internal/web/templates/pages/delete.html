@@ -7,29 +7,27 @@
       hx-post="{{$d.Path}}/{{$d.M.ID}}/delete" hx-target="this" hx-swap="outerHTML">
   <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
   {{if $d.Season}}<input type="hidden" name="season" value="{{deref $d.Season}}">{{end}}
-  <h2>{{if $d.Season}}Supprimer la saison {{deref $d.Season}}{{else if eq $d.M.Kind "series"}}Supprimer la série{{else}}Supprimer le film{{end}}</h2>
+  <h2>{{if $d.Season}}{{t "Delete season %d" (deref $d.Season)}}{{else if eq $d.M.Kind "series"}}{{t "Delete series"}}{{else}}{{t "Delete movie"}}{{end}}</h2>
   <p>
-    {{if $d.Season}}La saison {{deref $d.Season}} de <strong>{{$d.M.Title}}</strong> : ses fichiers seront supprimés puis
-      la saison sera démonitorée dans Sonarr pour ne pas être retéléchargée.
-    {{else if eq $d.M.Kind "series"}}<strong>{{$d.M.Title}}</strong> sera retirée de Sonarr.
-    {{else}}<strong>{{$d.M.Title}}</strong> sera retiré de Radarr.{{end}}
+    <strong>{{$d.M.Title}}</strong>{{if $d.Season}} · {{t "Season %d" (deref $d.Season)}}{{end}}
+    {{if $d.Season}}{{template "info" (t "Files are deleted, then the season is unmonitored in Sonarr so it is not downloaded again.")}}{{end}}
   </p>
-  <p>Espace libéré : <strong>{{if $d.SizeBytes}}{{bytes $d.SizeBytes}}{{else}}aucun{{end}}</strong> (si les fichiers sont supprimés).</p>
-  {{if $d.DryRun}}<p class="alert alert-warning">Mode simulation (DRY_RUN) : l'action sera journalisée mais rien ne sera supprimé.</p>{{end}}
-  {{if $d.Protected}}<p class="alert alert-error">Cet élément porte un tag de protection : la suppression sera refusée.</p>{{end}}
+  <p>{{t "Space freed:"}} <strong>{{if $d.SizeBytes}}{{bytes $d.SizeBytes}}{{else}}{{t "none"}}{{end}}</strong>{{template "info" (t "If the files are deleted.")}}</p>
+  {{if $d.DryRun}}<p class="alert alert-warning">{{t "Simulation (DRY_RUN): logged, nothing deleted."}}</p>{{end}}
+  {{if $d.Protected}}<p class="alert alert-error">{{t "Protected by a tag: deletion will be refused."}}</p>{{end}}
   {{with $d.Error}}<p class="alert alert-error" role="alert">{{.}}</p>{{end}}
 
-  <label class="check"><input type="checkbox" name="delete_files" value="1"{{if $d.DeleteFiles}} checked{{end}}> Supprimer les fichiers du disque</label>
+  <label class="check"><input type="checkbox" name="delete_files" value="1"{{if $d.DeleteFiles}} checked{{end}}> {{t "Delete files from disk"}}</label>
   {{if not $d.Season}}
-  <label class="check"><input type="checkbox" name="import_exclusion" value="1"{{if $d.ImportExclusion}} checked{{end}}> Ajouter une exclusion de liste d'import</label>
+  <label class="check"><input type="checkbox" name="import_exclusion" value="1"{{if $d.ImportExclusion}} checked{{end}}> {{t "Add an import list exclusion"}}</label>
   {{end}}
   {{if $d.ConfirmByTyping}}
-  <label for="confirm_title">Pour confirmer, saisissez le titre : <strong>{{$d.M.Title}}</strong></label>
+  <label for="confirm_title">{{t "Type the title to confirm:"}} <strong>{{$d.M.Title}}</strong></label>
   <input id="confirm_title" name="confirm_title" type="text" autocomplete="off" spellcheck="false" required>
   {{end}}
   <div class="form-actions">
-    <a class="button" href="{{$d.Path}}/{{$d.M.ID}}" data-close>Annuler</a>
-    <button type="submit" class="danger-solid"{{if $d.Protected}} disabled{{end}}>{{if $d.DryRun}}Simuler la suppression{{else}}Supprimer définitivement{{end}}</button>
+    <a class="button" href="{{$d.Path}}/{{$d.M.ID}}" data-close>{{t "Cancel"}}</a>
+    <button type="submit" class="danger-solid"{{if $d.Protected}} disabled{{end}}>{{if $d.DryRun}}{{t "Simulate deletion"}}{{else}}{{t "Delete permanently"}}{{end}}</button>
   </div>
 </form>
 {{end}}
