@@ -12,7 +12,7 @@
       <thead>
         <tr>
           <th>Titre</th><th>État</th><th>Dernier visionnage</th><th class="num">Taille</th>
-          <th class="num">Lectures</th><th class="num">Spect.</th><th>Ajouté</th><th class="num">Score</th>
+          <th class="num">Lectures</th><th class="num">Spect.</th><th>Ajouté</th>
         </tr>
       </thead>
       <tbody>{{template "library_items" .}}</tbody>
@@ -66,6 +66,5 @@
   <td class="num">{{.Plays}}</td>
   <td class="num">{{.Viewers}}</td>
   <td>{{dateptr .AddedAt}}</td>
-  <td class="num">{{score .CleanupScore}}</td>
 </tr>
 {{end}}

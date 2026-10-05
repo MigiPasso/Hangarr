@@ -13,6 +13,7 @@
       <span class="nav-disabled" aria-disabled="true" title="Bientôt disponible">Santé</span>
       <a href="/journal"{{if eq .Active "journal"}} aria-current="page"{{end}}>Journal</a>
       <a href="/settings"{{if eq .Active "settings"}} aria-current="page"{{end}}>Réglages</a>
+      <a href="/config"{{if eq .Active "config"}} aria-current="page"{{end}}>Configuration</a>
       <a href="/account"{{if eq .Active "account"}} aria-current="page"{{end}}>Compte</a>
     {{end}}
     <div class="nav-end">
@@ -27,7 +28,7 @@
 {{end}}
 
 {{define "sync_status"}}{{with .Sync}}
-<div id="sync-status" class="sync-status"{{if .Running}} hx-get="/sync/status" hx-trigger="every 2s" hx-swap="outerHTML"{{end}}>
+<div id="sync-status" class="sync-status"{{if $.OOB}} hx-swap-oob="true"{{end}}{{if .Running}} hx-get="/sync/status" hx-trigger="every 2s" hx-swap="outerHTML"{{end}}>
   {{if .Running}}
     <span class="spinner" aria-hidden="true"></span>
     <span class="small">Synchronisation{{with .Progress}} : {{.}}{{end}}…</span>
@@ -36,7 +37,20 @@
       {{if .LastAt}}Synchro {{relptr .LastAt}}{{else}}Jamais synchronisé{{end}}
       {{if .Failed}}· <span class="warn">erreur : {{range $i, $f := .Failed}}{{if $i}}, {{end}}{{$f}}{{end}}</span>{{end}}
     </span>
+    {{if .Disabled}}
+    <a class="small" href="/config">Configurer</a>
+    {{else}}
     <button type="button" class="small" hx-post="/sync" hx-target="#sync-status" hx-swap="outerHTML">Synchroniser</button>
+    {{end}}
   {{end}}
 </div>
 {{end}}{{end}}
+
+{{define "config_banner"}}
+<div id="config-banner"{{if .OOB}} hx-swap-oob="true"{{end}}>{{if .Missing}}
+  <div class="config-banner" role="status">
+    Configuration incomplète ({{range $i, $m := .Missing}}{{if $i}}, {{end}}{{$m}}{{end}}) : la synchronisation est
+    désactivée.{{if ne .Active "config"}} <a href="/config">Configurer les services</a>{{end}}
+  </div>
+{{end}}</div>
+{{end}}

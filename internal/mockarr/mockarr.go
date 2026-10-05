@@ -1,10 +1,11 @@
 // Package mockarr impersonates Sonarr, Radarr, Plex and Tautulli
 // from fixture files (see testdata/README.md). It backs `make dev`, the e2e
-// tests and the sync integration tests. Destructive calls (DELETE, PUT) are
+// tests and the sync integration tests. Write calls (DELETE, PUT, POST) are
 // recorded and exposed on GET /_calls; POST /_reset clears them.
 package mockarr
 
 import (
+	"bytes"
 	"encoding/json"
 	"image"
 	"image/color"
@@ -118,8 +119,9 @@ func (m *Mock) wrap(service string, auth func(*http.Request) bool, mux *http.Ser
 				http.Error(w, `{"error":"Unauthorized"}`, http.StatusUnauthorized)
 				return
 			}
-			if r.Method == http.MethodDelete || r.Method == http.MethodPut {
+			if r.Method == http.MethodDelete || r.Method == http.MethodPut || r.Method == http.MethodPost {
 				body, _ := io.ReadAll(io.LimitReader(r.Body, 1<<20))
+				r.Body = io.NopCloser(bytes.NewReader(body))
 				m.mu.Lock()
 				m.calls = append(m.calls, Call{Service: service, Method: r.Method, Path: r.URL.Path,
 					Query: r.URL.RawQuery, Body: string(body), At: time.Now()})
@@ -252,6 +254,9 @@ func (m *Mock) Tautulli() http.Handler {
 		switch cmd {
 		case "status", "arnold":
 			writeJSON(w, map[string]any{"response": map[string]any{"result": "success", "message": nil, "data": map[string]any{}}})
+		case "get_tautulli_info":
+			writeJSON(w, map[string]any{"response": map[string]any{"result": "success", "message": nil,
+				"data": map[string]any{"tautulli_version": "v2.15.0-mock"}}})
 		case "get_users", "get_libraries":
 			m.file(w, "tautulli/"+cmd+".json")
 		case "get_history":
@@ -413,13 +418,22 @@ func (m *Mock) arrItems(mux *http.ServeMux, service string) {
 	mux.HandleFunc("DELETE /api/v3/"+resource+"/{id}", func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, map[string]any{})
 	})
-	if service != "sonarr" {
-		return
-	}
-	mux.HandleFunc("PUT /api/v3/series/{id}", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("PUT /api/v3/"+resource+"/{id}", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusAccepted)
 		writeJSON(w, map[string]any{"id": r.PathValue("id")})
 	})
+	// New tags get ids after the fixture ones.
+	mux.HandleFunc("POST /api/v3/tag", func(w http.ResponseWriter, r *http.Request) {
+		var t struct {
+			Label string `json:"label"`
+		}
+		_ = json.NewDecoder(io.LimitReader(r.Body, 1<<16)).Decode(&t)
+		w.WriteHeader(http.StatusCreated)
+		writeJSON(w, map[string]any{"id": 100, "label": t.Label})
+	})
+	if service != "sonarr" {
+		return
+	}
 	mux.HandleFunc("GET /api/v3/episode", func(w http.ResponseWriter, r *http.Request) {
 		id, _ := strconv.ParseInt(r.URL.Query().Get("seriesId"), 10, 64)
 		it, ok := m.item(service, id)

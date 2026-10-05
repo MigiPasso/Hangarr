@@ -16,15 +16,11 @@ import (
 	"time"
 
 	"arrstats/internal/actions"
-	"arrstats/internal/clients/plex"
-	"arrstats/internal/clients/radarr"
-	"arrstats/internal/clients/sonarr"
-	"arrstats/internal/clients/tautulli"
 	"arrstats/internal/config"
 	"arrstats/internal/images"
 	"arrstats/internal/mockarr"
-	"arrstats/internal/scoring"
 	"arrstats/internal/syncer"
+	"arrstats/internal/upstream"
 )
 
 type libEnv struct {
@@ -50,9 +46,8 @@ func newLibEnvDry(t *testing.T, pageSize int, dryRun bool) *libEnv {
 	h := newHarness(t, func(c *config.Config) { c.DryRun = dryRun }, func(d *Deps) {
 		log := slog.New(slog.NewTextHandler(io.Discard, nil))
 		sy := &syncer.Syncer{
-			Store: d.Store, Sonarr: sonarr.New(urls["sonarr"], "k"), Radarr: radarr.New(urls["radarr"], "k"),
-			Plex: plex.New(urls["plex"], "k"), Tautulli: tautulli.New(urls["tautulli"], "k"),
-			Log: log, AbandonDays: 90, Weights: scoring.DefaultWeights,
+			Store: d.Store, Upstreams: upstream.NewRegistry(upstream.Build(upstream.TestValues(urls, "k"), "auto")),
+			Log: log, AbandonDays: 90,
 		}
 		if _, err := sy.Run(context.Background()); err != nil {
 			t.Fatal(err)
@@ -61,11 +56,11 @@ func newLibEnvDry(t *testing.T, pageSize int, dryRun bool) *libEnv {
 			title, remote, ok, err := d.Store.ImageInfo(ctx, kind, id, variant)
 			return images.Info{Title: title, RemoteURL: remote}, ok, err
 		}
-		d.Images = images.New(t.TempDir(), sy.Sonarr.HTTP, sy.Radarr.HTTP, lookup, log)
+		d.Images = images.New(t.TempDir(), sy.Upstreams.ArrHTTP, lookup, log)
 		d.Sync = sy
 		d.PageSize = pageSize
-		d.Sonarr = sy.Sonarr
-		d.Actions = &actions.Service{Store: d.Store, Sonarr: sy.Sonarr, Radarr: sy.Radarr, Plex: sy.Plex,
+		d.Upstreams = sy.Upstreams
+		d.Actions = &actions.Service{Store: d.Store, Upstreams: sy.Upstreams,
 			Refresher: sy, DryRun: dryRun, ProtectedTags: d.Config.ProtectedTags, ConfirmByTyping: true,
 			PlexRefresh: true, Log: log}
 	})
@@ -276,23 +271,30 @@ func TestSyncEndpoints(t *testing.T) {
 func TestSettingsSyncTime(t *testing.T) {
 	e := newLibEnv(t, 0)
 	r := e.do(e.c, "GET", "/settings", nil, nil)
-	if r.status != http.StatusOK || !strings.Contains(r.body, `name="sync_time"`) || !strings.Contains(r.body, "Prochaine synchronisation") {
+	if r.status != http.StatusOK || !strings.Contains(r.body, `<select id="sync_hour" name="sync_hour" required>`) ||
+		!strings.Contains(r.body, `<option value="00" selected>00</option>`) || !strings.Contains(r.body, `<option value="59">59</option>`) ||
+		!strings.Contains(r.body, "Prochaine synchronisation") {
 		t.Fatalf("settings page: %d", r.status)
 	}
 	tok := csrfFrom(t, r.body)
-	if r := e.do(e.c, "POST", "/settings", url.Values{"sync_time": {"06:15"}}, nil); r.status != http.StatusForbidden {
+	if r := e.do(e.c, "POST", "/settings", url.Values{"sync_hour": {"6"}, "sync_minute": {"15"}}, nil); r.status != http.StatusForbidden {
 		t.Errorf("without csrf: %d", r.status)
 	}
-	if r := e.do(e.c, "POST", "/settings", url.Values{"csrf_token": {tok}, "sync_time": {"25:00"}}, nil); r.status != http.StatusUnprocessableEntity ||
-		!strings.Contains(r.body, "Heure invalide") {
-		t.Errorf("invalid time: %d", r.status)
+	for _, bad := range [][2]string{{"25", "00"}, {"6", "60"}, {"", "10"}, {"six", "00"}} {
+		r := e.do(e.c, "POST", "/settings", url.Values{"csrf_token": {tok}, "sync_hour": {bad[0]}, "sync_minute": {bad[1]}}, nil)
+		if r.status != http.StatusUnprocessableEntity || !strings.Contains(r.body, "Heure invalide") {
+			t.Errorf("%v: %d", bad, r.status)
+		}
 	}
-	r = e.do(e.c, "POST", "/settings", url.Values{"csrf_token": {tok}, "sync_time": {"06:15"}}, map[string]string{"HX-Request": "true"})
-	if r.status != http.StatusOK || !strings.Contains(r.body, `value="06:15"`) || !strings.Contains(r.body, "à 06:15") ||
-		strings.Contains(r.body, "<html") {
-		t.Fatalf("save: %d HX-Redirect=%q %s", r.status, r.header.Get("HX-Redirect"), r.body)
+	// One digit is accepted too (forms posted without the page).
+	r = e.do(e.c, "POST", "/settings", url.Values{"csrf_token": {tok}, "sync_hour": {"6"}, "sync_minute": {"7"}},
+		map[string]string{"HX-Request": "true"})
+	if r.status != http.StatusOK || !strings.Contains(r.body, `<option value="06" selected>`) ||
+		!strings.Contains(r.body, `<option value="07" selected>`) ||
+		!strings.Contains(r.body, "à 06:07") || strings.Contains(r.body, "<html") {
+		t.Fatalf("save: %d %s", r.status, r.body)
 	}
-	if v, _ := e.srv.Store.Setting(context.Background(), "sync_time", ""); v != "06:15" {
+	if v, _ := e.srv.Store.Setting(context.Background(), "sync_time", ""); v != "06:07" {
 		t.Errorf("stored %q", v)
 	}
 }

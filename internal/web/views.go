@@ -27,7 +27,7 @@ var staticFS embed.FS
 
 // pages lists every page template under templates/pages.
 var pages = []string{"login", "password", "account", "home", "notfound", "library", "settings", "detail", "delete", "journal",
-	"stats", "userstats", "cleanup"}
+	"stats", "userstats", "cleanup", "config"}
 
 type views struct {
 	pages  map[string]*template.Template
@@ -103,6 +103,13 @@ func newViews(loc *time.Location, protectedTags []string, abandonDays int) (*vie
 		"list2":       func(v ...any) []any { return v },
 		"inc":         func(i int) int { return i + 1 },
 		"abandonDays": func() int { return abandonDays },
+		"minutesOfHour": func() []int {
+			m := make([]int, 60)
+			for i := range m {
+				m[i] = i
+			}
+			return m
+		},
 		"hoursOfDay": func() []int {
 			h := make([]int, 24)
 			for i := range h {
@@ -134,12 +141,6 @@ func newViews(loc *time.Location, protectedTags []string, abandonDays int) (*vie
 			}
 			return *p
 		},
-		"score": func(v *float64) string {
-			if v == nil {
-				return "–"
-			}
-			return strings.Replace(strconv.FormatFloat(*v, 'f', 2, 64), ".", ",", 1)
-		},
 	}
 	for _, p := range pages {
 		t, err := template.New("").Funcs(funcs).ParseFS(templatesFS,
@@ -161,7 +162,11 @@ type pageData struct {
 	DryRun    bool
 	Version   string
 	Sync      *syncView
-	Data      any
+	// Missing lists the services the synchronization still needs (banner).
+	Missing []string
+	// OOB marks the banner and the sync status for an HTMX out-of-band swap.
+	OOB  bool
+	Data any
 }
 
 // HXHeaders is the JSON for hx-headers: HTMX sends the CSRF token on every request.
@@ -176,6 +181,7 @@ func (s *Server) page(r *http.Request, title, active string, data any) pageData 
 		pd.Session = sess
 		pd.CSRFToken = sess.CSRFToken
 		pd.Sync = s.syncStatus(r.Context())
+		pd.Missing = s.Upstreams.Get().Missing
 	}
 	return pd
 }

@@ -50,16 +50,19 @@ type userProgress struct {
 }
 
 type detailData struct {
-	M         *store.Media
-	Path      string // /series or /movies
-	Seasons   []seasonView
-	Users     []userProgress
-	History   []store.HistoryRow
-	Links     []link
-	Protected bool
-	Deletable bool
-	Exact     bool // per-episode data from Sonarr
-	Modal     bool
+	M          *store.Media
+	Path       string // /series or /movies
+	Seasons    []seasonView
+	Users      []userProgress
+	History    []store.HistoryRow
+	Links      []link
+	Protected  bool
+	Deletable  bool
+	CanProtect bool   // managed by Sonarr/Radarr and PROTECTED_TAGS not empty
+	ProtectTag string // first PROTECTED_TAGS entry, added by « Protéger »
+	CSRFToken  string
+	Exact      bool // per-episode data from Sonarr
+	Modal      bool
 }
 
 func kindPath(kind string) string {
@@ -201,17 +204,18 @@ func buildProgress(eps []sonarr.Episode, watches []store.EpisodeWatch, seasons [
 
 func (s *Server) links(ctx context.Context, m *store.Media) []link {
 	var out []link
+	up := s.Upstreams.Get()
 	if m.ArrID > 0 && m.TitleSlug != "" {
 		if m.Kind == "series" {
-			out = append(out, link{"Sonarr", s.Config.SonarrWebURL() + "/series/" + url.PathEscape(m.TitleSlug)})
+			out = append(out, link{"Sonarr", up.SonarrWebURL() + "/series/" + url.PathEscape(m.TitleSlug)})
 		} else {
-			out = append(out, link{"Radarr", s.Config.RadarrWebURL() + "/movie/" + url.PathEscape(m.TitleSlug)})
+			out = append(out, link{"Radarr", up.RadarrWebURL() + "/movie/" + url.PathEscape(m.TitleSlug)})
 		}
 	}
 	if mid := s.Store.PlexMachineID(ctx); mid != "" && m.PlexRatingKey != "" {
 		base := "https://app.plex.tv/desktop"
-		if s.Config.PlexPublicURL != "" {
-			base = s.Config.PlexPublicURL + "/web/index.html"
+		if pub := up.PlexWebURL(); pub != "" {
+			base = pub + "/web/index.html"
 		}
 		out = append(out, link{"Plex", base + "#!/server/" + url.PathEscape(mid) + "/details?key=" +
 			url.QueryEscape("/library/metadata/"+m.PlexRatingKey)})
@@ -251,6 +255,12 @@ func (s *Server) detail(kind string) http.HandlerFunc {
 		ctx := r.Context()
 		d := detailData{M: m, Path: kindPath(kind), Links: s.links(ctx, m),
 			Protected: isProtected(m.Tags, s.Config.ProtectedTags), Deletable: m.ArrID > 0}
+		if len(s.Config.ProtectedTags) > 0 && m.ArrID > 0 && s.Actions != nil {
+			d.CanProtect, d.ProtectTag = true, s.Config.ProtectedTags[0]
+		}
+		if sess := sessionFrom(r); sess != nil {
+			d.CSRFToken = sess.CSRFToken
+		}
 		var err error
 		if d.History, err = s.Store.MediaHistory(ctx, m.ID, historyLimit); err != nil {
 			s.serverError(w, r, err)
@@ -268,9 +278,9 @@ func (s *Server) detail(kind string) http.HandlerFunc {
 				s.serverError(w, r, err)
 				return
 			}
-			if m.ArrID > 0 && s.Sonarr != nil {
+			if son := s.Upstreams.Get().Sonarr; m.ArrID > 0 && son != nil {
 				ectx, cancel := context.WithTimeout(ctx, 5*time.Second)
-				eps, err = s.Sonarr.Episodes(ectx, m.ArrID)
+				eps, err = son.Episodes(ectx, m.ArrID)
 				cancel()
 				if err != nil {
 					s.Log.Warn("episodes unavailable, showing approximate progress", "series", m.ArrID, "err", err)
@@ -366,7 +376,8 @@ func (s *Server) deletePage(kind string) http.HandlerFunc {
 // userMessage turns an actions error into a French message.
 func userMessage(err error) string {
 	for _, known := range []error{actions.ErrNotFound, actions.ErrNotDeletable, actions.ErrProtected,
-		actions.ErrConfirmMismatch, actions.ErrNoSuchSeason} {
+		actions.ErrConfirmMismatch, actions.ErrNoSuchSeason, actions.ErrNotManaged, actions.ErrNoProtectedTag,
+		actions.ErrUnconfigured} {
 		if errors.Is(err, known) {
 			msg := known.Error()
 			r, size := utf8.DecodeRuneInString(msg)
@@ -477,6 +488,8 @@ var authEventLabels = map[string]string{ //nolint:gosec // G101: UI labels, not 
 	"admin_created": "Compte admin créé", "login_success": "Connexion", "login_failure": "Échec de connexion",
 	"lockout": "Compte verrouillé", "password_changed": "Mot de passe changé",
 	"password_reset_cli": "Mot de passe réinitialisé (CLI)", "logout": "Déconnexion", "session_revoked": "Session révoquée",
+	"config_sonarr": "Configuration Sonarr modifiée", "config_radarr": "Configuration Radarr modifiée",
+	"config_plex": "Configuration Plex modifiée", "config_tautulli": "Configuration Tautulli modifiée",
 }
 
 func (s *Server) journal(w http.ResponseWriter, r *http.Request) {
@@ -505,4 +518,68 @@ func (s *Server) journal(w http.ResponseWriter, r *http.Request) {
 		d.NextURL = fmt.Sprintf("/journal?tab=%s&page=%d", tab, page+1)
 	}
 	s.render(w, r, http.StatusOK, "journal", "", s.page(r, "Journal", "journal", d))
+}
+
+// protectSubmit adds or removes the protection tag (« Protéger » / « Ne plus
+// protéger » on the detail page).
+func (s *Server) protectSubmit(kind string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		m, ok := s.mediaFromPath(w, r, kind)
+		if !ok {
+			return
+		}
+		if s.Actions == nil {
+			http.Error(w, "Protection indisponible.", http.StatusServiceUnavailable)
+			return
+		}
+		protect := r.PostFormValue("protect") == "1"
+		detailURL := fmt.Sprintf("%s/%d", kindPath(kind), m.ID)
+		res, err := s.Actions.SetProtected(r.Context(), actions.ProtectRequest{MediaID: m.ID, Protect: protect,
+			Username: sessionFrom(r).Username})
+		var msg, level string
+		switch {
+		case err != nil:
+			msg, level = protectErrorMessage(protect, err), "error"
+		case res.Unchanged && protect:
+			msg, level = fmt.Sprintf("« %s » est déjà protégé.", res.Title), "info"
+		case res.Unchanged:
+			msg, level = fmt.Sprintf("« %s » n'est pas protégé.", res.Title), "info"
+		case res.DryRun && protect:
+			msg, level = fmt.Sprintf("Simulation : « %s » aurait reçu le tag %s. Rien n'a été modifié.", res.Title, res.Tag), "info"
+		case res.DryRun:
+			msg, level = fmt.Sprintf("Simulation : le tag %s aurait été retiré de « %s ». Rien n'a été modifié.", res.Tag, res.Title), "info"
+		case protect:
+			msg, level = fmt.Sprintf("« %s » est protégé (tag %s) : il ne sera plus proposé au nettoyage.", res.Title, res.Tag), "success"
+		default:
+			msg, level = fmt.Sprintf("« %s » n'est plus protégé (tag %s retiré).", res.Title, res.Tag), "success"
+		}
+		if !isHTMX(r) {
+			if err != nil {
+				http.Error(w, msg, http.StatusUnprocessableEntity)
+				return
+			}
+			http.Redirect(w, r, detailURL, http.StatusSeeOther)
+			return
+		}
+		trigger := map[string]any{"arrstats:toast": map[string]any{"message": msg, "level": level}}
+		// Unchanged too: the local tags were realigned with Sonarr/Radarr.
+		if err == nil && (!res.DryRun || res.Unchanged) {
+			trigger["arrstats:changed"] = map[string]any{"detailUrl": detailURL}
+		}
+		w.Header().Set("HX-Trigger", asciiJSON(trigger))
+		w.Header().Set("HX-Reswap", "none")
+		w.WriteHeader(http.StatusOK)
+	}
+}
+
+func protectErrorMessage(protect bool, err error) string {
+	msg := userMessage(err)
+	if strings.HasPrefix(msg, "La suppression a échoué") {
+		verb := "La protection"
+		if !protect {
+			verb = "Le retrait de la protection"
+		}
+		return verb + " a échoué : " + err.Error()
+	}
+	return msg
 }

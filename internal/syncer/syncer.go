@@ -1,6 +1,6 @@
 // Package syncer orchestrates synchronization (SPEC §6): upstream catalogs
 // and history are fetched in parallel, stored, matched, then watch
-// statistics, watch_state and cleanup_score are recomputed.
+// statistics and watch_state are recomputed.
 //
 // The directory is named syncer rather than sync to avoid shadowing the
 // standard library package.
@@ -25,6 +25,7 @@ import (
 	"arrstats/internal/matching"
 	"arrstats/internal/scoring"
 	"arrstats/internal/store"
+	"arrstats/internal/upstream"
 )
 
 // Source names, as stored in sync_runs.
@@ -42,18 +43,18 @@ const (
 // ErrAlreadyRunning is returned when a sync is requested while one runs.
 var ErrAlreadyRunning = errors.New("a sync is already running")
 
-// Syncer runs synchronizations. Clients may be nil when not configured
-// (Tautulli when HISTORY_SOURCE=plex).
+// ErrNotConfigured is returned when Sonarr, Radarr or Plex (or Tautulli when
+// it is the history source) is not configured.
+var ErrNotConfigured = errors.New("upstream services are not fully configured")
+
+// Syncer runs synchronizations with the clients of Upstreams at the time
+// each sync starts; it refuses to run while the configuration is incomplete.
 type Syncer struct {
 	Store       *store.Store
-	Sonarr      *sonarr.Client
-	Radarr      *radarr.Client
-	Plex        *plex.Client
-	Tautulli    *tautulli.Client
+	Upstreams   *upstream.Registry
 	Log         *slog.Logger
 	Now         func() time.Time
 	AbandonDays int
-	Weights     scoring.Weights
 	// HistoryPageSize overrides the Tautulli page size (tests).
 	HistoryPageSize int
 	// Location is the time zone of the daily schedule (TZ).
@@ -133,29 +134,35 @@ type fetched struct {
 // others; its error is recorded in sync_runs and in the result. The returned
 // error is reserved for local failures (database).
 func (s *Syncer) Run(ctx context.Context) (*Result, error) {
+	up := s.Upstreams.Get()
+	if !up.Ready() {
+		return nil, ErrNotConfigured
+	}
 	if !s.running.CompareAndSwap(false, true) {
 		return nil, ErrAlreadyRunning
 	}
 	defer s.running.Store(false)
-	return s.run(ctx)
+	return s.run(ctx, up)
 }
 
-// Start launches a sync in the background unless one is running; it reports
-// whether a new sync was started. ctx should outlive the HTTP request.
+// Start launches a sync in the background unless one is running or the
+// configuration is incomplete; it reports whether a new sync was started.
+// ctx should outlive the HTTP request.
 func (s *Syncer) Start(ctx context.Context) bool {
-	if !s.running.CompareAndSwap(false, true) {
+	up := s.Upstreams.Get()
+	if !up.Ready() || !s.running.CompareAndSwap(false, true) {
 		return false
 	}
 	go func() {
 		defer s.running.Store(false)
-		if _, err := s.run(ctx); err != nil && ctx.Err() == nil {
+		if _, err := s.run(ctx, up); err != nil && ctx.Err() == nil {
 			s.Log.Error("sync failed", "err", err)
 		}
 	}()
 	return true
 }
 
-func (s *Syncer) run(ctx context.Context) (*Result, error) {
+func (s *Syncer) run(ctx context.Context, up *upstream.Clients) (*Result, error) {
 	start := s.now()
 	s.setProgress("démarrage")
 	s.Log.Info("sync started")
@@ -176,20 +183,20 @@ func (s *Syncer) run(ctx context.Context) (*Result, error) {
 	var f fetched
 	runIDs := map[string]int64{}
 	sources := []string{}
-	if s.Sonarr != nil {
+	if up.Sonarr != nil {
 		sources = append(sources, SourceSonarr)
 	}
-	if s.Radarr != nil {
+	if up.Radarr != nil {
 		sources = append(sources, SourceRadarr)
 	}
-	if s.Plex != nil {
+	if up.Plex != nil {
 		sources = append(sources, SourcePlex)
 	}
 	historySource := ""
 	switch {
-	case s.Tautulli != nil:
+	case up.HistoryClient() != nil:
 		historySource = SourceTautulli
-	case s.Plex != nil:
+	case up.Plex != nil:
 		historySource = SourcePlexHistory
 	}
 	if historySource != "" {
@@ -214,24 +221,24 @@ func (s *Syncer) run(ctx context.Context) (*Result, error) {
 	var g errgroup.Group
 	var seriesErr, moviesErr, plexErr error
 	var seriesStart, moviesStart, plexStart time.Time
-	if s.Sonarr != nil {
+	if up.Sonarr != nil {
 		g.Go(func() error {
 			seriesStart = time.Now()
-			f.series, seriesErr = s.fetchSeries(ctx)
+			f.series, seriesErr = s.fetchSeries(ctx, up.Sonarr)
 			return nil
 		})
 	}
-	if s.Radarr != nil {
+	if up.Radarr != nil {
 		g.Go(func() error {
 			moviesStart = time.Now()
-			f.movies, moviesErr = s.fetchMovies(ctx)
+			f.movies, moviesErr = s.fetchMovies(ctx, up.Radarr)
 			return nil
 		})
 	}
-	if s.Plex != nil {
+	if up.Plex != nil {
 		g.Go(func() error {
 			plexStart = time.Now()
-			f.plex, plexErr = s.fetchPlex(ctx)
+			f.plex, plexErr = s.fetchPlex(ctx, up.Plex)
 			return nil
 		})
 	}
@@ -241,9 +248,9 @@ func (s *Syncer) run(ctx context.Context) (*Result, error) {
 			var n int
 			var err error
 			if historySource == SourceTautulli {
-				n, err = s.syncTautulliHistory(ctx)
+				n, err = s.syncTautulliHistory(ctx, up.HistoryClient())
 			} else {
-				n, err = s.syncPlexHistory(ctx)
+				n, err = s.syncPlexHistory(ctx, up.Plex)
 			}
 			finish(SourceResult{Source: historySource, Items: n, Duration: time.Since(t), Err: err})
 			return nil
@@ -256,21 +263,21 @@ func (s *Syncer) run(ctx context.Context) (*Result, error) {
 
 	// Store phase, sequential: catalogs first, then matching against them.
 	s.setProgress("enregistrement du catalogue")
-	if s.Sonarr != nil {
+	if up.Sonarr != nil {
 		err := seriesErr
 		if err == nil {
 			err = s.Store.ReplaceArrCatalog(ctx, "series", f.series, s.now())
 		}
 		finish(SourceResult{Source: SourceSonarr, Items: len(f.series), Duration: time.Since(seriesStart), Err: err})
 	}
-	if s.Radarr != nil {
+	if up.Radarr != nil {
 		err := moviesErr
 		if err == nil {
 			err = s.Store.ReplaceArrCatalog(ctx, "movie", f.movies, s.now())
 		}
 		finish(SourceResult{Source: SourceRadarr, Items: len(f.movies), Duration: time.Since(moviesStart), Err: err})
 	}
-	if s.Plex != nil {
+	if up.Plex != nil {
 		err := plexErr
 		items := 0
 		if err == nil {
@@ -394,13 +401,13 @@ func movieItem(m radarr.Movie, labels, names map[int64]string) store.CatalogItem
 	}
 }
 
-func (s *Syncer) fetchSeries(ctx context.Context) ([]store.CatalogItem, error) {
+func (s *Syncer) fetchSeries(ctx context.Context, c *sonarr.Client) ([]store.CatalogItem, error) {
 	var series []sonarr.Series
 	var labels, names map[int64]string
 	g, gctx := errgroup.WithContext(ctx)
-	g.Go(func() (err error) { series, err = s.Sonarr.Series(gctx); return })
+	g.Go(func() (err error) { series, err = c.Series(gctx); return })
 	g.Go(func() (err error) {
-		labels, names, err = arrLookups(gctx, s.Sonarr.Tags, s.Sonarr.QualityProfiles)
+		labels, names, err = arrLookups(gctx, c.Tags, c.QualityProfiles)
 		return
 	})
 	if err := g.Wait(); err != nil {
@@ -413,13 +420,13 @@ func (s *Syncer) fetchSeries(ctx context.Context) ([]store.CatalogItem, error) {
 	return out, nil
 }
 
-func (s *Syncer) fetchMovies(ctx context.Context) ([]store.CatalogItem, error) {
+func (s *Syncer) fetchMovies(ctx context.Context, c *radarr.Client) ([]store.CatalogItem, error) {
 	var movies []radarr.Movie
 	var labels, names map[int64]string
 	g, gctx := errgroup.WithContext(ctx)
-	g.Go(func() (err error) { movies, err = s.Radarr.Movies(gctx); return })
+	g.Go(func() (err error) { movies, err = c.Movies(gctx); return })
 	g.Go(func() (err error) {
-		labels, names, err = arrLookups(gctx, s.Radarr.Tags, s.Radarr.QualityProfiles)
+		labels, names, err = arrLookups(gctx, c.Tags, c.QualityProfiles)
 		return
 	})
 	if err := g.Wait(); err != nil {
@@ -435,11 +442,15 @@ func (s *Syncer) fetchMovies(ctx context.Context) ([]store.CatalogItem, error) {
 // RefreshSeries re-reads one series from Sonarr (targeted resync after a
 // season deletion) and recomputes statistics.
 func (s *Syncer) RefreshSeries(ctx context.Context, arrID int64) error {
-	se, _, err := s.Sonarr.SeriesByID(ctx, arrID)
+	c := s.Upstreams.Get().Sonarr
+	if c == nil {
+		return upstream.ErrNotConfigured
+	}
+	se, _, err := c.SeriesByID(ctx, arrID)
 	if err != nil {
 		return err
 	}
-	labels, names, err := arrLookups(ctx, s.Sonarr.Tags, s.Sonarr.QualityProfiles)
+	labels, names, err := arrLookups(ctx, c.Tags, c.QualityProfiles)
 	if err != nil {
 		return err
 	}
@@ -449,7 +460,7 @@ func (s *Syncer) RefreshSeries(ctx context.Context, arrID int64) error {
 	return s.Recompute(ctx)
 }
 
-// Recompute refreshes play counts, watch_state and cleanup_score from the
+// Recompute refreshes play counts and watch_state from the
 // stored data (after a local change such as a deletion).
 func (s *Syncer) Recompute(ctx context.Context) error {
 	return s.recompute(ctx)
@@ -462,13 +473,13 @@ type plexCatalog struct {
 	seasons []store.PlexSeason
 }
 
-func (s *Syncer) fetchPlex(ctx context.Context) (*plexCatalog, error) {
-	if id, err := s.Plex.Identity(ctx); err == nil && id != "" {
+func (s *Syncer) fetchPlex(ctx context.Context, c *plex.Client) (*plexCatalog, error) {
+	if id, err := c.Identity(ctx); err == nil && id != "" {
 		if err := s.Store.SetSetting(ctx, store.SettingPlexMachineID, id, s.now()); err != nil {
 			return nil, err
 		}
 	}
-	sections, err := s.Plex.Sections(ctx)
+	sections, err := c.Sections(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -477,7 +488,7 @@ func (s *Syncer) fetchPlex(ctx context.Context) (*plexCatalog, error) {
 		key := string(sec.Key)
 		switch sec.Type {
 		case "movie":
-			items, err := s.Plex.Items(ctx, key, plex.TypeMovie)
+			items, err := c.Items(ctx, key, plex.TypeMovie)
 			if err != nil {
 				return nil, err
 			}
@@ -485,14 +496,14 @@ func (s *Syncer) fetchPlex(ctx context.Context) (*plexCatalog, error) {
 				cat.items = append(cat.items, plexItem(matching.KindMovie, it))
 			}
 		case "show":
-			shows, err := s.Plex.Items(ctx, key, plex.TypeShow)
+			shows, err := c.Items(ctx, key, plex.TypeShow)
 			if err != nil {
 				return nil, err
 			}
 			for _, it := range shows {
 				cat.items = append(cat.items, plexItem(matching.KindSeries, it))
 			}
-			seasons, err := s.Plex.Items(ctx, key, plex.TypeSeason)
+			seasons, err := c.Items(ctx, key, plex.TypeSeason)
 			if err != nil {
 				return nil, err
 			}
@@ -572,8 +583,8 @@ func TautulliEvent(r tautulli.HistoryRow) (store.WatchEvent, bool) {
 // syncTautulliHistory pages from newest to oldest and stops once a whole
 // page is older than the cursor minus 24 h; the overlap catches long
 // sessions that finished late, and the upsert keeps it idempotent.
-func (s *Syncer) syncTautulliHistory(ctx context.Context) (int, error) {
-	users, err := s.Tautulli.Users(ctx)
+func (s *Syncer) syncTautulliHistory(ctx context.Context, c *tautulli.Client) (int, error) {
+	users, err := c.Users(ctx)
 	if err != nil {
 		return 0, err
 	}
@@ -593,7 +604,7 @@ func (s *Syncer) syncTautulliHistory(ctx context.Context) (int, error) {
 		pageSize = s.HistoryPageSize
 	}
 	return s.pageHistory(ctx, cursorTautulli, func(start int) ([]store.WatchEvent, []int64, int, int, error) {
-		p, err := s.Tautulli.History(ctx, start, pageSize)
+		p, err := c.History(ctx, start, pageSize)
 		if err != nil {
 			return nil, nil, 0, 0, err
 		}
@@ -626,8 +637,8 @@ func PlexEvent(h plex.HistoryEntry) (store.WatchEvent, bool) {
 	return e, true
 }
 
-func (s *Syncer) syncPlexHistory(ctx context.Context) (int, error) {
-	accs, err := s.Plex.Accounts(ctx)
+func (s *Syncer) syncPlexHistory(ctx context.Context, c *plex.Client) (int, error) {
+	accs, err := c.Accounts(ctx)
 	if err != nil {
 		return 0, err
 	}
@@ -641,7 +652,7 @@ func (s *Syncer) syncPlexHistory(ctx context.Context) (int, error) {
 		return 0, err
 	}
 	return s.pageHistory(ctx, cursorPlexHistory, func(start int) ([]store.WatchEvent, []int64, int, int, error) {
-		entries, total, err := s.Plex.History(ctx, start)
+		entries, total, err := c.History(ctx, start)
 		if err != nil {
 			return nil, nil, 0, 0, err
 		}
@@ -752,9 +763,8 @@ func unixPtr(v *int64) *time.Time {
 	return &t
 }
 
-// recompute refreshes play counts, watch_state and cleanup_score.
+// recompute refreshes play counts and watch_state.
 func (s *Syncer) recompute(ctx context.Context) error {
-	weights := s.CurrentWeights()
 	stats, err := s.Store.LoadMediaStats(ctx)
 	if err != nil {
 		return err
@@ -772,10 +782,6 @@ func (s *Syncer) recompute(ctx context.Context) error {
 		d := store.Derived{MediaStats: m, WatchState: scoring.WatchState(in, now, s.AbandonDays)}
 		if m.Kind == scoring.KindSeries {
 			d.WatchedEpisodes = intPtr(scoring.WatchedEpisodes(in))
-		}
-		if m.Managed {
-			score := scoring.CleanupScore(in, d.WatchState, now, weights)
-			d.CleanupScore = &score
 		}
 		out = append(out, d)
 	}

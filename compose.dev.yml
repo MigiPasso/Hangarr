@@ -26,6 +26,9 @@ services:
       COOKIE_SECURE: "false"
       LOG_FORMAT: text
       LOG_LEVEL: debug
+      # Dev-only key: the services come from the environment (locked in the
+      # UI), but public URLs and the webhook secret can be saved.
+      ARRSTATS_MASTER_KEY: ZGV2LW9ubHktbWFzdGVyLWtleS0tZG8tbm90LXVzZSE=
     ports:
       - "8080:8080"
     volumes:
@@ -161,6 +164,33 @@ services:
     depends_on:
       - mock
 
+  # Same image without any service variable: the services are configured
+  # from the UI; the master key comes from a Docker secret (_FILE variant).
+  app-e2e-config:
+    profiles: [e2e]
+    build:
+      context: .
+      target: runtime
+    read_only: true
+    user: "65532:65532"
+    tmpfs:
+      - /data:uid=65532,gid=65532,mode=0700
+    secrets:
+      - master_key
+    environment:
+      ARRSTATS_MASTER_KEY_FILE: /run/secrets/master_key
+      DRY_RUN: "true"
+      COOKIE_SECURE: "false"
+      LOG_FORMAT: json
+      LOGIN_MAX_PER_IP: "50"
+    healthcheck:
+      test: ["CMD", "/arrstats", "healthcheck"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    depends_on:
+      - mock
+
   e2e:
     profiles: [e2e]
     image: mcr.microsoft.com/playwright:v1.63.0-noble
@@ -168,10 +198,12 @@ services:
     environment:
       BASE_URL: http://app-e2e:8080
       BASE_URL_LIVE: http://app-e2e-live:8080
+      BASE_URL_CONFIG: http://app-e2e-config:8080
       MOCK_URL: http://mock:8989
       ADMIN_USERNAME: admin
       ADMIN_INITIAL_PASSWORD: ${ADMIN_INITIAL_PASSWORD:-}
       ADMIN_INITIAL_PASSWORD_LIVE: ${ADMIN_INITIAL_PASSWORD_LIVE:-}
+      ADMIN_INITIAL_PASSWORD_CONFIG: ${ADMIN_INITIAL_PASSWORD_CONFIG:-}
       CI: "1"
     volumes:
       - ./e2e:/e2e
@@ -187,6 +219,11 @@ services:
     working_dir: /work
     volumes:
       - .:/work
+
+secrets:
+  # Test-only key (e2e/master.key), never used outside app-e2e-config.
+  master_key:
+    file: ./e2e/master.key
 
 volumes:
   gomod:

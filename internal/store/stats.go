@@ -267,10 +267,9 @@ type Derived struct {
 	*MediaStats
 	WatchedEpisodes *int
 	WatchState      string
-	CleanupScore    *float64
 }
 
-// SaveDerived writes aggregates, watch_state, cleanup_score and per-season
+// SaveDerived writes aggregates, watch_state and per-season
 // progress in one transaction.
 func (s *Store) SaveDerived(ctx context.Context, items []Derived) error {
 	tx, err := s.db.BeginTx(ctx, nil)
@@ -280,7 +279,7 @@ func (s *Store) SaveDerived(ctx context.Context, items []Derived) error {
 	defer func() { _ = tx.Rollback() }()
 	media, err := tx.PrepareContext(ctx, `UPDATE media SET play_count = ?, completed_play_count = ?,
 		watch_seconds = ?, distinct_viewers = ?, last_viewed_at = ?, last_viewed_by = ?, watched_episodes = ?,
-		watch_state = ?, cleanup_score = ? WHERE id = ?`)
+		watch_state = ?, cleanup_score = NULL WHERE id = ?`)
 	if err != nil {
 		return err
 	}
@@ -292,12 +291,8 @@ func (s *Store) SaveDerived(ctx context.Context, items []Derived) error {
 	}
 	defer func() { _ = seasons.Close() }()
 	for _, d := range items {
-		var score sql.NullFloat64
-		if d.CleanupScore != nil {
-			score = sql.NullFloat64{Float64: *d.CleanupScore, Valid: true}
-		}
 		if _, err := media.ExecContext(ctx, d.Plays, d.CompletedPlays, d.WatchSeconds, d.Viewers,
-			nullInt(d.LastViewedAt), nullInt(d.LastViewedBy), nullIntPtr(d.WatchedEpisodes), d.WatchState, score,
+			nullInt(d.LastViewedAt), nullInt(d.LastViewedBy), nullIntPtr(d.WatchedEpisodes), d.WatchState,
 			d.MediaID); err != nil {
 			return err
 		}

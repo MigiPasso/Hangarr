@@ -41,19 +41,21 @@ lint: ## go vet + golangci-lint
 
 e2e: ## Playwright against the runtime image on a blank database
 	@$(E2E_COMPOSE) down --remove-orphans >/dev/null 2>&1 || true
-	$(E2E_COMPOSE) build app-e2e app-e2e-live mock
+	$(E2E_COMPOSE) build app-e2e app-e2e-live app-e2e-config mock
 	@status=0; \
-	$(E2E_COMPOSE) up -d --wait app-e2e app-e2e-live mock || status=$$?; \
+	$(E2E_COMPOSE) up -d --wait app-e2e app-e2e-live app-e2e-config mock || status=$$?; \
 	if [ $$status -eq 0 ]; then \
 	  pw=$$($(E2E_COMPOSE) logs --no-log-prefix app-e2e | sed -n 's/^ Mot de passe : //p' | head -n 1); \
 	  pwlive=$$($(E2E_COMPOSE) logs --no-log-prefix app-e2e-live | sed -n 's/^ Mot de passe : //p' | head -n 1); \
-	  if [ -z "$$pw" ] || [ -z "$$pwlive" ]; then \
+	  pwcfg=$$($(E2E_COMPOSE) logs --no-log-prefix app-e2e-config | sed -n 's/^ Mot de passe : //p' | head -n 1); \
+	  if [ -z "$$pw" ] || [ -z "$$pwlive" ] || [ -z "$$pwcfg" ]; then \
 	    echo "initial admin password not found in app-e2e logs" >&2; status=1; \
 	  else \
-	    ADMIN_INITIAL_PASSWORD="$$pw" ADMIN_INITIAL_PASSWORD_LIVE="$$pwlive" $(E2E_COMPOSE) run --rm e2e || status=$$?; \
+	    ADMIN_INITIAL_PASSWORD="$$pw" ADMIN_INITIAL_PASSWORD_LIVE="$$pwlive" ADMIN_INITIAL_PASSWORD_CONFIG="$$pwcfg" \
+	      $(E2E_COMPOSE) run --rm e2e || status=$$?; \
 	  fi; \
 	fi; \
-	if [ $$status -ne 0 ]; then $(E2E_COMPOSE) logs --tail 50 app-e2e app-e2e-live mock; fi; \
+	if [ $$status -ne 0 ]; then $(E2E_COMPOSE) logs --tail 50 app-e2e app-e2e-live app-e2e-config mock; fi; \
 	$(E2E_COMPOSE) down --remove-orphans; \
 	exit $$status
 

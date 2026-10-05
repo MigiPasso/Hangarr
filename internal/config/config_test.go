@@ -63,8 +63,8 @@ func TestDefaults(t *testing.T) {
 	if c.SonarrURL != "http://sonarr:8989" {
 		t.Errorf("trailing slash not trimmed: %s", c.SonarrURL)
 	}
-	if c.HistorySource != HistoryPlex {
-		t.Errorf("auto without tautulli should resolve to plex, got %s", c.HistorySource)
+	if c.HistorySource != HistoryAuto || c.MasterKey != nil {
+		t.Errorf("HISTORY_SOURCE and master key defaults: %s %v", c.HistorySource, c.MasterKey)
 	}
 }
 
@@ -113,20 +113,37 @@ func TestSecretFileMissing(t *testing.T) {
 
 func TestHistorySource(t *testing.T) {
 	m := upstreams()
-	m["TAUTULLI_URL"] = "http://tautulli:8181"
-	m["TAUTULLI_API_KEY"] = "t"
+	m["HISTORY_SOURCE"] = "Tautulli"
 	c, err := Load(env(m), files(nil))
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Tautulli may be configured later from the UI: no check at load time.
 	if c.HistorySource != HistoryTautulli {
-		t.Errorf("auto with tautulli: got %s", c.HistorySource)
+		t.Errorf("got %s", c.HistorySource)
 	}
-
-	m = upstreams()
-	m["HISTORY_SOURCE"] = "tautulli"
+	m["HISTORY_SOURCE"] = "jellyfin"
 	if _, err := Load(env(m), files(nil)); err == nil {
-		t.Error("HISTORY_SOURCE=tautulli without tautulli config must fail")
+		t.Error("unknown HISTORY_SOURCE must fail")
+	}
+}
+
+func TestMasterKey(t *testing.T) {
+	m := upstreams()
+	m["ARRSTATS_MASTER_KEY_FILE"] = "/run/secrets/master"
+	key := strings.Repeat("ab", 32)
+	c, err := Load(env(m), files(map[string]string{"/run/secrets/master": key + "\n"}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(c.MasterKey) != 32 {
+		t.Errorf("master key: %d bytes", len(c.MasterKey))
+	}
+	m = upstreams()
+	m["ARRSTATS_MASTER_KEY"] = "too-short"
+	_, err = Load(env(m), files(nil))
+	if err == nil || strings.Contains(err.Error(), "too-short") {
+		t.Errorf("invalid master key must fail without echoing it: %v", err)
 	}
 }
 

@@ -78,6 +78,18 @@ type QualityProfile struct {
 // Client reads from Sonarr.
 type Client struct{ HTTP *httpx.Client }
 
+// SystemStatus is the subset of GET /api/v3/system/status used to test a connection.
+type SystemStatus struct {
+	AppName string `json:"appName"`
+	Version string `json:"version"`
+}
+
+// SystemStatus checks the URL and the API key and returns the version.
+func (c *Client) SystemStatus(ctx context.Context) (*SystemStatus, error) {
+	var st SystemStatus
+	return &st, c.HTTP.JSON(ctx, httpx.Request{Path: "/api/v3/system/status"}, &st)
+}
+
 // New builds a client authenticated with the X-Api-Key header.
 func New(baseURL, apiKey string) *Client {
 	return &Client{HTTP: httpx.New("sonarr", baseURL, func(r *http.Request) { r.Header.Set("X-Api-Key", apiKey) })}
@@ -214,4 +226,33 @@ type DiskSpace struct {
 func (c *Client) DiskSpace(ctx context.Context) ([]DiskSpace, error) {
 	var out []DiskSpace
 	return out, c.HTTP.JSON(ctx, httpx.Request{Path: "/api/v3/diskspace"}, &out)
+}
+
+// CreateTag creates a tag (POST /api/v3/tag) and returns it with its id.
+func (c *Client) CreateTag(ctx context.Context, label string) (*Tag, error) {
+	return CreateTag(ctx, c.HTTP, label)
+}
+
+// CreateTag creates a tag on a Sonarr or Radarr instance.
+func CreateTag(ctx context.Context, h *httpx.Client, label string) (*Tag, error) {
+	var t Tag
+	return &t, h.JSON(ctx, httpx.Request{Method: http.MethodPost, Path: "/api/v3/tag", Body: map[string]string{"label": label}}, &t)
+}
+
+// WithTags returns raw (a series or movie object) with its "tags" replaced;
+// every other field is kept as is.
+func WithTags(raw json.RawMessage, ids []int64) (json.RawMessage, error) {
+	var obj map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &obj); err != nil {
+		return nil, err
+	}
+	if ids == nil {
+		ids = []int64{}
+	}
+	b, err := json.Marshal(ids)
+	if err != nil {
+		return nil, err
+	}
+	obj["tags"] = b
+	return json.Marshal(obj)
 }

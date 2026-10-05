@@ -9,7 +9,6 @@ import (
 	"strings"
 	"time"
 
-	"arrstats/internal/scoring"
 	"arrstats/internal/store"
 	"arrstats/internal/syncer"
 )
@@ -26,9 +25,6 @@ type SyncRunner interface {
 	DailyTime() syncer.ClockTime
 	SetDailyTime(at syncer.ClockTime)
 	NextRun() time.Time
-	CurrentWeights() scoring.Weights
-	SetWeights(w scoring.Weights)
-	Recompute(ctx context.Context) error
 }
 
 var (
@@ -318,6 +314,7 @@ func (s *Server) image(w http.ResponseWriter, r *http.Request) {
 // --- sync -----------------------------------------------------------------------
 
 type syncView struct {
+	Disabled bool // services not configured
 	Running  bool
 	Progress string
 	LastAt   *int64
@@ -329,7 +326,7 @@ func (s *Server) syncStatus(ctx context.Context) *syncView {
 		return nil
 	}
 	st := s.Sync.Status()
-	v := &syncView{Running: st.Running, Progress: st.Progress}
+	v := &syncView{Running: st.Running, Progress: st.Progress, Disabled: !s.Upstreams.Get().Ready()}
 	if st.Last != nil {
 		end := st.Last.StartedAt.Add(st.Last.Duration).Unix()
 		v.LastAt = &end

@@ -49,9 +49,10 @@ type Lookup func(ctx context.Context, kind string, arrID int64, variant string) 
 
 // Proxy serves /img/{kind}/{arrId}/{variant}.
 type Proxy struct {
-	Dir    string // DATA_DIR/cache/img
-	Sonarr *httpx.Client
-	Radarr *httpx.Client
+	Dir string // DATA_DIR/cache/img
+	// Client returns the Sonarr ("series") or Radarr ("movie") client, nil
+	// when the service is not configured.
+	Client func(kind string) *httpx.Client
 	Remote *http.Client // for remoteUrl fallbacks
 	Lookup Lookup
 	Log    *slog.Logger
@@ -64,9 +65,9 @@ type Proxy struct {
 }
 
 // New builds a proxy caching into dir.
-func New(dir string, sonarr, radarr *httpx.Client, lookup Lookup, log *slog.Logger) *Proxy {
+func New(dir string, client func(kind string) *httpx.Client, lookup Lookup, log *slog.Logger) *Proxy {
 	return &Proxy{
-		Dir: dir, Sonarr: sonarr, Radarr: radarr, Lookup: lookup, Log: log,
+		Dir: dir, Client: client, Lookup: lookup, Log: log,
 		Remote: &http.Client{Timeout: fetchTimeout},
 		sem:    make(chan struct{}, MaxConcurrentFetches),
 		misses: map[string]time.Time{},
@@ -161,10 +162,7 @@ func (p *Proxy) fetch(ctx context.Context, kind string, arrID int64, variant str
 	}
 	defer func() { <-p.sem }()
 
-	client := p.Sonarr
-	if kind == "movie" {
-		client = p.Radarr
-	}
+	client := p.Client(kind)
 	lastErr := errNoImage
 	if client != nil {
 		for _, file := range upstreamFiles(variant) {

@@ -1,11 +1,9 @@
-// Package scoring computes watch_state and cleanup_score (SPEC §6, §7.5).
+// Package scoring computes watch_state (SPEC §6). Cleanup candidates are a
+// plain inactivity rule evaluated in SQL (store.CleanupScope).
 // Everything here is pure: inputs come from the store, now is injected.
 package scoring
 
-import (
-	"math"
-	"time"
-)
+import "time"
 
 // Watch states.
 const (
@@ -106,43 +104,4 @@ func WatchState(in Input, now time.Time, abandonDays int) string {
 	default:
 		return StateAbandoned
 	}
-}
-
-// Weights tune the cleanup score.
-type Weights struct {
-	NeverWatched      float64 // multiplier when never watched
-	ActiveContinuing  float64 // multiplier for continuing series watched recently
-	ActiveWindowDays  int     // "recently" for ActiveContinuing
-	MaxInactivityDays float64 // inactivity cap
-}
-
-// DefaultWeights follow SPEC §7.5.
-var DefaultWeights = Weights{NeverWatched: 1.5, ActiveContinuing: 0.5, ActiveWindowDays: 60, MaxInactivityDays: 730}
-
-// CleanupScore implements:
-//
-//	inactivity = days since last view (or since added if never watched), capped
-//	score = (inactivity / 365) × log2(1 + size_GB) / (1 + plays)
-//	        × NeverWatched if never watched
-//	        × ActiveContinuing if continuing series viewed within the window
-//
-// Higher means a better cleanup candidate. Unknown dates count as the cap.
-func CleanupScore(in Input, state string, now time.Time, w Weights) float64 {
-	ref := in.LastViewedAt
-	if ref == nil {
-		ref = in.AddedAt
-	}
-	inactivity := w.MaxInactivityDays
-	if ref != nil {
-		inactivity = math.Max(0, math.Min(now.Sub(*ref).Hours()/24, w.MaxInactivityDays))
-	}
-	sizeGB := float64(in.SizeBytes) / 1e9
-	score := inactivity / 365 * math.Log2(1+sizeGB) / float64(1+in.Plays)
-	if state == StateNever {
-		score *= w.NeverWatched
-	}
-	if in.Kind == KindSeries && in.Status == "continuing" && recent(in.LastViewedAt, now, w.ActiveWindowDays) {
-		score *= w.ActiveContinuing
-	}
-	return math.Round(score*10000) / 10000
 }

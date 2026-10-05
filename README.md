@@ -3,8 +3,8 @@
 Application Go + HTMX auto-hébergée qui croise Tautulli, Plex, Sonarr et Radarr pour savoir ce qui est
 regardé, par qui, ce qui ne l'est jamais, et faire le ménage proprement. Spécification complète : [SPEC.md](SPEC.md).
 
-> État : **phase 2** (authentification, synchronisation Sonarr / Radarr / Plex / Tautulli, rapprochement, scoring).
-> L'interface (bibliothèque, statistiques) arrive ensuite.
+> État : phases 1 à 5 livrées (authentification, synchronisation, bibliothèque, fiches et suppressions, tableau de
+> bord, statistiques, nettoyage) ; **phase 6 en cours** (configuration dans l'UI, santé, webhook, déploiement Docker).
 
 ## Prérequis
 
@@ -70,10 +70,30 @@ Mot de passe initial : `kubectl -n arrstats logs deploy/arrstats | grep -A4 "COM
 
 Les manifests kustomize (`deploy/k8s/`) et `make k8s-validate` arrivent en phase 6.
 
+## Configuration des services
+
+Sonarr, Radarr, Plex et Tautulli se configurent dans la page **Configuration** (URL, URL publique, clé d'API ou token,
+bouton « Tester la connexion »). Sans configuration, l'application démarre quand même : la synchronisation est
+désactivée et un bandeau invite à configurer. La première synchronisation part dès que la configuration est complète.
+
+- **Clé maître** : les clés et tokens sont chiffrés en base (AES-256-GCM).
+  - *Recommandé* : fournir une clé de 32 octets par `ARRSTATS_MASTER_KEY` ou `ARRSTATS_MASTER_KEY_FILE` (secret Docker
+    ou Kubernetes), conservée hors du volume de données. Pour en générer une : `docker run --rm <image> master-key`.
+  - *Par défaut* : sans clé fournie, une clé est générée au premier démarrage dans `/data/master.key`. Ça marche sans
+    rien préparer, mais une sauvegarde ou une copie du volume expose alors les secrets ; la page Configuration le signale.
+  - Passer du mode par défaut au mode recommandé : définir la variable et redémarrer. Les secrets sont rechiffrés avec la
+    nouvelle clé et `master.key` est supprimé, sans rien ressaisir. Changer ensuite de clé fournie rend en revanche les
+    secrets illisibles : ils sont signalés et doivent être ressaisis.
+- **Variables d'environnement prioritaires** : `SONARR_URL`, `SONARR_API_KEY`, `PLEX_TOKEN`… restent acceptées. Une
+  valeur définie dans l'environnement est utilisée telle quelle et verrouillée dans l'UI.
+- Les secrets ne sont jamais renvoyés au navigateur (seuls `••••` et les 4 derniers caractères s'affichent). Un champ
+  laissé vide conserve la valeur actuelle. Chaque modification est inscrite dans le journal (onglet Sécurité).
+
 ## Configuration
 
 Toutes les variables sont décrites dans [SPEC.md §10](SPEC.md#10-configuration-variables-denvironnement).
-Écarts : `SYNC_INTERVAL` est remplacé par `SYNC_TIME` (heure de la synchronisation quotidienne, défaut `04:00`,
+Écarts : pas de score de nettoyage ni de `GRACE_DAYS` : la page Nettoyage propose ce que personne n'a regardé depuis
+N jours (jamais vu : depuis l'ajout), N réglable dans Réglages (180 par défaut) ; `SYNC_INTERVAL` est remplacé par `SYNC_TIME` (heure de la synchronisation quotidienne, défaut `04:00`,
 modifiable ensuite dans la page Réglages) ; les variables `PROWLARR_*` n'existent pas.
 Ajouts : `SONARR_PUBLIC_URL`, `RADARR_PUBLIC_URL` et `PLEX_PUBLIC_URL` (optionnels) donnent les adresses utilisées par les
 liens « Ouvrir dans Sonarr/Radarr/Plex » quand les URL d'API ne sont pas joignables depuis le navigateur (Service

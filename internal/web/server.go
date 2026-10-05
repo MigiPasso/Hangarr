@@ -13,11 +13,10 @@ import (
 
 	"arrstats/internal/actions"
 	"arrstats/internal/auth"
-	"arrstats/internal/clients/radarr"
-	"arrstats/internal/clients/sonarr"
 	"arrstats/internal/config"
 	"arrstats/internal/images"
 	"arrstats/internal/store"
+	"arrstats/internal/upstream"
 )
 
 // ShutdownTimeout bounds how long in-flight requests may run after SIGTERM.
@@ -35,12 +34,12 @@ type Deps struct {
 	Version       string
 	PreSessionKey []byte
 	LoginLimiter  *auth.RateLimiter
-	Images        *images.Proxy    // nil: images answer 404
-	Sync          SyncRunner       // nil: no sync button
-	PageSize      int              // library batch size, DefaultPageSize when 0
-	Actions       *actions.Service // nil: deletion unavailable
-	Sonarr        *sonarr.Client   // nil: approximate season progress
-	Radarr        *radarr.Client   // nil: no Radarr disk space
+	Images        *images.Proxy      // nil: images answer 404
+	Sync          SyncRunner         // nil: no sync button
+	PageSize      int                // library batch size, DefaultPageSize when 0
+	Actions       *actions.Service   // nil: deletion unavailable
+	Upstreams     *upstream.Registry // current upstream clients (never nil)
+	Services      *upstream.Manager  // nil: Configuration page read-only
 }
 
 // Server holds handlers state.
@@ -58,6 +57,9 @@ func New(d Deps) (*Server, error) {
 	v, err := newViews(d.Config.Location, d.Config.ProtectedTags, d.Config.AbandonDays)
 	if err != nil {
 		return nil, err
+	}
+	if d.Upstreams == nil {
+		d.Upstreams = upstream.NewRegistry(nil)
 	}
 	return &Server{Deps: d, ips: auth.IPResolver{Trusted: d.Config.TrustedProxies}, views: v}, nil
 }
@@ -95,15 +97,19 @@ func (s *Server) Handler() http.Handler {
 		mux.Handle("GET "+k.path+"/{id}", s.authed(s.detail(k.kind), 0))
 		mux.Handle("GET "+k.path+"/{id}/delete", s.authed(s.deletePage(k.kind), 0))
 		mux.Handle("POST "+k.path+"/{id}/delete", s.authed(s.deleteSubmit(k.kind), 0))
+		mux.Handle("POST "+k.path+"/{id}/protect", s.authed(s.protectSubmit(k.kind), 0))
 	}
 	mux.Handle("GET /journal", s.authed(s.journal, 0))
 	mux.Handle("GET /stats", s.authed(s.stats, 0))
 	mux.Handle("GET /stats/users/{id}", s.authed(s.userStats, 0))
 	mux.Handle("GET /cleanup", s.authed(s.cleanup, 0))
-	mux.Handle("POST /settings/score", s.authed(s.scoreSubmit, 0))
+	mux.Handle("POST /settings/cleanup", s.authed(s.cleanupSubmit, 0))
 	mux.Handle("GET /settings", s.authed(s.settingsPage, 0))
 	mux.Handle("POST /settings", s.authed(s.settingsSubmit, 0))
 	mux.Handle("GET /sync/status", s.authed(s.syncStatusPartial, 0))
+	mux.Handle("GET /config", s.authed(s.configPage, 0))
+	mux.Handle("POST /config/{service}", s.authed(s.configSubmit, 0))
+	mux.Handle("POST /config/{service}/test", s.authed(s.configTest, 0))
 	mux.Handle("POST /account/sessions/{id}/revoke", s.authed(s.revokeSession, 0))
 	mux.Handle("GET /{$}", s.authed(s.home, 0))
 	// Everything else requires a session too, so unknown paths do not leak

@@ -129,7 +129,7 @@
       <input type="search" name="q" value="{{$d.Filter.Query}}" placeholder="Rechercher un titre…" aria-label="Rechercher" autocomplete="off">
       <label class="inline-field">Tri
         <select name="sort">
-          {{range pairs "title" "Titre" "last" "Dernier visionnage" "added" "Date d'ajout" "size" "Taille" "plays" "Lectures" "rating" "Note" "score" "Score de nettoyage"}}
+          {{range pairs "title" "Titre" "last" "Dernier visionnage" "added" "Date d'ajout" "size" "Taille" "plays" "Lectures" "rating" "Note" "inactive" "Inactivité"}}
           <option value="{{.V}}"{{if eq $d.Filter.Sort .V}} selected{{end}}>{{.L}}</option>
           {{end}}
         </select>

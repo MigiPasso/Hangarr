@@ -88,6 +88,12 @@
 
   document.addEventListener("arrstats:toast", function (e) { toast(e.detail.message, e.detail.level); });
 
+  // Protection changed: reload the detail (modal or page) to show the new state.
+  document.addEventListener("arrstats:changed", function (e) {
+    var modal = document.getElementById("modal");
+    if (modal && modal.open) { htmx.ajax("GET", e.detail.detailUrl, { target: "#modal-body" }); } else { location.reload(); }
+  });
+
   document.addEventListener("arrstats:deleted", function (e) {
     var d = e.detail;
     var confirm = document.getElementById("confirm");
@@ -103,3 +109,4 @@
     if (modal && modal.open) { modal.close(); } else if (document.querySelector("[data-detail]")) { location.href = d.libraryUrl; }
   });
 })();
+

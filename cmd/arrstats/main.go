@@ -14,7 +14,6 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
-	"strconv"
 	"sync"
 	"syscall"
 	"time"
@@ -22,15 +21,12 @@ import (
 
 	"arrstats/internal/actions"
 	"arrstats/internal/auth"
-	"arrstats/internal/clients/plex"
-	"arrstats/internal/clients/radarr"
-	"arrstats/internal/clients/sonarr"
-	"arrstats/internal/clients/tautulli"
 	"arrstats/internal/config"
 	"arrstats/internal/images"
-	"arrstats/internal/scoring"
+	"arrstats/internal/secretbox"
 	"arrstats/internal/store"
 	"arrstats/internal/syncer"
+	"arrstats/internal/upstream"
 	"arrstats/internal/web"
 )
 
@@ -44,6 +40,7 @@ Commands:
   sync --once                            run one synchronization and print a summary
   admin reset-password [--username NAME] print a new temporary password for an account
   healthcheck                            exit 0 if the local server answers /healthz
+  master-key                             print a new random master key (ARRSTATS_MASTER_KEY)
   version                                print the version
 `
 
@@ -63,6 +60,8 @@ func main() {
 		err = admin(args)
 	case "healthcheck":
 		err = healthcheck()
+	case "master-key":
+		err = masterKey()
 	case "version", "--version", "-v":
 		fmt.Println(version)
 	case "help", "--help", "-h":
@@ -99,12 +98,9 @@ func serve() error {
 	if err != nil {
 		return err
 	}
-	if err := cfg.RequireUpstreams(); err != nil {
-		return fmt.Errorf("invalid configuration:\n%w", err)
-	}
 	log := newLogger(cfg, os.Stdout)
 	slog.SetDefault(log)
-	log.Info("starting arrstats", "version", version, "dry_run", cfg.DryRun, "history_source", cfg.HistorySource)
+	log.Info("starting arrstats", "version", version, "dry_run", cfg.DryRun, "master_key", cfg.MasterKey != nil)
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, os.Interrupt)
 	defer stop()
@@ -142,7 +138,15 @@ func serve() error {
 	}
 	limiter := auth.NewRateLimiter(cfg.LoginMaxPerIP, auth.LoginWindow, nil)
 
-	sy := newSyncer(cfg, st, log)
+	services, err := newServices(ctx, cfg, st, log)
+	if err != nil {
+		return err
+	}
+	if up := services.Registry.Get(); !up.Ready() {
+		log.Warn("services not fully configured: synchronization disabled until configured in the UI",
+			"missing", up.Missing)
+	}
+	sy := newSyncer(cfg, st, services.Registry, log)
 	syncTime, err := st.Setting(ctx, store.SettingSyncTime, cfg.SyncTime)
 	if err != nil {
 		return err
@@ -153,33 +157,19 @@ func serve() error {
 		at, _ = syncer.ParseClockTime(cfg.SyncTime)
 	}
 	sy.SetDailyTime(at)
-	weights := scoring.DefaultWeights
-	loadFloat := func(key string, dst *float64) {
-		if v, err := st.Setting(ctx, key, ""); err == nil && v != "" {
-			if f, err := strconv.ParseFloat(v, 64); err == nil {
-				*dst = f
-			}
-		}
-	}
-	loadFloat(store.SettingScoreNeverWatched, &weights.NeverWatched)
-	loadFloat(store.SettingScoreContinuing, &weights.ActiveContinuing)
-	window := float64(weights.ActiveWindowDays)
-	loadFloat(store.SettingScoreActiveWindow, &window)
-	weights.ActiveWindowDays = int(window)
-	sy.SetWeights(weights)
 	lookup := func(ctx context.Context, kind string, arrID int64, variant string) (images.Info, bool, error) {
 		title, remote, ok, err := st.ImageInfo(ctx, kind, arrID, variant)
 		return images.Info{Title: title, RemoteURL: remote}, ok, err
 	}
-	proxy := images.New(filepath.Join(cfg.DataDir, "cache", "img"), sy.Sonarr.HTTP, sy.Radarr.HTTP, lookup, log)
+	proxy := images.New(filepath.Join(cfg.DataDir, "cache", "img"), services.Registry.ArrHTTP, lookup, log)
 
-	deleter := &actions.Service{Store: st, Sonarr: sy.Sonarr, Radarr: sy.Radarr, Plex: sy.Plex, Refresher: sy,
+	deleter := &actions.Service{Store: st, Upstreams: services.Registry, Refresher: sy,
 		DryRun: cfg.DryRun, ProtectedTags: cfg.ProtectedTags, ConfirmByTyping: cfg.ConfirmByTyping,
 		PlexRefresh: cfg.PlexRefreshAfterDelete, Log: log}
 
 	srv, err := web.New(web.Deps{Config: cfg, Auth: svc, Store: st, Log: log, Version: version,
 		PreSessionKey: key, LoginLimiter: limiter, Images: proxy, Sync: sy,
-		Actions: deleter, Sonarr: sy.Sonarr, Radarr: sy.Radarr})
+		Actions: deleter, Upstreams: services.Registry, Services: services})
 	if err != nil {
 		return err
 	}
@@ -287,22 +277,40 @@ func healthcheck() error {
 	return nil
 }
 
-// newSyncer wires the upstream clients from the configuration.
-func newSyncer(cfg *config.Config, st *store.Store, log *slog.Logger) *syncer.Syncer {
-	s := &syncer.Syncer{
+// newServices loads the upstream configuration (environment, then values
+// saved from the UI) and builds the clients.
+func newServices(ctx context.Context, cfg *config.Config, st *store.Store, log *slog.Logger) (*upstream.Manager, error) {
+	m := &upstream.Manager{Store: st, Env: upstream.EnvValues(cfg), HistoryMode: cfg.HistorySource,
+		Registry: upstream.NewRegistry(nil), Log: log}
+	if err := m.SetupKey(ctx, cfg.MasterKey, filepath.Join(cfg.DataDir, upstream.KeyFileName)); err != nil {
+		return nil, err
+	}
+	if _, err := m.Reload(ctx); err != nil {
+		return nil, fmt.Errorf("loading service configuration: %w", err)
+	}
+	return m, nil
+}
+
+// newSyncer builds the syncer on the upstream registry.
+func newSyncer(cfg *config.Config, st *store.Store, reg *upstream.Registry, log *slog.Logger) *syncer.Syncer {
+	return &syncer.Syncer{
 		Store:       st,
-		Sonarr:      sonarr.New(cfg.SonarrURL, cfg.SonarrAPIKey),
-		Radarr:      radarr.New(cfg.RadarrURL, cfg.RadarrAPIKey),
-		Plex:        plex.New(cfg.PlexURL, cfg.PlexToken),
+		Upstreams:   reg,
 		Log:         log,
 		AbandonDays: cfg.AbandonDays,
-		Weights:     scoring.DefaultWeights,
 		Location:    cfg.Location,
 	}
-	if cfg.HistorySource == config.HistoryTautulli {
-		s.Tautulli = tautulli.New(cfg.TautulliURL, cfg.TautulliAPIKey)
+}
+
+// masterKey prints a fresh master key. It is never written to disk: store it
+// in a Docker or Kubernetes secret.
+func masterKey() error {
+	k, err := secretbox.NewKey()
+	if err != nil {
+		return err
 	}
-	return s
+	fmt.Println(k)
+	return nil
 }
 
 // syncOnce runs a single synchronization (useful in dev) and prints a summary.
@@ -319,9 +327,6 @@ func syncOnce(args []string) error {
 	if err != nil {
 		return err
 	}
-	if err := cfg.RequireUpstreams(); err != nil {
-		return fmt.Errorf("invalid configuration:\n%w", err)
-	}
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, os.Interrupt)
 	defer stop()
 	st, err := store.Open(ctx, cfg.DataDir)
@@ -329,7 +334,15 @@ func syncOnce(args []string) error {
 		return err
 	}
 	defer func() { _ = st.Close() }()
-	res, err := newSyncer(cfg, st, newLogger(cfg, os.Stderr)).Run(ctx)
+	log := newLogger(cfg, os.Stderr)
+	services, err := newServices(ctx, cfg, st, log)
+	if err != nil {
+		return err
+	}
+	res, err := newSyncer(cfg, st, services.Registry, log).Run(ctx)
+	if errors.Is(err, syncer.ErrNotConfigured) {
+		return fmt.Errorf("services not configured: %v", services.Registry.Get().Missing)
+	}
 	if err != nil {
 		return err
 	}

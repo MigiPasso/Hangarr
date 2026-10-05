@@ -151,3 +151,12 @@ func (c *Client) Users(ctx context.Context) ([]User, error) {
 	var out []User
 	return out, c.Call(ctx, "get_users", nil, &out)
 }
+
+// Info checks the URL and the API key and returns the Tautulli version.
+func (c *Client) Info(ctx context.Context) (string, error) {
+	var out struct {
+		Version string `json:"tautulli_version"`
+	}
+	err := c.Call(ctx, "get_tautulli_info", nil, &out)
+	return out.Version, err
+}

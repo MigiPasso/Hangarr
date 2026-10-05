@@ -34,6 +34,18 @@ test("protected series cannot be deleted", async ({ page }) => {
   await expect(modal.getByRole("button", { name: "Supprimer la saison" })).toBeDisabled();
 });
 
+test("protecting in dry-run is only simulated", async ({ page, request }) => {
+  await request.post(`${mockURL}/_reset`);
+  await page.goto("/series");
+  await page.locator(".media-card", { hasText: "Breaking Bad" }).click();
+  const modal = page.locator("#modal");
+  await modal.getByRole("button", { name: "Protéger", exact: true }).click();
+  await expect(page.locator(".toast")).toContainText("Simulation : « Breaking Bad » aurait reçu le tag keep");
+  await expect(modal.getByRole("button", { name: "Protéger", exact: true })).toBeVisible();
+  const calls: { method: string }[] = await (await request.get(`${mockURL}/_calls`)).json();
+  expect(calls.filter((c) => c.method !== "GET")).toHaveLength(0);
+});
+
 test("season deletion in dry-run touches nothing", async ({ page, request }) => {
   await request.post(`${mockURL}/_reset`);
   await page.goto("/series");

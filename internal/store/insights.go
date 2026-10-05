@@ -43,17 +43,27 @@ type Overview struct {
 }
 
 // CleanupScope selects cleanup candidates: Sonarr/Radarr items with files,
-// not protected, outside the grace period.
+// not protected, that nobody watched since Cutoff (never-watched items count
+// from the date they were added; an unknown date counts as old).
 type CleanupScope struct {
 	ProtectedTags []string
-	GraceCutoff   int64 // added_at must be older than this
-	Threshold     float64
+	Cutoff        int64 // unix time: last activity must be older
+}
+
+// InactiveSince is the SQL expression of an item's last activity: its last
+// view, or the date it was added when never watched.
+func inactiveSince(alias string) string {
+	return `COALESCE(` + alias + `.last_viewed_at, ` + alias + `.added_at, 0)`
+}
+
+func (c CleanupScope) base(alias string) (string, []any) {
+	prot, args := protectedClause(alias, c.ProtectedTags)
+	return alias + `.arr_id IS NOT NULL AND ` + alias + `.size_bytes > 0` + prot, args
 }
 
 func (c CleanupScope) where(alias string) (string, []any) {
-	prot, args := protectedClause(alias, c.ProtectedTags)
-	return alias + `.arr_id IS NOT NULL AND ` + alias + `.size_bytes > 0 AND ` + alias + `.cleanup_score IS NOT NULL
-		AND (` + alias + `.added_at IS NULL OR ` + alias + `.added_at < ?)` + prot, append([]any{c.GraceCutoff}, args...)
+	where, args := c.base(alias)
+	return where + ` AND ` + inactiveSince(alias) + ` < ?`, append(args, c.Cutoff)
 }
 
 // Overview computes the dashboard tiles.
@@ -68,7 +78,7 @@ func (s *Store) Overview(ctx context.Context, scope CleanupScope, since30d int64
 	}
 	where, args := scope.where("m")
 	err = s.db.QueryRowContext(ctx, `SELECT COUNT(*), COALESCE(SUM(m.size_bytes), 0) FROM media m
-		WHERE `+where+` AND m.cleanup_score >= ?`, append(args, scope.Threshold)...).Scan(&o.RecoverableCount, &o.RecoverableBytes)
+		WHERE `+where, args...).Scan(&o.RecoverableCount, &o.RecoverableBytes)
 	if err != nil {
 		return nil, err
 	}
@@ -509,11 +519,10 @@ func (s *Store) SeasonTotals(ctx context.Context, ids []int64) (map[int64]map[in
 // CleanupItem is a cleanup candidate (whole series or movie).
 type CleanupItem struct {
 	LibraryItem
-	Score float64
+	InactiveSince int64 // last view, or added date when never watched (0: unknown)
 }
 
-// CleanupCandidates lists candidates by score, highest first, with the total
-// size of the whole candidate set and of those above the threshold.
+// CleanupCandidates lists candidates, largest first, with their total size.
 func (s *Store) CleanupCandidates(ctx context.Context, scope CleanupScope, kind string, limit int) ([]CleanupItem, int64, error) {
 	where, args := scope.where("m")
 	if kind != "" {
@@ -521,17 +530,17 @@ func (s *Store) CleanupCandidates(ctx context.Context, scope CleanupScope, kind 
 		args = append(args, kind)
 	}
 	var total int64
-	if err := s.db.QueryRowContext(ctx, `SELECT COALESCE(SUM(m.size_bytes), 0) FROM media m WHERE `+where+
-		` AND m.cleanup_score >= ?`, append(args, scope.Threshold)...).Scan(&total); err != nil {
+	if err := s.db.QueryRowContext(ctx, `SELECT COALESCE(SUM(m.size_bytes), 0) FROM media m WHERE `+where,
+		args...).Scan(&total); err != nil {
 		return nil, 0, err
 	}
 	//nolint:gosec // G202: the scope clause is built from bound parameters only
 	rows, err := s.db.QueryContext(ctx, `SELECT m.id, m.arr_id, m.kind, m.title, COALESCE(m.year, 0), m.watch_state,
 		m.play_count, m.distinct_viewers, COALESCE(m.watched_episodes, 0), COALESCE(m.downloaded_episodes, 0),
 		m.last_viewed_at, COALESCE(NULLIF(a.friendly_name, ''), a.username, ''), m.size_bytes, m.added_at,
-		m.cleanup_score, m.tags, COALESCE(m.status, '')
+		`+inactiveSince("m")+`, m.tags, COALESCE(m.status, '')
 		FROM media m LEFT JOIN plex_accounts a ON a.account_id = m.last_viewed_by
-		WHERE `+where+` ORDER BY m.cleanup_score DESC, m.size_bytes DESC LIMIT ?`, append(args, limit)...)
+		WHERE `+where+` ORDER BY m.size_bytes DESC, `+inactiveSince("m")+` ASC LIMIT ?`, append(args, limit)...)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -542,7 +551,7 @@ func (s *Store) CleanupCandidates(ctx context.Context, scope CleanupScope, kind 
 		var last, added sql.NullInt64
 		var tags string
 		if err := rows.Scan(&c.ID, &c.ArrID, &c.Kind, &c.Title, &c.Year, &c.State, &c.Plays, &c.Viewers,
-			&c.WatchedEpisodes, &c.DownloadedEpisodes, &last, &c.LastViewedBy, &c.SizeBytes, &added, &c.Score, &tags,
+			&c.WatchedEpisodes, &c.DownloadedEpisodes, &last, &c.LastViewedBy, &c.SizeBytes, &added, &c.InactiveSince, &tags,
 			&c.Status); err != nil {
 			return nil, 0, err
 		}
@@ -565,9 +574,12 @@ type UnwatchedSeason struct {
 }
 
 // UnwatchedSeasons lists seasons nobody watched although the series was,
-// largest first (same protection and grace rules as whole items).
+// largest first: protected series are excluded, and the series must have
+// been added before the cutoff (the series itself may still be watched).
 func (s *Store) UnwatchedSeasons(ctx context.Context, scope CleanupScope, limit int) ([]UnwatchedSeason, int64, error) {
-	where, args := scope.where("m")
+	where, args := scope.base("m")
+	where += ` AND COALESCE(m.added_at, 0) < ?`
+	args = append(args, scope.Cutoff)
 	var total int64
 	var out []UnwatchedSeason
 	err := s.queryEach(ctx, `SELECT m.id, m.arr_id, m.title, se.season_number, se.episode_file_count, se.size_bytes,
