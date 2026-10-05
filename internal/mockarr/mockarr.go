@@ -252,6 +252,9 @@ func (m *Mock) Tautulli() http.Handler {
 		switch cmd {
 		case "status", "arnold":
 			writeJSON(w, map[string]any{"response": map[string]any{"result": "success", "message": nil, "data": map[string]any{}}})
+		case "get_tautulli_info":
+			writeJSON(w, map[string]any{"response": map[string]any{"result": "success", "message": nil,
+				"data": map[string]any{"tautulli_version": "v2.15.0-mock"}}})
 		case "get_users", "get_libraries":
 			m.file(w, "tautulli/"+cmd+".json")
 		case "get_history":

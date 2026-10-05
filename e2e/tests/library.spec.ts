@@ -71,10 +71,18 @@ test("manual sync", async ({ page }) => {
 
 test("daily sync time can be changed", async ({ page }) => {
   await page.getByRole("link", { name: "Réglages" }).click();
-  await page.getByLabel("Heure de la synchronisation quotidienne").fill("06:30");
+  const hour = page.getByLabel("Heure", { exact: true });
+  const minute = page.getByLabel("Minute", { exact: true });
+  await expect(hour).toHaveValue("04");
+  await hour.selectOption("06");
+  // Typing on a focused drop-down picks the value: "4" then "5" gives 45.
+  await minute.focus();
+  await page.keyboard.type("45");
+  await expect(minute).toHaveValue("45");
   await page.locator("#settings-form").getByRole("button", { name: "Enregistrer" }).click();
   await expect(page.getByText("Enregistré.", { exact: true })).toBeVisible();
-  await expect(page.getByText(/Prochaine synchronisation : .* à 06:30/)).toBeVisible();
+  await expect(page.getByText(/Prochaine synchronisation : .* à 06:45/)).toBeVisible();
   await page.reload();
-  await expect(page.getByLabel("Heure de la synchronisation quotidienne")).toHaveValue("06:30");
+  await expect(page.getByLabel("Heure", { exact: true })).toHaveValue("06");
+  await expect(page.getByLabel("Minute", { exact: true })).toHaveValue("45");
 });

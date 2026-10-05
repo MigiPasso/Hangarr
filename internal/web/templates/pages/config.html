@@ -1,0 +1,75 @@
+{{define "content"}}
+<h1>Configuration</h1>
+<p class="muted config-intro">Adresses et clés d'accès de Sonarr, Radarr, Plex et Tautulli. Une valeur définie par une
+  variable d'environnement est prioritaire et ne peut pas être modifiée ici. Les clés et tokens sont chiffrés en base et
+  ne sont jamais réaffichés : laissez le champ vide pour conserver la valeur actuelle.</p>
+{{if .Data.KeyInDataDir}}
+<div class="alert alert-warning config-intro" role="note">
+  <strong>Clé de chiffrement stockée avec les données.</strong> Les clés et tokens sont chiffrés, mais la clé a été générée
+  dans le volume de données (<code>master.key</code>) : une sauvegarde ou une copie du volume les expose. Pour une
+  meilleure protection, définissez <code>ARRSTATS_MASTER_KEY</code> (ou <code>ARRSTATS_MASTER_KEY_FILE</code>) ;
+  <code>arrstats master-key</code> en génère une. Au redémarrage suivant, les secrets sont rechiffrés avec cette clé et
+  <code>master.key</code> est supprimé, sans rien ressaisir.
+</div>
+{{else if not .Data.CanStoreSecrets}}
+<div class="alert alert-warning config-intro" role="alert">
+  <strong>Aucune clé maître n'est définie.</strong> Les adresses peuvent être enregistrées, mais pas les clés d'API ni les
+  tokens. Définissez <code>ARRSTATS_MASTER_KEY</code> (ou <code>ARRSTATS_MASTER_KEY_FILE</code>) puis redémarrez ;
+  <code>arrstats master-key</code> en génère une. Conservez-la en dehors du volume de données.
+</div>
+{{end}}
+<div class="config-grid">
+{{range .Data.Services}}{{template "service_section" .}}{{end}}
+</div>
+<p class="small muted config-intro">Source de l'historique de lecture :
+  {{if eq .Data.HistorySource "tautulli"}}Tautulli{{else}}Plex (seulement les lectures encore présentes dans Plex){{end}}
+  (variable <code>HISTORY_SOURCE</code>).</p>
+{{end}}
+
+{{define "service_section"}}
+<section class="card config-card" id="service-{{.Service}}" aria-labelledby="service-{{.Service}}-title">
+  <div class="config-head">
+    <h2 id="service-{{.Service}}-title">{{.Label}}</h2>
+    {{if .Configured}}<span class="badge badge-ok">Configuré</span>{{else}}<span class="badge badge-muted">Non configuré</span>{{end}}
+  </div>
+  <form method="post" action="/config/{{.Service}}" class="stack"
+        hx-post="/config/{{.Service}}" hx-target="closest section" hx-swap="outerHTML">
+    <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+    {{range .Fields}}
+    <div class="config-field">
+      <label for="f-{{.Key}}">{{.Label}}</label>
+      {{if .Locked}}
+        <input id="f-{{.Key}}" type="text" value="{{if eq .Kind "url"}}{{.Value}}{{else}}{{.Hint}}{{end}}" disabled
+               aria-describedby="f-{{.Key}}-env">
+        <p id="f-{{.Key}}-env" class="small muted">Défini par l'environnement (<code>{{.Env}}</code>).</p>
+      {{else if eq .Kind "url"}}
+        <input id="f-{{.Key}}" name="{{.Key}}" type="url" value="{{.Value}}" placeholder="http://…" autocomplete="off"
+               spellcheck="false"{{if index $.Errors .Key}} aria-invalid="true"{{end}}>
+      {{else}}
+        <input id="f-{{.Key}}" name="{{.Key}}" type="password" autocomplete="new-password" spellcheck="false"
+               placeholder="{{if .Hint}}{{.Hint}} (vide = conserver){{else}}Non défini{{end}}"
+               {{if not $.CanStoreSecrets}}disabled{{end}}{{if index $.Errors .Key}} aria-invalid="true"{{end}}>
+        {{if .Broken}}<p class="field-error">Valeur enregistrée illisible (clé maître changée ?) : saisissez-la de nouveau.</p>{{end}}
+        {{if or .Hint .Broken}}<label class="check small"><input type="checkbox" name="{{.Key}}.clear" value="1"> Effacer la valeur enregistrée</label>{{end}}
+      {{end}}
+      {{with index $.Errors .Key}}<p class="field-error" role="alert">{{.}}</p>{{end}}
+      {{with .Help}}<p class="small muted">{{.}}</p>{{end}}
+    </div>
+    {{end}}
+    {{if .Saved}}<p class="small ok-text" role="status">Enregistré.{{if .SyncStarted}} Première synchronisation lancée.{{end}}</p>{{end}}
+    {{if .NothingChanged}}<p class="small muted" role="status">Aucun changement.</p>{{end}}
+    <div class="config-actions">
+      {{if not .Locked}}<button type="submit" class="primary">Enregistrer</button>{{end}}
+      <button type="submit" formaction="/config/{{.Service}}/test"
+              hx-post="/config/{{.Service}}/test" hx-target="#test-{{.Service}}" hx-swap="outerHTML">Tester la connexion</button>
+    </div>
+    <p id="test-{{.Service}}" class="test-result" role="status">{{with .Test}}{{template "test_msg" .}}{{end}}</p>
+  </form>
+</section>
+{{end}}
+
+{{define "test_msg"}}<span class="{{if .OK}}ok-text{{else}}warn{{end}}">{{.Message}}</span>{{end}}
+
+{{define "test_result"}}{{with .Data}}<p id="test-{{.Service}}" class="test-result" role="status">{{template "test_msg" .}}</p>{{end}}{{end}}
+
+{{define "config_saved"}}{{template "service_section" .Data}}{{template "config_banner" .}}{{template "sync_status" .}}{{end}}

@@ -33,7 +33,11 @@ test("stats filters and user page", async ({ page }) => {
 test("cleanup lists candidates and never-watched seasons", async ({ page }) => {
   await page.getByRole("link", { name: "Nettoyage" }).click();
   const rows = page.locator(".cleanup-table tbody tr");
-  await expect(rows.first()).toContainText("Tenet");
+  // Nobody watched for 180 days (default), largest first, with the reason.
+  await expect(page.getByText("Ce que personne n'a regardé depuis 180 jours")).toBeVisible();
+  await expect(rows.first()).toContainText("Interstellar");
+  await expect(rows.first()).toContainText("Dernière lecture il y a");
+  await expect(page.locator(".cleanup-table tr", { hasText: "Tenet" })).toContainText("Jamais vu, ajouté il y a");
   await expect(page.locator(".cleanup-table")).not.toContainText("Severance");
   await expect(page.getByRole("heading", { name: "Saisons jamais vues" })).toBeVisible();
   await rows.first().getByRole("button", { name: "Supprimer" }).click();

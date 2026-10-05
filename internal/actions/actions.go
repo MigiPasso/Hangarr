@@ -15,9 +15,9 @@ import (
 
 	"arrstats/internal/clients/httpx"
 	"arrstats/internal/clients/plex"
-	"arrstats/internal/clients/radarr"
 	"arrstats/internal/clients/sonarr"
 	"arrstats/internal/store"
+	"arrstats/internal/upstream"
 )
 
 // Action names stored in action_log.
@@ -30,6 +30,7 @@ const (
 // Errors shown to the user.
 var (
 	ErrNotFound        = errors.New("élément introuvable")
+	ErrUnconfigured    = errors.New("service non configuré")
 	ErrNotDeletable    = errors.New("élément non géré par Sonarr/Radarr : suppression impossible")
 	ErrProtected       = errors.New("élément protégé par un tag")
 	ErrConfirmMismatch = errors.New("le titre saisi ne correspond pas")
@@ -45,9 +46,7 @@ type Refresher interface {
 // Service deletes media.
 type Service struct {
 	Store           *store.Store
-	Sonarr          *sonarr.Client
-	Radarr          *radarr.Client
-	Plex            *plex.Client // nil disables the Plex refresh
+	Upstreams       *upstream.Registry // a nil Plex client disables the Plex refresh
 	Refresher       Refresher
 	DryRun          bool
 	ProtectedTags   []string
@@ -103,24 +102,24 @@ func (s *Service) protected(labels []string) bool {
 
 // liveTags reads the item's current tags from Sonarr/Radarr; the local copy
 // may be a day old and a tag added since must still protect the item.
-func (s *Service) liveTags(ctx context.Context, kind string, arrID int64) ([]string, error) {
+func (s *Service) liveTags(ctx context.Context, up *upstream.Clients, kind string, arrID int64) ([]string, error) {
 	var ids []int64
 	var tags []sonarr.Tag
 	var err error
 	if kind == "series" {
-		se, _, gerr := s.Sonarr.SeriesByID(ctx, arrID)
+		se, _, gerr := up.Sonarr.SeriesByID(ctx, arrID)
 		if gerr != nil {
 			return nil, gerr
 		}
 		ids = se.Tags
-		tags, err = s.Sonarr.Tags(ctx)
+		tags, err = up.Sonarr.Tags(ctx)
 	} else {
-		m, gerr := s.Radarr.MovieByID(ctx, arrID)
+		m, gerr := up.Radarr.MovieByID(ctx, arrID)
 		if gerr != nil {
 			return nil, gerr
 		}
 		ids = m.Tags
-		tags, err = s.Radarr.Tags(ctx)
+		tags, err = up.Radarr.Tags(ctx)
 	}
 	if err != nil {
 		return nil, err
@@ -139,6 +138,7 @@ func (s *Service) liveTags(ctx context.Context, kind string, arrID int64) ([]str
 // Delete performs (or simulates) a deletion. Every attempt that reaches
 // Sonarr/Radarr is journaled, successful or not.
 func (s *Service) Delete(ctx context.Context, req Request) (*Result, error) {
+	up := s.Upstreams.Get()
 	m, err := s.Store.MediaByID(ctx, req.MediaID)
 	if errors.Is(err, store.ErrNotFound) {
 		return nil, ErrNotFound
@@ -179,7 +179,7 @@ func (s *Service) Delete(ctx context.Context, req Request) (*Result, error) {
 		res.SizeFreed = 0
 	}
 
-	err = s.execute(ctx, m, req, res)
+	err = s.execute(ctx, up, m, req, res)
 	entry := store.Action{
 		At: s.now().Unix(), Action: res.Action, MediaKind: m.Kind, ArrID: m.ArrID, Title: m.Title,
 		SeasonNumber: req.Season, SizeFreedBytes: res.SizeFreed, DeleteFiles: req.DeleteFiles,
@@ -198,14 +198,17 @@ func (s *Service) Delete(ctx context.Context, req Request) (*Result, error) {
 		return nil, err
 	}
 	if !s.DryRun {
-		s.afterDelete(context.WithoutCancel(ctx), m, req, res)
+		s.afterDelete(context.WithoutCancel(ctx), up, m, req, res)
 	}
 	return res, nil
 }
 
 // execute checks the live protection tags, then deletes unless dry-run.
-func (s *Service) execute(ctx context.Context, m *store.Media, req Request, res *Result) error {
-	labels, err := s.liveTags(ctx, m.Kind, m.ArrID)
+func (s *Service) execute(ctx context.Context, up *upstream.Clients, m *store.Media, req Request, res *Result) error {
+	if (m.Kind == "movie" && up.Radarr == nil) || (m.Kind != "movie" && up.Sonarr == nil) {
+		return fmt.Errorf("%w : %s", ErrUnconfigured, arrName(m.Kind))
+	}
+	labels, err := s.liveTags(ctx, up, m.Kind, m.ArrID)
 	if isNotFound(err) {
 		return fmt.Errorf("%w dans %s", ErrNotFound, arrName(m.Kind))
 	}
@@ -220,19 +223,19 @@ func (s *Service) execute(ctx context.Context, m *store.Media, req Request, res 
 	}
 	switch res.Action {
 	case DeleteMovie:
-		return s.Radarr.DeleteMovie(ctx, m.ArrID, req.DeleteFiles, req.ImportExclusion)
+		return up.Radarr.DeleteMovie(ctx, m.ArrID, req.DeleteFiles, req.ImportExclusion)
 	case DeleteSeries:
-		return s.Sonarr.DeleteSeries(ctx, m.ArrID, req.DeleteFiles, req.ImportExclusion)
+		return up.Sonarr.DeleteSeries(ctx, m.ArrID, req.DeleteFiles, req.ImportExclusion)
 	default:
-		return s.deleteSeason(ctx, m.ArrID, *req.Season, req.DeleteFiles)
+		return s.deleteSeason(ctx, up.Sonarr, m.ArrID, *req.Season, req.DeleteFiles)
 	}
 }
 
 // deleteSeason deletes the season's files, THEN unmonitors the season, or
 // Sonarr would download it again (SPEC §3.1).
-func (s *Service) deleteSeason(ctx context.Context, seriesID int64, season int, deleteFiles bool) error {
+func (s *Service) deleteSeason(ctx context.Context, c *sonarr.Client, seriesID int64, season int, deleteFiles bool) error {
 	if deleteFiles {
-		files, err := s.Sonarr.EpisodeFiles(ctx, seriesID)
+		files, err := c.EpisodeFiles(ctx, seriesID)
 		if err != nil {
 			return err
 		}
@@ -243,13 +246,13 @@ func (s *Service) deleteSeason(ctx context.Context, seriesID int64, season int, 
 			}
 		}
 		if len(ids) > 0 {
-			if err := s.Sonarr.DeleteEpisodeFiles(ctx, ids); err != nil {
+			if err := c.DeleteEpisodeFiles(ctx, ids); err != nil {
 				return err
 			}
 		}
 	}
 	// Re-read the series after the deletion so the PUT carries fresh data.
-	_, raw, err := s.Sonarr.SeriesByID(ctx, seriesID)
+	_, raw, err := c.SeriesByID(ctx, seriesID)
 	if err != nil {
 		return fmt.Errorf("fichiers supprimés mais saison non démonitorée : %w", err)
 	}
@@ -257,7 +260,7 @@ func (s *Service) deleteSeason(ctx context.Context, seriesID int64, season int, 
 	if err != nil || !ok {
 		return fmt.Errorf("fichiers supprimés mais saison non démonitorée : %w", errors.Join(err, ErrNoSuchSeason))
 	}
-	if err := s.Sonarr.UpdateSeriesRaw(ctx, seriesID, updated); err != nil {
+	if err := c.UpdateSeriesRaw(ctx, seriesID, updated); err != nil {
 		return fmt.Errorf("fichiers supprimés mais saison non démonitorée : %w", err)
 	}
 	return nil
@@ -272,7 +275,7 @@ func arrName(kind string) string {
 
 // afterDelete updates local data and optionally asks Plex to rescan.
 // Failures are logged: the deletion itself succeeded.
-func (s *Service) afterDelete(ctx context.Context, m *store.Media, req Request, res *Result) {
+func (s *Service) afterDelete(ctx context.Context, up *upstream.Clients, m *store.Media, req Request, res *Result) {
 	var err error
 	if res.Action == DeleteSeason {
 		err = s.Refresher.RefreshSeries(ctx, m.ArrID)
@@ -282,16 +285,16 @@ func (s *Service) afterDelete(ctx context.Context, m *store.Media, req Request, 
 	if err != nil {
 		s.Log.Warn("local refresh after deletion failed", "media_id", m.ID, "err", err)
 	}
-	if s.PlexRefresh && s.Plex != nil && req.DeleteFiles {
-		s.refreshPlex(ctx, m.Kind)
+	if s.PlexRefresh && up.Plex != nil && req.DeleteFiles {
+		s.refreshPlex(ctx, up.Plex, m.Kind)
 	}
 }
 
 // refreshPlex rescans the Plex sections of the media's type, then empties
 // their trash. The scan is asynchronous: if the trash is emptied before it
 // ends, Plex's "empty trash after every scan" setting finishes the job.
-func (s *Service) refreshPlex(ctx context.Context, kind string) {
-	sections, err := s.Plex.Sections(ctx)
+func (s *Service) refreshPlex(ctx context.Context, p *plex.Client, kind string) {
+	sections, err := p.Sections(ctx)
 	if err != nil {
 		s.Log.Warn("plex refresh failed", "err", err)
 		return
@@ -301,11 +304,11 @@ func (s *Service) refreshPlex(ctx context.Context, kind string) {
 		if sec.Type != want {
 			continue
 		}
-		if err := s.Plex.RefreshSection(ctx, string(sec.Key)); err != nil {
+		if err := p.RefreshSection(ctx, string(sec.Key)); err != nil {
 			s.Log.Warn("plex refresh failed", "section", sec.Key, "err", err)
 			continue
 		}
-		if err := s.Plex.EmptyTrash(ctx, string(sec.Key)); err != nil {
+		if err := p.EmptyTrash(ctx, string(sec.Key)); err != nil {
 			s.Log.Warn("plex empty trash failed", "section", sec.Key, "err", err)
 		}
 	}

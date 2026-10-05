@@ -13,6 +13,7 @@
 <body{{if .Session}} hx-headers='{{.HXHeaders}}'{{end}}>
   {{if .DryRun}}<div class="dry-run-banner" role="status">Mode simulation (DRY_RUN) : aucune suppression ne sera réellement effectuée.</div>{{end}}
   {{if .Session}}{{template "nav" .}}{{end}}
+  {{if and .Session (not .Session.MustChangePassword)}}{{template "config_banner" .}}{{end}}
   <main class="{{if .Session}}container{{else}}centered{{end}}">
     {{template "content" .}}
   </main>

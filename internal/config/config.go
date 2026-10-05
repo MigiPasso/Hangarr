@@ -12,6 +12,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"arrstats/internal/secretbox"
 )
 
 // History sources.
@@ -41,15 +43,20 @@ type Config struct {
 	RadarrPublicURL string
 	PlexPublicURL   string
 
-	// HistorySource is resolved: always "tautulli" or "plex" after Load.
+	// HistorySource is the requested mode: "auto", "tautulli" or "plex".
+	// It is resolved against the effective service configuration (which may
+	// come from the UI) by the upstream package.
 	HistorySource         string
 	TautulliWebhookSecret string
+
+	// MasterKey encrypts the credentials saved from the UI (nil: saving
+	// credentials from the UI is refused).
+	MasterKey []byte
 
 	SyncTime               string // default daily sync time "HH:MM" (overridable in the UI)
 	DryRun                 bool
 	ProtectedTags          []string
 	ConfirmByTyping        bool
-	GraceDays              int
 	AbandonDays            int
 	PlexRefreshAfterDelete bool
 
@@ -196,12 +203,12 @@ func Load(lookup LookupFunc, readFile ReadFileFunc) (*Config, error) {
 		PlexPublicURL:   l.baseURL("PLEX_PUBLIC_URL"),
 
 		TautulliWebhookSecret: l.secret("TAUTULLI_WEBHOOK_SECRET"),
+		HistorySource:         strings.ToLower(l.str("HISTORY_SOURCE", HistoryAuto)),
 
 		SyncTime:               l.str("SYNC_TIME", "04:00"),
 		DryRun:                 l.boolean("DRY_RUN", true),
 		ProtectedTags:          splitList(l.str("PROTECTED_TAGS", "keep")),
 		ConfirmByTyping:        l.boolean("CONFIRM_BY_TYPING", true),
-		GraceDays:              l.integer("GRACE_DAYS", 30, 0),
 		AbandonDays:            l.integer("ABANDON_DAYS", 90, 1),
 		PlexRefreshAfterDelete: l.boolean("PLEX_REFRESH_AFTER_DELETE", true),
 
@@ -260,22 +267,18 @@ func Load(lookup LookupFunc, readFile ReadFileFunc) (*Config, error) {
 	}
 	c.Location = loc
 
-	tautulliConfigured := c.TautulliURL != "" && c.TautulliAPIKey != ""
-	switch hs := strings.ToLower(l.str("HISTORY_SOURCE", HistoryAuto)); hs {
-	case HistoryAuto:
-		c.HistorySource = HistoryPlex
-		if tautulliConfigured {
-			c.HistorySource = HistoryTautulli
-		}
-	case HistoryTautulli:
-		c.HistorySource = HistoryTautulli
-		if !tautulliConfigured {
-			l.fail("HISTORY_SOURCE=tautulli requires TAUTULLI_URL and TAUTULLI_API_KEY")
-		}
-	case HistoryPlex:
-		c.HistorySource = HistoryPlex
+	switch c.HistorySource {
+	case HistoryAuto, HistoryTautulli, HistoryPlex:
 	default:
-		l.fail("HISTORY_SOURCE: expected tautulli, plex or auto, got %q", hs)
+		l.fail("HISTORY_SOURCE: expected tautulli, plex or auto, got %q", c.HistorySource)
+	}
+
+	if mk := l.secret("ARRSTATS_MASTER_KEY"); mk != "" {
+		key, err := secretbox.ParseKey(mk)
+		if err != nil {
+			l.fail("ARRSTATS_MASTER_KEY: %w", err)
+		}
+		c.MasterKey = key
 	}
 
 	if len(l.errs) > 0 {
@@ -284,22 +287,8 @@ func Load(lookup LookupFunc, readFile ReadFileFunc) (*Config, error) {
 	return c, nil
 }
 
-// RequireUpstreams checks that the mandatory upstream services are configured.
-// SonarrWebURL is the Sonarr URL for browser links.
-func (c *Config) SonarrWebURL() string { return firstNonEmpty(c.SonarrPublicURL, c.SonarrURL) }
-
-// RadarrWebURL is the Radarr URL for browser links.
-func (c *Config) RadarrWebURL() string { return firstNonEmpty(c.RadarrPublicURL, c.RadarrURL) }
-
-func firstNonEmpty(vs ...string) string {
-	for _, v := range vs {
-		if v != "" {
-			return v
-		}
-	}
-	return ""
-}
-
+// RequireUpstreams checks that the mandatory upstream services are defined
+// in the environment (capture-fixtures, which never reads the database).
 func (c *Config) RequireUpstreams() error {
 	var errs []error
 	req := func(key, v string) {

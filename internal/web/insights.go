@@ -12,7 +12,6 @@ import (
 	"sync"
 	"time"
 
-	"arrstats/internal/scoring"
 	"arrstats/internal/store"
 )
 
@@ -20,28 +19,12 @@ const day = 24 * time.Hour
 
 // --- shared helpers ---------------------------------------------------------
 
-// Default cleanup threshold: a score of 1 is e.g. one year without views
-// for 3 GB watched once.
-const defaultCleanupThreshold = 1.0
-
-func (s *Server) settingFloat(ctx context.Context, key string, def float64) float64 {
-	v, err := s.Store.Setting(ctx, key, "")
-	if err != nil || v == "" {
-		return def
-	}
-	f, err := strconv.ParseFloat(v, 64)
-	if err != nil {
-		return def
-	}
-	return f
-}
-
-func (s *Server) cleanupScope(ctx context.Context, now time.Time) store.CleanupScope {
+func (s *Server) cleanupScope(ctx context.Context, now time.Time) (store.CleanupScope, int) {
+	days := s.cleanupDays(ctx)
 	return store.CleanupScope{
 		ProtectedTags: s.Config.ProtectedTags,
-		GraceCutoff:   now.Add(-time.Duration(s.Config.GraceDays) * day).Unix(),
-		Threshold:     s.settingFloat(ctx, store.SettingCleanupThreshold, defaultCleanupThreshold),
-	}
+		Cutoff:        now.Add(-time.Duration(days) * day).Unix(),
+	}, days
 }
 
 func hours(secs int64) string {
@@ -90,15 +73,16 @@ func (s *Server) diskSpace(ctx context.Context) []diskRow {
 		seen[path] = true
 		rows = append(rows, diskRow{Path: path, FreeBytes: free, TotalBytes: total, UsedPct: int((total - free) * 100 / total)})
 	}
-	if s.Sonarr != nil {
-		if ds, err := s.Sonarr.DiskSpace(ctx); err == nil {
+	up := s.Upstreams.Get()
+	if up.Sonarr != nil {
+		if ds, err := up.Sonarr.DiskSpace(ctx); err == nil {
 			for _, d := range ds {
 				add(d.Path, int64(d.FreeSpace), int64(d.TotalSpace))
 			}
 		}
 	}
-	if s.Radarr != nil {
-		if ds, err := s.Radarr.DiskSpace(ctx); err == nil {
+	if up.Radarr != nil {
+		if ds, err := up.Radarr.DiskSpace(ctx); err == nil {
 			for _, d := range ds {
 				add(d.Path, int64(d.FreeSpace), int64(d.TotalSpace))
 			}
@@ -118,7 +102,7 @@ type dayPoint struct {
 
 type dashboardData struct {
 	Overview     *store.Overview
-	Threshold    float64
+	CleanupDays  int
 	TopAll       bool
 	TopSeries    []store.TopItem
 	TopMovies    []store.TopItem
@@ -151,8 +135,8 @@ func (s *Server) home(w http.ResponseWriter, r *http.Request) {
 		s.render(w, r, http.StatusOK, "home", "dashboard_top", pd)
 		return
 	}
-	scope := s.cleanupScope(ctx, now)
-	d.Threshold = scope.Threshold
+	scope, days := s.cleanupScope(ctx, now)
+	d.CleanupDays = days
 	if d.Overview, err = s.Store.Overview(ctx, scope, since); err != nil {
 		s.serverError(w, r, err)
 		return
@@ -542,12 +526,11 @@ func (s *Server) userStats(w http.ResponseWriter, r *http.Request) {
 
 type cleanupData struct {
 	Kind         string
-	Threshold    float64
+	Days         int
 	Items        []store.CleanupItem
 	Recoverable  int64
 	Seasons      []store.UnwatchedSeason
 	SeasonsBytes int64
-	GraceDays    int
 	Protected    string
 }
 
@@ -555,9 +538,8 @@ func (s *Server) cleanup(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	now := time.Now()
 	kind := pick(r.URL.Query().Get("kind"), []string{"series", "movie"})
-	scope := s.cleanupScope(ctx, now)
-	d := cleanupData{Kind: kind, Threshold: scope.Threshold, GraceDays: s.Config.GraceDays,
-		Protected: strings.Join(s.Config.ProtectedTags, ", ")}
+	scope, days := s.cleanupScope(ctx, now)
+	d := cleanupData{Kind: kind, Days: days, Protected: strings.Join(s.Config.ProtectedTags, ", ")}
 	var err error
 	if d.Items, d.Recoverable, err = s.Store.CleanupCandidates(ctx, scope, kind, 100); err != nil {
 		s.serverError(w, r, err)
@@ -572,69 +554,49 @@ func (s *Server) cleanup(w http.ResponseWriter, r *http.Request) {
 	s.render(w, r, http.StatusOK, "cleanup", "", s.page(r, "Nettoyage", "cleanup", d))
 }
 
-// --- score settings -------------------------------------------------------------------
+// --- cleanup settings -----------------------------------------------------------------
 
-type scoreSettings struct {
-	Threshold    float64
-	NeverWatched float64
-	Continuing   float64
-	WindowDays   int
-	Error        string
-	Saved        bool
+// Cleanup rule bounds (days without any view).
+const (
+	defaultCleanupDays = 180
+	minCleanupDays     = 7
+	maxCleanupDays     = 3650
+)
+
+type cleanupSettings struct {
+	Days  int
+	Error string
+	Saved bool
 }
 
-func (s *Server) scoreSettings(ctx context.Context) scoreSettings {
-	w := scoring.DefaultWeights
-	if s.Sync != nil {
-		w = s.Sync.CurrentWeights()
+func (s *Server) cleanupDays(ctx context.Context) int {
+	v, err := s.Store.Setting(ctx, store.SettingCleanupDays, "")
+	if n, perr := strconv.Atoi(v); err == nil && perr == nil && n >= minCleanupDays && n <= maxCleanupDays {
+		return n
 	}
-	return scoreSettings{
-		Threshold:    s.settingFloat(ctx, store.SettingCleanupThreshold, defaultCleanupThreshold),
-		NeverWatched: w.NeverWatched, Continuing: w.ActiveContinuing, WindowDays: w.ActiveWindowDays,
-	}
+	return defaultCleanupDays
 }
 
-func (s *Server) scoreSubmit(w http.ResponseWriter, r *http.Request) {
+func (s *Server) cleanupSubmit(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	parse := func(name string, lo, hi float64) (float64, bool) {
-		f, err := strconv.ParseFloat(strings.ReplaceAll(strings.TrimSpace(r.PostFormValue(name)), ",", "."), 64)
-		return f, err == nil && f >= lo && f <= hi
-	}
-	threshold, ok1 := parse("threshold", 0, 1000)
-	never, ok2 := parse("never_watched", 0, 10)
-	cont, ok3 := parse("continuing", 0, 10)
-	window, ok4 := parse("window_days", 1, 365)
-	st := scoreSettings{Threshold: threshold, NeverWatched: never, Continuing: cont, WindowDays: int(window)}
+	st := cleanupSettings{}
 	status := http.StatusOK
-	if !ok1 || !ok2 || !ok3 || !ok4 || s.Sync == nil {
-		st = s.scoreSettings(ctx)
-		st.Error = "Valeurs invalides : seuil entre 0 et 1000, multiplicateurs entre 0 et 10, fenêtre entre 1 et 365 jours."
+	n, err := strconv.Atoi(strings.TrimSpace(r.PostFormValue("days")))
+	if err != nil || n < minCleanupDays || n > maxCleanupDays {
+		st.Days = s.cleanupDays(ctx)
+		st.Error = fmt.Sprintf("Nombre de jours invalide : entre %d et %d.", minCleanupDays, maxCleanupDays)
 		status = http.StatusUnprocessableEntity
 	} else {
-		now := time.Now()
-		for key, v := range map[string]string{
-			store.SettingCleanupThreshold:  strconv.FormatFloat(threshold, 'f', -1, 64),
-			store.SettingScoreNeverWatched: strconv.FormatFloat(never, 'f', -1, 64),
-			store.SettingScoreContinuing:   strconv.FormatFloat(cont, 'f', -1, 64),
-			store.SettingScoreActiveWindow: strconv.Itoa(int(window)),
-		} {
-			if err := s.Store.SetSetting(ctx, key, v, now); err != nil {
-				s.serverError(w, r, err)
-				return
-			}
-		}
-		weights := s.Sync.CurrentWeights()
-		weights.NeverWatched, weights.ActiveContinuing, weights.ActiveWindowDays = never, cont, int(window)
-		s.Sync.SetWeights(weights)
-		if err := s.Sync.Recompute(ctx); err != nil {
+		if err := s.Store.SetSetting(ctx, store.SettingCleanupDays, strconv.Itoa(n), time.Now()); err != nil {
 			s.serverError(w, r, err)
 			return
 		}
-		st.Saved = true
+		s.Log.Info("cleanup rule changed", "days", n, "by", sessionFrom(r).Username)
+		st.Days, st.Saved = n, true
 	}
-	pd := s.page(r, "Réglages", "settings", settingsPage{Sync: s.settingsData("", false), Score: st})
+	pd := s.page(r, "Réglages", "settings", settingsPage{Sync: s.settingsData("", false), Cleanup: st})
 	if isHTMX(r) {
-		s.render(w, r, http.StatusOK, "settings", "score_form", pd)
+		s.render(w, r, http.StatusOK, "settings", "cleanup_form", pd)
 		return
 	}
 	s.render(w, r, status, "settings", "", pd)

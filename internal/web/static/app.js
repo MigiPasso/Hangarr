@@ -103,3 +103,4 @@
     if (modal && modal.open) { modal.close(); } else if (document.querySelector("[data-detail]")) { location.href = d.libraryUrl; }
   });
 })();
+

@@ -35,7 +35,7 @@ type LibraryFilter struct {
 	ViewersMin int
 	Match      []string // matched | arr_only | plex_only
 	User       int64    // perspective: states, progress and last view of this user
-	Sort       string   // title | last | added | size | plays | rating | score
+	Sort       string   // title | last | added | size | plays | rating | inactive
 	Desc       bool
 	Offset     int
 	Limit      int
@@ -59,7 +59,6 @@ type LibraryItem struct {
 	SizeBytes          int64
 	AddedAt            *int64
 	Rating             float64
-	CleanupScore       *float64
 	Tags               []string
 	MatchState         string
 	Status             string
@@ -73,7 +72,8 @@ var sortKeys = map[string]string{
 	"size":   "v.size_bytes",
 	"plays":  "v.eff_plays",
 	"rating": "v.rating",
-	"score":  "v.cleanup_score",
+	// Ascending: most recently active first, like a duration of inactivity.
+	"inactive": "(0 - COALESCE(v.eff_last, v.added_at, 0))",
 }
 
 // ValidSort reports whether name is a known sort key.
@@ -233,7 +233,7 @@ func LibraryQuery(f LibraryFilter, now time.Time, abandonDays int) (string, []an
 	b.add(` SELECT v.id, COALESCE(v.arr_id, 0), v.kind, v.title, COALESCE(v.year, 0), v.eff_state, v.eff_plays,
 		v.distinct_viewers, v.eff_watched, COALESCE(v.downloaded_episodes, 0), COALESCE(v.total_episodes, 0),
 		v.eff_last, COALESCE(NULLIF(a.friendly_name, ''), a.username, ''), v.size_bytes, v.added_at,
-		COALESCE(v.rating, 0), v.cleanup_score, v.tags, v.match_state, COALESCE(v.status, '')
+		COALESCE(v.rating, 0), v.tags, v.match_state, COALESCE(v.status, '')
 		FROM v LEFT JOIN plex_accounts a ON a.account_id = v.eff_last_by`)
 	libraryWhere(b, f, now)
 	col, ok := sortKeys[f.Sort]
@@ -265,17 +265,13 @@ func (s *Store) Library(ctx context.Context, f LibraryFilter, now time.Time, aba
 	for rows.Next() {
 		var it LibraryItem
 		var last, added sql.NullInt64
-		var score sql.NullFloat64
 		var tags string
 		if err := rows.Scan(&it.ID, &it.ArrID, &it.Kind, &it.Title, &it.Year, &it.State, &it.Plays, &it.Viewers,
 			&it.WatchedEpisodes, &it.DownloadedEpisodes, &it.TotalEpisodes, &last, &it.LastViewedBy, &it.SizeBytes,
-			&added, &it.Rating, &score, &tags, &it.MatchState, &it.Status); err != nil {
+			&added, &it.Rating, &tags, &it.MatchState, &it.Status); err != nil {
 			return nil, err
 		}
 		it.LastViewedAt, it.AddedAt = ptrInt(last), ptrInt(added)
-		if score.Valid {
-			it.CleanupScore = &score.Float64
-		}
 		_ = json.Unmarshal([]byte(tags), &it.Tags)
 		out = append(out, it)
 	}

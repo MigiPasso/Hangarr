@@ -78,6 +78,18 @@ type QualityProfile struct {
 // Client reads from Sonarr.
 type Client struct{ HTTP *httpx.Client }
 
+// SystemStatus is the subset of GET /api/v3/system/status used to test a connection.
+type SystemStatus struct {
+	AppName string `json:"appName"`
+	Version string `json:"version"`
+}
+
+// SystemStatus checks the URL and the API key and returns the version.
+func (c *Client) SystemStatus(ctx context.Context) (*SystemStatus, error) {
+	var st SystemStatus
+	return &st, c.HTTP.JSON(ctx, httpx.Request{Path: "/api/v3/system/status"}, &st)
+}
+
 // New builds a client authenticated with the X-Api-Key header.
 func New(baseURL, apiKey string) *Client {
 	return &Client{HTTP: httpx.New("sonarr", baseURL, func(r *http.Request) { r.Header.Set("X-Api-Key", apiKey) })}

@@ -7,10 +7,11 @@
   {{template "settings_form" .}}
 </section>
 <section class="card narrow">
-  <h2>Score de nettoyage</h2>
-  <p class="muted small">score = (jours d'inactivité ÷ 365, plafonné à 2 ans) × log2(1 + taille en Go) ÷ (1 + lectures),
-    multiplié selon les règles ci-dessous. Un score de 1 correspond par exemple à 3 Go vus une fois, il y a un an.</p>
-  {{template "score_form" .}}
+  <h2>Nettoyage</h2>
+  <p class="muted small">Un film ou une série est proposé à la suppression quand personne ne l'a regardé depuis ce
+    nombre de jours. Un élément jamais vu compte à partir de sa date d'ajout. Les éléments protégés par un tag ne sont
+    jamais proposés.</p>
+  {{template "cleanup_form" .}}
 </section>
 {{end}}
 
@@ -18,9 +19,18 @@
 <form id="settings-form" method="post" action="/settings" class="stack"
       hx-post="/settings" hx-target="this" hx-swap="outerHTML">
   <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
-  <label for="sync_time">Heure de la synchronisation quotidienne</label>
-  <input id="sync_time" name="sync_time" type="time" required value="{{$s.SyncTime}}"
-         {{if $s.Error}}aria-invalid="true" aria-describedby="sync-time-error"{{end}}>
+  <fieldset class="clock"{{if $s.Error}} aria-describedby="sync-time-error"{{end}}>
+    <legend>Heure de la synchronisation quotidienne</legend>
+    <label for="sync_hour" class="visually-hidden">Heure</label>
+    <select id="sync_hour" name="sync_hour" required{{if $s.Error}} aria-invalid="true"{{end}}>
+      {{range hoursOfDay}}{{$v := printf "%02d" .}}<option value="{{$v}}"{{if eq $v $s.Hour}} selected{{end}}>{{$v}}</option>{{end}}
+    </select>
+    <span aria-hidden="true">h</span>
+    <label for="sync_minute" class="visually-hidden">Minute</label>
+    <select id="sync_minute" name="sync_minute" required{{if $s.Error}} aria-invalid="true"{{end}}>
+      {{range minutesOfHour}}{{$v := printf "%02d" .}}<option value="{{$v}}"{{if eq $v $s.Minute}} selected{{end}}>{{$v}}</option>{{end}}
+    </select>
+  </fieldset>
   {{with $s.Error}}<p id="sync-time-error" class="field-error">{{.}}</p>{{end}}
   {{with $s.NextRun}}<p class="small muted">Prochaine synchronisation : {{.}}</p>{{end}}
   {{if $s.Saved}}<p class="small ok-text" role="status">Enregistré.</p>{{end}}
@@ -28,20 +38,15 @@
 </form>
 {{end}}
 
-{{define "score_form"}}{{$s := .Data.Score}}
-<form id="score-form" method="post" action="/settings/score" class="stack"
-      hx-post="/settings/score" hx-target="this" hx-swap="outerHTML">
+{{define "cleanup_form"}}{{$s := .Data.Cleanup}}
+<form id="cleanup-form" method="post" action="/settings/cleanup" class="stack"
+      hx-post="/settings/cleanup" hx-target="this" hx-swap="outerHTML">
   <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
-  <label for="threshold">Seuil « récupérable » (score minimal)</label>
-  <input id="threshold" name="threshold" type="number" min="0" max="1000" step="0.1" required value="{{dec $s.Threshold}}">
-  <label for="never_watched">Multiplicateur « jamais vu »</label>
-  <input id="never_watched" name="never_watched" type="number" min="0" max="10" step="0.1" required value="{{dec $s.NeverWatched}}">
-  <label for="continuing">Multiplicateur « série en cours de diffusion regardée récemment »</label>
-  <input id="continuing" name="continuing" type="number" min="0" max="10" step="0.1" required value="{{dec $s.Continuing}}">
-  <label for="window_days">« Récemment » = dans les … derniers jours</label>
-  <input id="window_days" name="window_days" type="number" min="1" max="365" step="1" required value="{{$s.WindowDays}}">
+  <label for="cleanup_days">Proposer ce que personne n'a regardé depuis (jours)</label>
+  <input id="cleanup_days" name="days" type="number" min="7" max="3650" step="1" required value="{{$s.Days}}"
+         {{if $s.Error}}aria-invalid="true"{{end}}>
   {{with $s.Error}}<p class="field-error" role="alert">{{.}}</p>{{end}}
-  {{if $s.Saved}}<p class="small ok-text" role="status">Enregistré, scores recalculés.</p>{{end}}
+  {{if $s.Saved}}<p class="small ok-text" role="status">Enregistré.</p>{{end}}
   <button type="submit" class="primary">Enregistrer</button>
 </form>
 {{end}}

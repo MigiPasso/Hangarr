@@ -372,7 +372,6 @@ ul.counts li { display: flex; justify-content: space-between; gap: .5rem; }
 .disk-head { display: flex; justify-content: space-between; gap: .5rem; margin-bottom: .25rem; }
 .disk-head .path { font-family: ui-monospace, monospace; font-size: .85rem; }
 meter { width: 100%; height: .6rem; }
-.cleanup-table tr.above td:first-child { color: var(--warning); font-weight: 600; }
 
 /* SVG charts: series colors validated for the dark surface (dataviz palette,
    slots 1 and 2; sequential ramp = blue). Text uses text tokens, never series colors. */
@@ -403,3 +402,37 @@ meter { width: 100%; height: .6rem; }
   .dash-grid { grid-template-columns: 1fr; }
 }
 .chart.heatmap .axis { font-size: 11px; }
+
+/* --- configuration --- */
+
+.config-banner {
+  background: rgba(245, 165, 36, .12);
+  border-bottom: 1px solid var(--warning);
+  text-align: center;
+  padding: .45rem 1rem;
+  font-size: .9rem;
+}
+.config-intro { max-width: 70rem; }
+.config-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 26rem), 1fr)); gap: var(--space); }
+.config-card { margin: 0; }
+.config-head { display: flex; align-items: center; justify-content: space-between; gap: .5rem; }
+.config-head h2 { margin: 0; }
+.config-field { display: flex; flex-direction: column; gap: .25rem; }
+.config-field p { margin: 0; }
+.config-field input:disabled { opacity: .7; cursor: not-allowed; }
+.config-actions { display: flex; gap: .5rem; flex-wrap: wrap; align-items: center; }
+.config-actions button { margin-top: .75rem; }
+.test-result { min-height: 1.4em; margin: 0; font-size: .9rem; }
+.badge-ok { background: rgba(48, 164, 108, .15); color: var(--success); }
+.badge-muted { background: rgba(154, 163, 178, .15); color: var(--muted); }
+
+/* --- settings --- */
+
+.visually-hidden {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
+fieldset.clock { border: 0; padding: 0; margin: 0; display: flex; align-items: center; gap: .4rem; }
+fieldset.clock legend { font-weight: 600; font-size: .9rem; margin: .5rem 0; padding: 0; }
+fieldset.clock select { width: auto; min-width: 4.5rem; font-variant-numeric: tabular-nums; }
+.cleanup-reason { white-space: nowrap; }

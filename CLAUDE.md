@@ -95,23 +95,44 @@ Pas de framework web, pas de build Node pour l'app, pas de CDN.
   Liens : `SONARR_PUBLIC_URL`, `RADARR_PUBLIC_URL`, `PLEX_PUBLIC_URL` (optionnels ; Plex par défaut via app.plex.tv).
 - Phase 5 : Dashboard (sans lectures en cours), Stats (/stats, /stats/users/{id}), Nettoyage (/cleanup). Graphiques SVG
   générés en Go (`internal/web/charts.go`), palette validée (skill dataviz) : bleu #3987e5, orange #d95926, rampe bleue
-  pour la heatmap ; chaque graphique a une info-bulle `<title>` et un tableau de données. Seuil « récupérable » et poids
-  du score réglables dans Réglages (`app_settings`), recalcul immédiat.
+  pour la heatmap ; chaque graphique a une info-bulle `<title>` et un tableau de données. **Pas de score de nettoyage**
+  (décision utilisateur, remplace SPEC §7.5) : candidat = géré par Sonarr/Radarr, avec fichiers, non protégé, et personne
+  ne l'a regardé depuis N jours (jamais vu : depuis `added_at`), N réglable dans Réglages (`cleanup_inactive_days`,
+  défaut 180). Règle évaluée en SQL (`store.CleanupScope`), liste triée par taille avec la raison en clair.
+  `GRACE_DAYS` supprimé (couvert par la règle) ; colonne `cleanup_score` laissée à NULL (migration déjà livrée).
+  Heure de sync : deux `<select>` heure (00-23) / minute (00-59, toutes les valeurs), saisie au clavier native ; pas de
+  `datalist` (deux clics pour ouvrir, rejeté par l'utilisateur).
 - e2e : `app-e2e` (DRY_RUN=true) et `app-e2e-live` (DRY_RUN=false) partagent le mock ; `/_calls` vérifie les appels.
+- `internal/upstream` : configuration effective des services (env prioritaire et verrouillée, sinon `app_settings`
+  clés `svc.*`, secrets scellés par `internal/secretbox` avec le nom du champ en AAD). `Registry` = instantané atomique des
+  clients : syncer, actions, images et web appellent `Get()` à chaque opération, jamais de client gardé en champ.
+  `Manager.Save` écrit + journalise (`auth_events`, `config_<service>`) dans une transaction puis `Reload`.
+  Dev : clé maître fixe dans `compose.dev.yml` ; e2e : instance `app-e2e-config` sans variables de service, clé via
+  secret Docker (`e2e/master.key`, test uniquement).
 - `internal/images` : proxy MediaCover (`poster-500.jpg`) → cache disque `DATA_DIR/cache/img`, ETag, sémaphore (4),
   singleflight, repli `remoteUrl` https, placeholder SVG. Pas de JS supplémentaire côté client.
 - `make e2e` tourne dans le projet compose `arrstats-e2e` (séparé) et lit le mot de passe initial dans les logs.
 
 ## Phase 6 : périmètre convenu avec l'utilisateur
 
-En plus de SPEC §15.6 (Santé sans Prowlarr, webhook Tautulli, sélection en lot, export CSV, manifests kustomize +
-`make k8s-validate`, image multi-arch, e2e complets) :
+En plus de SPEC §15.6 (Santé sans Prowlarr, webhook Tautulli, sélection en lot, export CSV, image multi-arch,
+e2e complets) :
+
+- **Déploiement : Docker d'abord, Kubernetes reporté** (décision utilisateur). Les manifests kustomize et
+  `make k8s-validate` sont repoussés à plus tard (pas en phase 6). La phase 6 livre un déploiement Docker clé en main
+  (`compose.yml` de production d'exemple, doc `docker run` / `docker compose`). L'image doit rester déployable
+  telle quelle dans les deux (mêmes invariants : nonroot, rootfs en lecture seule, `/data` seul inscriptible,
+  variantes `_FILE` pour les secrets Docker / Kubernetes) : ne rien introduire de spécifique à l'un des deux.
+  Publication de l'image : GHCR via un workflow Forgejo Actions sur tag, **plus tard** (après la phase 6) ;
+  en attendant `make image PUSH=1 IMAGE=ghcr.io/<user>/arrstats`.
 
 - **Configuration des services dans l'UI** (espace « Configuration ») : URL, URL publique, clé d'API / token de Sonarr,
   Radarr, Plex, Tautulli (+ secret du webhook), avec bouton « Tester la connexion ».
-  - Secrets **chiffrés en base** (AES-256-GCM, nonce aléatoire par valeur) avec une **clé maître hors du volume** :
-    `ARRSTATS_MASTER_KEY` / `ARRSTATS_MASTER_KEY_FILE` (Secret Kubernetes). Sans clé maître : l'app démarre mais refuse
-    d'enregistrer des secrets et le signale dans l'UI. Ne jamais générer ni stocker la clé dans `/data`.
+  - Secrets **chiffrés en base** (AES-256-GCM, nonce aléatoire par valeur). Clé maître **mode hybride** (décision
+    utilisateur) : `ARRSTATS_MASTER_KEY` / `ARRSTATS_MASTER_KEY_FILE` (secret Docker / Kubernetes) = mode recommandé ;
+    sinon clé générée au premier démarrage dans `DATA_DIR/master.key` (0600), avec avertissement explicite dans l'UI
+    (une sauvegarde du volume expose les secrets). Si une clé d'env apparaît alors que `master.key` existe : rechiffrement
+    des secrets au démarrage puis suppression du fichier (rien à ressaisir).
   - Champs secrets en écriture seule : jamais renvoyés au navigateur (afficher `••••` + 4 derniers caractères) ;
     champ vide = conserver la valeur actuelle.
   - Variables d'env `SONARR_URL`, `*_API_KEY`… deviennent **optionnelles et prioritaires** : si définies, le champ est

@@ -5,8 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"time"
-
-	"arrstats/internal/scoring"
 )
 
 // ClockTime is a time of day.
@@ -109,22 +107,12 @@ func (s *Syncer) Daily(ctx context.Context) {
 }
 
 func (s *Syncer) runLogged(ctx context.Context) {
-	if _, err := s.Run(ctx); err != nil && ctx.Err() == nil && !errors.Is(err, ErrAlreadyRunning) {
+	_, err := s.Run(ctx)
+	switch {
+	case err == nil, ctx.Err() != nil, errors.Is(err, ErrAlreadyRunning):
+	case errors.Is(err, ErrNotConfigured):
+		s.Log.Info("scheduled sync skipped: services not configured", "missing", s.Upstreams.Get().Missing)
+	default:
 		s.Log.Error("sync failed", "err", err)
 	}
-}
-
-// SetWeights changes the cleanup score weights (scores are recomputed by the
-// caller with Recompute).
-func (s *Syncer) SetWeights(w scoring.Weights) {
-	s.mu.Lock()
-	s.Weights = w
-	s.mu.Unlock()
-}
-
-// CurrentWeights returns the cleanup score weights.
-func (s *Syncer) CurrentWeights() scoring.Weights {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.Weights
 }

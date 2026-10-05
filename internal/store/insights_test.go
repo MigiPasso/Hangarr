@@ -11,7 +11,7 @@ import (
 const dayS = 24 * 60 * 60
 
 func scope() store.CleanupScope {
-	return store.CleanupScope{ProtectedTags: []string{"KEEP"}, GraceCutoff: now.Unix() - 30*dayS, Threshold: 1}
+	return store.CleanupScope{ProtectedTags: []string{"KEEP"}, Cutoff: now.Unix() - 120*dayS}
 }
 
 func TestOverview(t *testing.T) {
@@ -20,10 +20,11 @@ func TestOverview(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Recoverable: Tenet (score 10.4) + Interstellar (1.2); Severance is
-	// protected, Avatar inside the grace period, Expanse below 1.
+	// Nobody watched for 120 days: Interstellar (last view ~200 days ago),
+	// Tenet (never, added in 2025), The Expanse (left 140 days ago).
+	// Severance is protected; Arcane and Avatar have no file.
 	want := store.Overview{Series: 5, Movies: 5, TotalBytes: 91_400_000_000, NeverWatchedBytes: 17_400_000_000,
-		RecoverableBytes: 35_000_000_000, RecoverableCount: 2, WatchSeconds30d: 20080}
+		RecoverableBytes: 44_000_000_000, RecoverableCount: 3, WatchSeconds30d: 20080}
 	if *o != want {
 		t.Errorf("got %+v\nwant %+v", *o, want)
 	}
@@ -117,8 +118,19 @@ func TestCleanupLists(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if total != 35_000_000_000 || len(items) == 0 || items[0].Title != "Tenet" || items[1].Title != "Interstellar" {
+	// Largest first.
+	if total != 44_000_000_000 || len(items) != 3 || items[0].Title != "Interstellar" || items[1].Title != "Tenet" ||
+		items[2].Title != "The Expanse" {
 		t.Fatalf("candidates: total=%d %+v", total, items)
+	}
+	if tenet := items[1]; tenet.LastViewedAt != nil || tenet.AddedAt == nil || tenet.InactiveSince != *tenet.AddedAt {
+		t.Errorf("never-watched Tenet must be inactive since it was added: %+v", tenet)
+	}
+	// A longer delay drops The Expanse (left 140 days ago).
+	strict := scope()
+	strict.Cutoff = now.Unix() - 150*dayS
+	if items, _, _ := st.CleanupCandidates(ctx, strict, "", 100); len(items) != 2 {
+		t.Errorf("150 days: %d candidates, want 2", len(items))
 	}
 	for _, it := range items {
 		if it.Title == "Severance" || it.Title == "Avatar: Fire and Ash" || it.Title == "Vacances 2019" {

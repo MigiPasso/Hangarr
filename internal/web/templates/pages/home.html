@@ -7,7 +7,7 @@
   <div class="tile"><span class="tile-label">Jamais vu</span><span class="tile-value">{{bytes $o.NeverWatchedBytes}}</span>
     <span class="tile-hint">{{pctOf $o.NeverWatchedBytes $o.TotalBytes}} de l'espace</span></div>
   <a class="tile tile-link" href="/cleanup"><span class="tile-label">Récupérable</span><span class="tile-value">{{bytes $o.RecoverableBytes}}</span>
-    <span class="tile-hint">{{plural $o.RecoverableCount "élément" "éléments"}} au score ≥ {{num $d.Threshold}}</span></a>
+    <span class="tile-hint">{{plural $o.RecoverableCount "élément" "éléments"}} non regardés depuis {{$d.CleanupDays}} jours</span></a>
   <div class="tile"><span class="tile-label">Regardé (30 jours)</span><span class="tile-value">{{hours $o.WatchSeconds30d}}</span></div>
 </div>
 

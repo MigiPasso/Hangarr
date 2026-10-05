@@ -88,6 +88,12 @@ type Movie struct {
 // Client reads from Radarr.
 type Client struct{ HTTP *httpx.Client }
 
+// SystemStatus checks the URL and the API key and returns the version.
+func (c *Client) SystemStatus(ctx context.Context) (*sonarr.SystemStatus, error) {
+	var st sonarr.SystemStatus
+	return &st, c.HTTP.JSON(ctx, httpx.Request{Path: "/api/v3/system/status"}, &st)
+}
+
 // New builds a client authenticated with the X-Api-Key header.
 func New(baseURL, apiKey string) *Client {
 	return &Client{HTTP: httpx.New("radarr", baseURL, func(r *http.Request) { r.Header.Set("X-Api-Key", apiKey) })}

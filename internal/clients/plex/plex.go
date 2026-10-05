@@ -208,13 +208,35 @@ const HistoryPageSize = pageSize
 
 // Identity returns the server's machine identifier (used for web links).
 func (c *Client) Identity(ctx context.Context) (string, error) {
+	id, err := c.identity(ctx)
+	return id.MachineIdentifier, err
+}
+
+type identity struct {
+	MachineIdentifier string `json:"machineIdentifier"`
+	Version           string `json:"version"`
+}
+
+func (c *Client) identity(ctx context.Context) (identity, error) {
 	var out struct {
-		MediaContainer struct {
-			MachineIdentifier string `json:"machineIdentifier"`
-		} `json:"MediaContainer"`
+		MediaContainer identity `json:"MediaContainer"`
 	}
 	err := c.HTTP.JSON(ctx, httpx.Request{Path: "/identity"}, &out)
-	return out.MediaContainer.MachineIdentifier, err
+	return out.MediaContainer, err
+}
+
+// Check tests the URL and the token and returns the server version.
+// /identity answers without a token on a real server, so the token is
+// checked with the sections listing.
+func (c *Client) Check(ctx context.Context) (string, error) {
+	id, err := c.identity(ctx)
+	if err != nil {
+		return "", err
+	}
+	if _, err := c.Sections(ctx); err != nil {
+		return "", err
+	}
+	return id.Version, nil
 }
 
 // RefreshSection asks Plex to scan a library section.

@@ -15,13 +15,10 @@ import (
 	"testing/fstest"
 	"time"
 
-	"arrstats/internal/clients/plex"
-	"arrstats/internal/clients/radarr"
 	"arrstats/internal/clients/sonarr"
-	"arrstats/internal/clients/tautulli"
 	"arrstats/internal/mockarr"
-	"arrstats/internal/scoring"
 	"arrstats/internal/store"
+	"arrstats/internal/upstream"
 )
 
 const key = "test-key"
@@ -75,9 +72,8 @@ func newEnv(t *testing.T) *env {
 	}
 	t.Cleanup(func() { _ = st.Close() })
 	s := &Syncer{
-		Store: st, Sonarr: sonarr.New(urls["sonarr"], key), Radarr: radarr.New(urls["radarr"], key),
-		Plex: plex.New(urls["plex"], key), Tautulli: tautulli.New(urls["tautulli"], key),
-		Log: slog.New(slog.NewTextHandler(io.Discard, nil)), AbandonDays: 90, Weights: scoring.DefaultWeights,
+		Store: st, Upstreams: upstream.NewRegistry(upstream.Build(upstream.TestValues(urls, key), "auto")),
+		Log: slog.New(slog.NewTextHandler(io.Discard, nil)), AbandonDays: 90,
 		Now: func() time.Time { return time.Unix(mockarr.Anchor, 0) },
 	}
 	return &env{t: t, mock: m, fsys: fsys, store: st, s: s, urls: urls}
@@ -101,7 +97,6 @@ type row struct {
 	Viewers         int
 	WatchedEpisodes sql.NullInt64
 	State           string
-	Score           sql.NullFloat64
 	LastBy          sql.NullInt64
 	Tags            string
 	PlexKey         sql.NullString
@@ -112,9 +107,9 @@ func (e *env) media(kind, title string) row {
 	e.t.Helper()
 	var r row
 	err := e.store.DB().QueryRow(`SELECT id, match_state, match_method, play_count, completed_play_count,
-		distinct_viewers, watched_episodes, watch_state, cleanup_score, last_viewed_by, tags, plex_rating_key, added_at
+		distinct_viewers, watched_episodes, watch_state, last_viewed_by, tags, plex_rating_key, added_at
 		FROM media WHERE kind = ? AND title = ?`, kind, title).Scan(&r.ID, &r.MatchState, &r.MatchMethod, &r.Plays,
-		&r.Completed, &r.Viewers, &r.WatchedEpisodes, &r.State, &r.Score, &r.LastBy, &r.Tags, &r.PlexKey, &r.AddedAt)
+		&r.Completed, &r.Viewers, &r.WatchedEpisodes, &r.State, &r.LastBy, &r.Tags, &r.PlexKey, &r.AddedAt)
 	if err != nil {
 		e.t.Fatalf("media %s %q: %v", kind, title, err)
 	}
@@ -183,17 +178,11 @@ func TestFullSync(t *testing.T) {
 		if w.watchedEpisodes >= 0 && r.WatchedEpisodes.Int64 != w.watchedEpisodes {
 			t.Errorf("%s: watched episodes %d, want %d", w.title, r.WatchedEpisodes.Int64, w.watchedEpisodes)
 		}
-		if (r.MatchState == "plex_only") == r.Score.Valid {
-			t.Errorf("%s: cleanup_score must be set only for Sonarr/Radarr items (valid=%v)", w.title, r.Score.Valid)
-		}
 	}
 
 	inception := e.media("movie", "Inception")
 	if inception.LastBy.Int64 != 1002 {
 		t.Errorf("Inception last viewed by %d, want bob (1002)", inception.LastBy.Int64)
-	}
-	if tenet := e.media("movie", "Tenet"); tenet.Score.Float64 <= inception.Score.Float64 {
-		t.Errorf("never-watched Tenet (%v) should score above Inception (%v)", tenet.Score.Float64, inception.Score.Float64)
 	}
 	if sev := e.media("series", "Severance"); sev.Tags != `["keep"]` {
 		t.Errorf("Severance tags: %s", sev.Tags)
@@ -285,8 +274,10 @@ func TestSourceFailureIsolated(t *testing.T) {
 		w.WriteHeader(http.StatusInternalServerError)
 	}))
 	defer down.Close()
-	e.s.Sonarr = sonarr.New(down.URL, key)
-	e.s.Sonarr.HTTP.Backoff = time.Millisecond
+	up := *e.s.Upstreams.Get()
+	up.Sonarr = sonarr.New(down.URL, key)
+	up.Sonarr.HTTP.Backoff = time.Millisecond
+	e.s.Upstreams.Set(&up)
 	delete(e.fsys, "radarr/movie.json")
 	e.fsys["radarr/movie.json"] = &fstest.MapFile{Data: []byte(`[]`)}
 
@@ -324,7 +315,8 @@ func TestSourceFailureIsolated(t *testing.T) {
 
 func TestPlexHistoryFallback(t *testing.T) {
 	e := newEnv(t)
-	e.s.Tautulli = nil
+	vals := upstream.TestValues(e.urls, key)
+	e.s.Upstreams.Set(upstream.Build(vals, "plex"))
 	res := e.run()
 	if res.Failed() {
 		t.Fatalf("sources: %+v", res.Sources)

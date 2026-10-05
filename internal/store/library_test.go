@@ -12,14 +12,10 @@ import (
 	"testing"
 	"time"
 
-	"arrstats/internal/clients/plex"
-	"arrstats/internal/clients/radarr"
-	"arrstats/internal/clients/sonarr"
-	"arrstats/internal/clients/tautulli"
 	"arrstats/internal/mockarr"
-	"arrstats/internal/scoring"
 	"arrstats/internal/store"
 	"arrstats/internal/syncer"
+	"arrstats/internal/upstream"
 )
 
 var now = time.Unix(mockarr.Anchor, 0)
@@ -42,9 +38,8 @@ func synced(t *testing.T) *store.Store {
 	}
 	t.Cleanup(func() { _ = st.Close() })
 	s := &syncer.Syncer{
-		Store: st, Sonarr: sonarr.New(urls["sonarr"], "k"), Radarr: radarr.New(urls["radarr"], "k"),
-		Plex: plex.New(urls["plex"], "k"), Tautulli: tautulli.New(urls["tautulli"], "k"),
-		Log: slog.New(slog.NewTextHandler(io.Discard, nil)), AbandonDays: 90, Weights: scoring.DefaultWeights,
+		Store: st, Upstreams: upstream.NewRegistry(upstream.Build(upstream.TestValues(urls, "k"), "auto")),
+		Log: slog.New(slog.NewTextHandler(io.Discard, nil)), AbandonDays: 90,
 		Now: func() time.Time { return now },
 	}
 	if _, err := s.Run(context.Background()); err != nil {

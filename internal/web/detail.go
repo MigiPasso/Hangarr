@@ -201,17 +201,18 @@ func buildProgress(eps []sonarr.Episode, watches []store.EpisodeWatch, seasons [
 
 func (s *Server) links(ctx context.Context, m *store.Media) []link {
 	var out []link
+	up := s.Upstreams.Get()
 	if m.ArrID > 0 && m.TitleSlug != "" {
 		if m.Kind == "series" {
-			out = append(out, link{"Sonarr", s.Config.SonarrWebURL() + "/series/" + url.PathEscape(m.TitleSlug)})
+			out = append(out, link{"Sonarr", up.SonarrWebURL() + "/series/" + url.PathEscape(m.TitleSlug)})
 		} else {
-			out = append(out, link{"Radarr", s.Config.RadarrWebURL() + "/movie/" + url.PathEscape(m.TitleSlug)})
+			out = append(out, link{"Radarr", up.RadarrWebURL() + "/movie/" + url.PathEscape(m.TitleSlug)})
 		}
 	}
 	if mid := s.Store.PlexMachineID(ctx); mid != "" && m.PlexRatingKey != "" {
 		base := "https://app.plex.tv/desktop"
-		if s.Config.PlexPublicURL != "" {
-			base = s.Config.PlexPublicURL + "/web/index.html"
+		if pub := up.PlexWebURL(); pub != "" {
+			base = pub + "/web/index.html"
 		}
 		out = append(out, link{"Plex", base + "#!/server/" + url.PathEscape(mid) + "/details?key=" +
 			url.QueryEscape("/library/metadata/"+m.PlexRatingKey)})
@@ -268,9 +269,9 @@ func (s *Server) detail(kind string) http.HandlerFunc {
 				s.serverError(w, r, err)
 				return
 			}
-			if m.ArrID > 0 && s.Sonarr != nil {
+			if son := s.Upstreams.Get().Sonarr; m.ArrID > 0 && son != nil {
 				ectx, cancel := context.WithTimeout(ctx, 5*time.Second)
-				eps, err = s.Sonarr.Episodes(ectx, m.ArrID)
+				eps, err = son.Episodes(ectx, m.ArrID)
 				cancel()
 				if err != nil {
 					s.Log.Warn("episodes unavailable, showing approximate progress", "series", m.ArrID, "err", err)
@@ -477,6 +478,8 @@ var authEventLabels = map[string]string{ //nolint:gosec // G101: UI labels, not 
 	"admin_created": "Compte admin créé", "login_success": "Connexion", "login_failure": "Échec de connexion",
 	"lockout": "Compte verrouillé", "password_changed": "Mot de passe changé",
 	"password_reset_cli": "Mot de passe réinitialisé (CLI)", "logout": "Déconnexion", "session_revoked": "Session révoquée",
+	"config_sonarr": "Configuration Sonarr modifiée", "config_radarr": "Configuration Radarr modifiée",
+	"config_plex": "Configuration Plex modifiée", "config_tautulli": "Configuration Tautulli modifiée",
 }
 
 func (s *Server) journal(w http.ResponseWriter, r *http.Request) {

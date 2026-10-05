@@ -63,34 +63,53 @@ func TestStatsPages(t *testing.T) {
 	}
 }
 
-func TestCleanupPageAndScoreSettings(t *testing.T) {
+func TestCleanupPageAndSettings(t *testing.T) {
 	e := newLibEnv(t, 0)
 	r := e.do(e.c, "GET", "/cleanup", nil, nil)
 	if r.status != http.StatusOK || !strings.Contains(r.body, "Saisons jamais vues") || !strings.Contains(r.body, "Saison 2") ||
 		strings.Contains(r.body, ">Severance<") {
 		t.Fatalf("cleanup page: %d", r.status)
 	}
-	if i, j := strings.Index(r.body, ">Tenet<"), strings.Index(r.body, ">Interstellar<"); i < 0 || j < 0 || i > j {
-		t.Error("candidates must be sorted by score")
+	// Default rule: nobody watched for 180 days. Largest first, with the reason.
+	if i, j := strings.Index(r.body, ">Interstellar<"), strings.Index(r.body, ">Tenet<"); i < 0 || j < 0 || i > j {
+		t.Error("candidates must be sorted by size")
 	}
-	if r := e.do(e.c, "GET", "/cleanup?kind=movie", nil, nil); strings.Contains(r.body, ">The Expanse<") {
+	for _, want := range []string{"depuis 180 jours", "Dernière lecture il y a", "Jamais vu, ajouté il y a"} {
+		if !strings.Contains(r.body, want) {
+			t.Errorf("missing %q", want)
+		}
+	}
+	candidates := func(body string) string {
+		before, _, _ := strings.Cut(body, "<h2>Saisons jamais vues</h2>")
+		return before
+	}
+	if strings.Contains(candidates(r.body), ">The Expanse<") {
+		t.Error("The Expanse was watched less than 180 days ago")
+	}
+	if r := e.do(e.c, "GET", "/cleanup?kind=series", nil, nil); strings.Contains(r.body, ">Tenet<") {
 		t.Error("kind filter")
 	}
 
 	page := e.do(e.c, "GET", "/settings", nil, nil)
+	if !strings.Contains(page.body, `name="days" type="number" min="7" max="3650" step="1" required value="180"`) {
+		t.Error("cleanup setting not shown")
+	}
 	tok := csrfFrom(t, page.body)
-	bad := url.Values{"csrf_token": {tok}, "threshold": {"x"}, "never_watched": {"1"}, "continuing": {"1"}, "window_days": {"1"}}
-	if r := e.do(e.c, "POST", "/settings/score", bad, nil); r.status != http.StatusUnprocessableEntity {
-		t.Errorf("invalid score settings: %d", r.status)
+	for _, bad := range []string{"x", "3", "99999"} {
+		if r := e.do(e.c, "POST", "/settings/cleanup", url.Values{"csrf_token": {tok}, "days": {bad}}, nil); r.status != http.StatusUnprocessableEntity {
+			t.Errorf("days=%s: %d", bad, r.status)
+		}
 	}
-	good := url.Values{"csrf_token": {tok}, "threshold": {"0,2"}, "never_watched": {"3"}, "continuing": {"0.5"}, "window_days": {"60"}}
-	r = e.do(e.c, "POST", "/settings/score", good, map[string]string{"HX-Request": "true"})
-	if r.status != http.StatusOK || !strings.Contains(r.body, "scores recalculés") || !strings.Contains(r.body, `value="0.2"`) {
-		t.Fatalf("save score settings: %d %s", r.status, r.body)
+	r = e.do(e.c, "POST", "/settings/cleanup", url.Values{"csrf_token": {tok}, "days": {"120"}}, map[string]string{"HX-Request": "true"})
+	if r.status != http.StatusOK || !strings.Contains(r.body, "Enregistré.") || !strings.Contains(r.body, `value="120"`) {
+		t.Fatalf("save: %d %s", r.status, r.body)
 	}
-	// A lower threshold makes more items recoverable (scores depend on today's date).
+	// A shorter delay brings The Expanse (left 140 days ago) in, immediately.
 	r = e.do(e.c, "GET", "/cleanup", nil, nil)
-	if !strings.Contains(r.body, "score ≥ 0,2") || strings.Count(r.body, `class="above"`) < 3 {
-		t.Errorf("threshold / weights not applied:\n%s", r.body)
+	if !strings.Contains(candidates(r.body), ">The Expanse<") || !strings.Contains(r.body, "depuis 120 jours") {
+		t.Error("new rule not applied")
+	}
+	if home := e.do(e.c, "GET", "/", nil, nil); !strings.Contains(home.body, "non regardés depuis 120 jours") {
+		t.Error("dashboard tile must follow the rule")
 	}
 }

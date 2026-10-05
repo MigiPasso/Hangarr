@@ -15,14 +15,11 @@ import (
 	"testing/fstest"
 	"time"
 
-	"arrstats/internal/clients/plex"
-	"arrstats/internal/clients/radarr"
 	"arrstats/internal/clients/sonarr"
-	"arrstats/internal/clients/tautulli"
 	"arrstats/internal/mockarr"
-	"arrstats/internal/scoring"
 	"arrstats/internal/store"
 	"arrstats/internal/syncer"
+	"arrstats/internal/upstream"
 )
 
 type env struct {
@@ -60,9 +57,8 @@ func newEnv(t *testing.T, dryRun bool) *env {
 	t.Cleanup(func() { _ = st.Close() })
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
 	sy := &syncer.Syncer{
-		Store: st, Sonarr: sonarr.New(urls["sonarr"], "k"), Radarr: radarr.New(urls["radarr"], "k"),
-		Plex: plex.New(urls["plex"], "k"), Tautulli: tautulli.New(urls["tautulli"], "k"),
-		Log: log, AbandonDays: 90, Weights: scoring.DefaultWeights,
+		Store: st, Upstreams: upstream.NewRegistry(upstream.Build(upstream.TestValues(urls, "k"), "auto")),
+		Log: log, AbandonDays: 90,
 		Now: func() time.Time { return time.Unix(mockarr.Anchor, 0) },
 	}
 	if _, err := sy.Run(context.Background()); err != nil {
@@ -70,7 +66,7 @@ func newEnv(t *testing.T, dryRun bool) *env {
 	}
 	m.Reset()
 	return &env{t: t, fsys: fsys, mock: m, st: st, svc: &Service{
-		Store: st, Sonarr: sy.Sonarr, Radarr: sy.Radarr, Plex: sy.Plex, Refresher: sy,
+		Store: st, Upstreams: sy.Upstreams, Refresher: sy,
 		DryRun: dryRun, ProtectedTags: []string{"keep"}, ConfirmByTyping: true, PlexRefresh: true, Log: log,
 	}}
 }
