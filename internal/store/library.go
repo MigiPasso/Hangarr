@@ -365,10 +365,13 @@ func (s *Store) Accounts(ctx context.Context) ([]Account, error) {
 	return out, rows.Err()
 }
 
-// LastSyncAt returns the end of the most recent finished sync run, if any.
+// LastSyncAt returns the end of the most recent full sync, i.e. of a catalog
+// source: history-only syncs (Tautulli webhook) do not count, so that they
+// never hide a stale catalog from the startup catch-up.
 func (s *Store) LastSyncAt(ctx context.Context) (*int64, error) {
 	var v sql.NullInt64
-	err := s.db.QueryRowContext(ctx, `SELECT MAX(finished_at) FROM sync_runs`).Scan(&v)
+	err := s.db.QueryRowContext(ctx, `SELECT MAX(finished_at) FROM sync_runs
+		WHERE source IN ('sonarr', 'radarr', 'plex')`).Scan(&v)
 	return ptrInt(v), err
 }
 

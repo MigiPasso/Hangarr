@@ -89,6 +89,19 @@ désactivée et un bandeau invite à configurer. La première synchronisation pa
 - Les secrets ne sont jamais renvoyés au navigateur (seuls `••••` et les 4 derniers caractères s'affichent). Un champ
   laissé vide conserve la valeur actuelle. Chaque modification est inscrite dans le journal (onglet Sécurité).
 
+## Webhook Tautulli (recommandé)
+
+Sans webhook, les statistiques suivent la synchronisation quotidienne. Avec, elles sont à jour environ 30 secondes après
+chaque fin de lecture : Tautulli prévient arrstats, qui relit seulement l'historique.
+
+1. Configuration → Tautulli → « Générer un secret » (affiché une seule fois), ou `TAUTULLI_WEBHOOK_SECRET` (32 caractères min.).
+2. Tautulli → Settings → Notification Agents → Webhook : URL `http://<arrstats>:8080/webhooks/tautulli`, méthode `POST`,
+   déclencheurs « Playback Stop » et « Watched », et dans l'onglet Data, *JSON Headers* :
+   `{"X-Arrstats-Token": "<secret>"}` pour ces deux déclencheurs.
+
+Le contenu envoyé par Tautulli est ignoré (l'appel ne fait que déclencher la lecture de l'historique par l'API) ; sans
+secret, la route répond 404.
+
 ## Configuration
 
 Toutes les variables sont décrites dans [SPEC.md §10](SPEC.md#10-configuration-variables-denvironnement).

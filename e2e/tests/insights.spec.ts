@@ -43,3 +43,16 @@ test("cleanup lists candidates and never-watched seasons", async ({ page }) => {
   await rows.first().getByRole("button", { name: "Supprimer" }).click();
   await expect(page.locator("#confirm")).toContainText("Mode simulation");
 });
+
+test("health page: live services, sync runs and data gaps", async ({ page }) => {
+  await page.getByRole("link", { name: "Santé" }).click();
+  const services = page.locator("#health-services");
+  await expect(services.locator(".badge-ok")).toHaveCount(4);
+  await expect(services).toContainText("Version 4.0.0.0-mock");
+  await expect(services).toContainText("Indexers unavailable due to failures");
+  await expect(page.getByRole("cell", { name: "Tautulli (historique)" })).toBeVisible();
+  const plexOnly = page.locator(".health-list", { hasText: "Dans Plex mais pas dans Sonarr/Radarr" });
+  await expect(plexOnly.getByRole("link", { name: "Home Videos" })).toBeVisible();
+  await plexOnly.getByRole("link", { name: "Home Videos" }).click();
+  await expect(page.locator("#modal").getByRole("heading", { name: /Home Videos/ })).toBeVisible();
+});

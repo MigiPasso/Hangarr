@@ -152,3 +152,29 @@ func TestCleanupLists(t *testing.T) {
 		t.Errorf("alice last episodes: %v", last)
 	}
 }
+
+func TestDataHealth(t *testing.T) {
+	st := synced(t)
+	d, err := st.DataHealth(context.Background(), 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Home Videos and Vacances 2019 are in Plex only; Arcane and Avatar have
+	// no file; Shōgun ↔ Shogun is the fuzzy match; Lost's history is orphan.
+	if d.PlexOnly.Count != 2 || len(d.PlexOnly.Items) != 1 || d.PlexOnly.Items[0].Title != "Home Videos" {
+		t.Errorf("plex only: %+v", d.PlexOnly)
+	}
+	if d.NoFile.Count != 2 || d.NotInPlex.Count != 0 {
+		t.Errorf("no file: %+v, not in plex: %+v", d.NoFile, d.NotInPlex)
+	}
+	if d.Fuzzy.Count != 1 || d.Fuzzy.Items[0].Title != "Shōgun" {
+		t.Errorf("fuzzy: %+v", d.Fuzzy)
+	}
+	if d.Orphans == 0 {
+		t.Error("orphan sessions expected (Lost)")
+	}
+	runs, err := st.RecentSyncRuns(context.Background(), 100)
+	if err != nil || len(runs) == 0 || runs[0].ID < runs[len(runs)-1].ID {
+		t.Errorf("recent runs (newest first): %v %v", runs, err)
+	}
+}

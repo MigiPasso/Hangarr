@@ -113,14 +113,21 @@ Pas de framework web, pas de build Node pour l'app, pas de CDN.
   tag `PROTECTED_TAGS[0]` créé s'il manque (`POST /api/v3/tag`), retrait = tous les tags de protection, autres tags
   conservés, `PUT` de l'objet brut. Sans changement (déjà dans l'état demandé) : rien d'envoyé ni journalisé, mais copie
   locale des tags réalignée. Le mock enregistre aussi les `POST` dans `/_calls`.
+- Santé (`/health`) : services vérifiés en direct (`upstream.CheckAll`, chargés en différé par HTMX, alertes
+  `/api/v3/health` de Sonarr/Radarr), derniers passages et historique de `sync_runs`, écarts de données
+  (`store.DataHealth`).
+- Webhook Tautulli (`POST /webhooks/tautulli`, seule route sans session) : 404 sans secret, `X-Arrstats-Token` comparé
+  en temps constant, corps ignoré, 60 req/min/IP, puis `syncer.RequestHistorySync` (anti-rebond 30 s, historique seul,
+  partage le verrou de la sync complète). `LastSyncAt` ne compte que les sources de catalogue. Secret généré dans
+  Configuration (affiché une seule fois).
 - `internal/images` : proxy MediaCover (`poster-500.jpg`) → cache disque `DATA_DIR/cache/img`, ETag, sémaphore (4),
   singleflight, repli `remoteUrl` https, placeholder SVG. Pas de JS supplémentaire côté client.
 - `make e2e` tourne dans le projet compose `arrstats-e2e` (séparé) et lit le mot de passe initial dans les logs.
 
 ## Phase 6 : périmètre convenu avec l'utilisateur
 
-En plus de SPEC §15.6 (Santé sans Prowlarr, webhook Tautulli, sélection en lot, export CSV, image multi-arch,
-e2e complets) :
+En plus de SPEC §15.6 (Santé sans Prowlarr, webhook Tautulli, sélection en lot, image multi-arch, e2e complets ;
+**pas d'export CSV**, décision utilisateur) :
 
 - **Déploiement : Docker d'abord, Kubernetes reporté** (décision utilisateur). Les manifests kustomize et
   `make k8s-validate` sont repoussés à plus tard (pas en phase 6). La phase 6 livre un déploiement Docker clé en main

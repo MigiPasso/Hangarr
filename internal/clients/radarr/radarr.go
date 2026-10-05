@@ -160,3 +160,8 @@ func (c *Client) DiskSpace(ctx context.Context) ([]sonarr.DiskSpace, error) {
 	var out []sonarr.DiskSpace
 	return out, c.HTTP.JSON(ctx, httpx.Request{Path: "/api/v3/diskspace"}, &out)
 }
+
+// Health lists the instance's health alerts.
+func (c *Client) Health(ctx context.Context) ([]sonarr.HealthCheck, error) {
+	return sonarr.Health(ctx, c.HTTP)
+}

@@ -45,11 +45,13 @@ type Deps struct {
 // Server holds handlers state.
 type Server struct {
 	Deps
-	ips      auth.IPResolver
-	views    *views
-	draining atomic.Bool
-	baseCtx  atomic.Value // context.Context of Run, for background work
-	disks    diskCache
+	ips auth.IPResolver
+	// webhookLimiter rate-limits POST /webhooks/tautulli per client IP.
+	webhookLimiter *auth.RateLimiter
+	views          *views
+	draining       atomic.Bool
+	baseCtx        atomic.Value // context.Context of Run, for background work
+	disks          diskCache
 }
 
 // New builds the server and parses templates.
@@ -61,7 +63,8 @@ func New(d Deps) (*Server, error) {
 	if d.Upstreams == nil {
 		d.Upstreams = upstream.NewRegistry(nil)
 	}
-	return &Server{Deps: d, ips: auth.IPResolver{Trusted: d.Config.TrustedProxies}, views: v}, nil
+	return &Server{Deps: d, ips: auth.IPResolver{Trusted: d.Config.TrustedProxies}, views: v,
+		webhookLimiter: auth.NewRateLimiter(webhookPerMinute, time.Minute, nil)}, nil
 }
 
 // baseContext outlives requests: background work started by a request uses it.
@@ -82,6 +85,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /readyz", s.readyz)
 	mux.Handle("GET /static/", s.static())
 
+	mux.HandleFunc("POST /webhooks/tautulli", s.tautulliWebhook)
 	mux.HandleFunc("GET /login", s.loginPage)
 	mux.HandleFunc("POST /login", s.loginSubmit)
 	mux.Handle("POST /logout", s.authed(s.logout, allowMustChange))
@@ -107,9 +111,12 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("GET /settings", s.authed(s.settingsPage, 0))
 	mux.Handle("POST /settings", s.authed(s.settingsSubmit, 0))
 	mux.Handle("GET /sync/status", s.authed(s.syncStatusPartial, 0))
+	mux.Handle("GET /health", s.authed(s.health, 0))
+	mux.Handle("GET /health/services", s.authed(s.healthServices, 0))
 	mux.Handle("GET /config", s.authed(s.configPage, 0))
 	mux.Handle("POST /config/{service}", s.authed(s.configSubmit, 0))
 	mux.Handle("POST /config/{service}/test", s.authed(s.configTest, 0))
+	mux.Handle("POST /config/tautulli/webhook-secret", s.authed(s.webhookSecretSubmit, 0))
 	mux.Handle("POST /account/sessions/{id}/revoke", s.authed(s.revokeSession, 0))
 	mux.Handle("GET /{$}", s.authed(s.home, 0))
 	// Everything else requires a session too, so unknown paths do not leak

@@ -1,0 +1,95 @@
+{{define "content"}}{{$d := .Data}}
+<h1>Santé</h1>
+
+<section class="card">
+  <h2>Services</h2>
+  {{if $d.Services}}{{template "health_services" $d.Services}}{{else}}
+  <div id="health-services" hx-get="/health/services" hx-trigger="load" hx-swap="outerHTML">
+    <p class="muted"><span class="spinner" aria-hidden="true"></span> Vérification des services…</p>
+    <noscript><p><a href="/health/services">Vérifier les services</a></p></noscript>
+  </div>{{end}}
+</section>
+
+<section class="card">
+  <h2>Synchronisation</h2>
+  {{if $d.Latest}}
+  <div class="table-wrap"><table class="table">
+    <thead><tr><th>Source</th><th>Dernier passage</th><th>Résultat</th><th class="num">Éléments</th><th class="num">Durée</th></tr></thead>
+    <tbody>
+    {{range $d.Latest}}
+      <tr>
+        <td>{{sourceLabel .Source}}</td>
+        <td>{{reltime .StartedAt}}</td>
+        <td>{{template "run_status" .}}</td>
+        <td class="num">{{.Items}}</td>
+        <td class="num">{{runDuration .}}</td>
+      </tr>
+    {{end}}
+    </tbody>
+  </table></div>
+  <details class="data-table"><summary>Historique des synchronisations</summary>
+    <div class="table-wrap"><table class="table">
+      <thead><tr><th>Date</th><th>Source</th><th>Résultat</th><th class="num">Éléments</th><th class="num">Durée</th></tr></thead>
+      <tbody>
+      {{range $d.Runs}}
+        <tr><td>{{datetime .StartedAt}}</td><td>{{sourceLabel .Source}}</td><td>{{template "run_status" .}}</td>
+          <td class="num">{{.Items}}</td><td class="num">{{runDuration .}}</td></tr>
+      {{end}}
+      </tbody>
+    </table></div>
+  </details>
+  {{else}}<p class="muted">Aucune synchronisation pour l'instant.</p>{{end}}
+</section>
+
+<section class="card">
+  <h2>Données</h2>
+  <p class="small muted">Écarts entre Plex et Sonarr/Radarr, d'après la dernière synchronisation.</p>
+  <div class="health-grid">
+    {{template "health_list" list2 "Dans Plex mais pas dans Sonarr/Radarr" "Ces éléments ne peuvent pas être supprimés depuis arrstats." $d.Data.PlexOnly}}
+    {{template "health_list" list2 "Dans Sonarr/Radarr sans fichier" "Surveillés ou en attente de téléchargement." $d.Data.NoFile}}
+    {{template "health_list" list2 "Dans Sonarr/Radarr mais absents de Plex" "Fichiers présents que Plex n'a pas (encore) indexés : chemin de bibliothèque ou scan Plex à vérifier." $d.Data.NotInPlex}}
+    {{template "health_list" list2 "Rapprochements approximatifs" "Rapprochés par titre et année faute d'identifiant commun (TVDB, TMDB, IMDb) : à vérifier." $d.Data.Fuzzy}}
+  </div>
+  {{if $d.Data.Orphans}}<p class="small muted">{{plural $d.Data.Orphans "session d'historique concerne" "sessions d'historique concernent"}} des médias qui n'existent plus ; elles restent comptées dans les statistiques des utilisateurs.</p>{{end}}
+</section>
+{{end}}
+
+{{define "run_status"}}{{if eq .Status "success"}}<span class="ok-text">OK</span>{{else if eq .Status "running"}}<span class="muted">en cours</span>{{else}}<span class="error-text" title="{{.Error}}">Erreur : {{.Error}}</span>{{end}}{{end}}
+
+{{define "health_list"}}{{$title := index . 0}}{{$hint := index . 1}}{{$l := index . 2}}
+<div class="health-list">
+  <h3>{{$title}} <span class="badge{{if not $l.Count}} badge-muted{{end}}">{{$l.Count}}</span></h3>
+  <p class="small muted">{{$hint}}</p>
+  {{if $l.Items}}
+  <ul>
+    {{range $l.Items}}<li><a href="{{mediaPath .Kind}}/{{.ID}}" hx-get="{{mediaPath .Kind}}/{{.ID}}" hx-target="#modal-body">{{.Title}}</a>{{if .Year}} <span class="muted">({{.Year}})</span>{{end}} <span class="small muted">{{if eq .Kind "series"}}série{{else}}film{{end}}{{if .SizeBytes}} · {{bytes .SizeBytes}}{{end}}</span></li>{{end}}
+  </ul>
+  {{if gt $l.Count (len $l.Items)}}<p class="small muted">… et {{$l.Count}} au total.</p>{{end}}
+  {{else}}<p class="small ok-text">Rien à signaler.</p>{{end}}
+</div>
+{{end}}
+
+{{define "health_services"}}
+<div id="health-services" class="health-services">
+  {{range .}}
+  <div class="health-service">
+    <div class="config-head">
+      <h3>{{.Label}}</h3>
+      {{if not .Configured}}<span class="badge badge-muted">Non configuré</span>
+      {{else if .OK}}<span class="badge badge-ok">Joignable</span>
+      {{else}}<span class="badge badge-error">Injoignable</span>{{end}}
+    </div>
+    {{if not .Configured}}<p class="small"><a href="/config">Configurer</a></p>
+    {{else if .OK}}<p class="small muted">{{with .Version}}Version {{.}} · {{end}}répond en {{.Latency}}</p>
+    {{else}}<p class="small error-text">{{.Error}}</p>{{end}}
+    {{if .Alerts}}
+    <ul class="health-alerts">
+      {{range .Alerts}}<li class="{{if eq .Type "error"}}error-text{{else}}warn{{end}}">{{.Message}}{{with .WikiURL}} <a href="{{.}}" target="_blank" rel="noopener noreferrer">aide ↗</a>{{end}}</li>{{end}}
+    </ul>
+    {{end}}
+  </div>
+  {{end}}
+</div>
+{{end}}
+
+{{define "health_services_partial"}}{{template "health_services" .Data}}{{end}}

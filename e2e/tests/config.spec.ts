@@ -95,3 +95,25 @@ test("without ARRSTATS_MASTER_KEY a key is generated in /data and the UI warns a
   // Services come from the environment there: locked fields.
   await expect(page.locator("#service-sonarr").getByLabel("URL de l'API")).toBeDisabled();
 });
+
+test("Tautulli webhook: secret generated once, then the webhook accepts it", async ({ page, request }) => {
+  await login(page, username, newPassword);
+  await page.goto("/config");
+  const tautulli = page.locator("#service-tautulli");
+  const base = process.env.BASE_URL_CONFIG ?? "http://app-e2e-config:8080";
+  expect((await request.post(`${base}/webhooks/tautulli`)).status()).toBe(404);
+
+  await tautulli.getByRole("button", { name: "Générer un secret" }).click();
+  const shown = tautulli.locator("code.secret").first();
+  await expect(shown).toBeVisible();
+  const secret = (await shown.textContent())!.trim();
+  expect(secret).toHaveLength(43);
+
+  const hook = `${base}/webhooks/tautulli`;
+  expect((await request.post(hook, { data: { event: "stop" } })).status()).toBe(401);
+  expect((await request.post(hook, { headers: { "X-Arrstats-Token": secret }, data: { event: "stop" } })).status()).toBe(202);
+
+  await page.reload();
+  expect(await page.content()).not.toContain(secret);
+  await expect(tautulli.getByRole("button", { name: "Générer un nouveau secret" })).toBeVisible();
+});

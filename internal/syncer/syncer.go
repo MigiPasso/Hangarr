@@ -60,12 +60,16 @@ type Syncer struct {
 	// Location is the time zone of the daily schedule (TZ).
 	Location *time.Location
 
-	running  atomic.Bool
-	mu       sync.Mutex
-	progress string
-	last     *Result
-	daily    ClockTime
-	wake     chan struct{}
+	// HistoryDebounce overrides DefaultHistoryDebounce (tests).
+	HistoryDebounce time.Duration
+
+	historyPending bool
+	running        atomic.Bool
+	mu             sync.Mutex
+	progress       string
+	last           *Result
+	daily          ClockTime
+	wake           chan struct{}
 }
 
 // SourceResult is the outcome of one source.

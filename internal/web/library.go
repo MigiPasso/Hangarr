@@ -22,6 +22,7 @@ const viewCookie = "arrstats_view"
 type SyncRunner interface {
 	Status() syncer.Status
 	Start(ctx context.Context) bool
+	RequestHistorySync(ctx context.Context) bool
 	DailyTime() syncer.ClockTime
 	SetDailyTime(at syncer.ClockTime)
 	NextRun() time.Time

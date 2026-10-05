@@ -342,3 +342,40 @@ func TestConcurrentRunRejected(t *testing.T) {
 		t.Fatalf("got %v", err)
 	}
 }
+
+func TestHistorySyncDebounced(t *testing.T) {
+	e := newEnv(t)
+	e.run()
+	ctx := context.Background()
+	last, _ := e.store.LastSyncAt(ctx)
+	hits := e.mock.Hits("tautulli:get_history")
+	e.s.HistoryDebounce = 50 * time.Millisecond
+	if !e.s.RequestHistorySync(ctx) {
+		t.Fatal("first request must schedule a sync")
+	}
+	for range 2 {
+		if e.s.RequestHistorySync(ctx) {
+			t.Error("requests during the delay must join the pending one")
+		}
+	}
+	deadline := time.Now().Add(3 * time.Second)
+	for e.mock.Hits("tautulli:get_history") == hits {
+		if time.Now().After(deadline) {
+			t.Fatal("history sync did not run")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	time.Sleep(100 * time.Millisecond)
+	if n := e.mock.Hits("tautulli:get_history") - hits; n != 1 {
+		t.Errorf("one history page expected (incremental), got %d requests", n)
+	}
+	if e.mock.Hits("sonarr:series") != 1 {
+		t.Error("a history sync must not read the catalogs")
+	}
+	if after, _ := e.store.LastSyncAt(ctx); *after != *last {
+		t.Error("a history sync must not count as a full sync (startup catch-up)")
+	}
+	if !e.s.RequestHistorySync(ctx) {
+		t.Error("a new request after the run must schedule again")
+	}
+}

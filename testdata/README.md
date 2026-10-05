@@ -7,6 +7,7 @@ endpoints:
 |---|---|
 | `sonarr/series.json`, `tag.json`, `qualityprofile.json` | `GET /api/v3/series`, `/tag`, `/qualityprofile` |
 | `sonarr/diskspace.json`, `radarr/diskspace.json` | `GET /api/v3/diskspace` |
+| `sonarr/health.json`, `radarr/health.json` | `GET /api/v3/health` (Sonarr: one indexer warning) |
 | `radarr/movie.json`, `tag.json`, `qualityprofile.json` | `GET /api/v3/movie`, `/tag`, `/qualityprofile` |
 | `plex/sections.json` | `GET /library/sections` |
 | `plex/section-<key>-type-<n>.json` | `GET /library/sections/<key>/all?type=<n>&includeGuids=1` |
