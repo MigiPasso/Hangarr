@@ -158,11 +158,10 @@ Pas de framework web, pas de build Node pour l'app, pas de CDN.
 En plus de SPEC §15.6 (Santé sans Prowlarr, webhook Tautulli, sélection en lot, image multi-arch, e2e complets ;
 **pas d'export CSV**, décision utilisateur) :
 
-- **Déploiement : Docker d'abord, Kubernetes reporté** (décision utilisateur). Les manifests kustomize et
-  `make k8s-validate` sont repoussés à plus tard (pas en phase 6). La phase 6 livre un déploiement Docker clé en main
-  (`compose.yml` de production d'exemple, doc `docker run` / `docker compose`). L'image doit rester déployable
-  telle quelle dans les deux (mêmes invariants : nonroot, rootfs en lecture seule, `/data` seul inscriptible,
-  variantes `_FILE` pour les secrets Docker / Kubernetes) : ne rien introduire de spécifique à l'un des deux.
+- **Déploiement** : Docker (`compose.yml`, `make deploy-check`) et Kubernetes en **manifests YAML simples, sans
+  kustomize** (décision utilisateur) : `deploy/kubernetes/cleanarr.yaml` (Namespace, ConfigMap, PVC, Deployment,
+  Service), validé par kubeconform. Même image et mêmes invariants pour les deux (nonroot, rootfs en lecture seule,
+  `/data` seul inscriptible, variantes `_FILE`) : ne rien introduire de spécifique à l'un des deux.
   Publication de l'image : GHCR via un workflow Forgejo Actions sur tag, **plus tard** (après la phase 6) ;
   en attendant `make image PUSH=1 IMAGE=ghcr.io/<user>/cleanarr`.
 

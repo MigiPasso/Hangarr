@@ -101,14 +101,21 @@ Ouvrir `http://<hôte>:8080`, changer le mot de passe, puis configurer Sonarr, R
 
 ## Kubernetes
 
-L'image est distroless, tourne en non-root (UID/GID 65532), fonctionne avec `readOnlyRootFilesystem: true` et
-n'écrit que dans `/data` (volume persistant `ReadWriteOnce`, une seule réplique, stratégie `Recreate`).
-Sondes : `GET /healthz` (liveness) et `GET /readyz` (readiness). Arrêt propre sur `SIGTERM` (20 s).
-Les secrets acceptent une variante `_FILE` (ex. `SONARR_API_KEY_FILE=/run/secrets/cleanarr/sonarr-api-key`).
+Manifests YAML simples dans [`deploy/kubernetes/cleanarr.yaml`](deploy/kubernetes/cleanarr.yaml) : Namespace,
+ConfigMap, PVC, Deployment (une réplique, stratégie `Recreate`, non-root, rootfs en lecture seule, sondes
+`/healthz` et `/readyz`) et Service. Les étapes sont en tête du fichier :
 
-Mot de passe initial : `kubectl -n cleanarr logs deploy/cleanarr | grep -A4 "INITIAL ADMIN"`.
+1. publier l'image dans un registre que les nœuds peuvent joindre (voir ci-dessous) et renseigner `image:` ;
+2. créer le secret de la clé maître : `kubectl -n cleanarr create secret generic cleanarr-master-key
+   --from-literal=master-key="$(docker run --rm <image> master-key)"` ;
+3. `kubectl apply -f deploy/kubernetes/cleanarr.yaml`, puis
+   `kubectl -n cleanarr logs deploy/cleanarr | grep -A4 "INITIAL ADMIN"` pour le mot de passe initial ;
+4. configurer les services dans l'UI avec leurs adresses internes au cluster
+   (`http://sonarr.<namespace>.svc.cluster.local:8989`…).
 
-La même image s'y déploie telle quelle ; les manifests kustomize viendront plus tard.
+**Image** : `make image PUSH=1 IMAGE=ghcr.io/<utilisateur>/cleanarr` construit amd64 + arm64 et pousse (après
+`docker login ghcr.io` avec un token `write:packages`). Un paquet GHCR est privé par défaut : le rendre public, ou créer
+un secret `docker-registry` et décommenter `imagePullSecrets`.
 
 ## Langue
 
