@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -198,16 +199,6 @@ func (s *Syncer) run(ctx context.Context, up *upstream.Clients) (*Result, error)
 	if up.Plex != nil {
 		sources = append(sources, SourcePlex)
 	}
-	historySource := ""
-	switch {
-	case up.HistoryClient() != nil:
-		historySource = SourceTautulli
-	case up.Plex != nil:
-		historySource = SourcePlexHistory
-	}
-	if historySource != "" {
-		sources = append(sources, historySource)
-	}
 	for _, src := range sources {
 		id, err := s.Store.StartSyncRun(ctx, src, start)
 		if err != nil {
@@ -248,20 +239,12 @@ func (s *Syncer) run(ctx context.Context, up *upstream.Clients) (*Result, error)
 			return nil
 		})
 	}
-	if historySource != "" {
-		g.Go(func() error {
-			t := time.Now()
-			var n int
-			var err error
-			if historySource == SourceTautulli {
-				n, err = s.syncTautulliHistory(ctx, up.HistoryClient())
-			} else {
-				n, err = s.syncPlexHistory(ctx, up.Plex)
-			}
-			finish(SourceResult{Source: historySource, Items: n, Duration: time.Since(t), Err: err})
-			return nil
-		})
-	}
+	g.Go(func() error {
+		for _, r := range s.syncHistories(ctx, up) {
+			record(r)
+		}
+		return nil
+	})
 	_ = g.Wait()
 	if err := ctx.Err(); err != nil {
 		return nil, err
@@ -296,6 +279,9 @@ func (s *Syncer) run(ctx context.Context, up *upstream.Clients) (*Result, error)
 	s.setProgress("linking the history")
 	if err := s.linkEvents(ctx); err != nil {
 		return nil, fmt.Errorf("link history: %w", err)
+	}
+	if err := s.mergeHistory(ctx, up); err != nil {
+		return nil, fmt.Errorf("merge history: %w", err)
 	}
 	s.setProgress("computing statistics")
 	if err := s.recompute(ctx); err != nil {
@@ -589,13 +575,10 @@ func TautulliEvent(r tautulli.HistoryRow) (store.WatchEvent, bool) {
 // syncTautulliHistory pages from newest to oldest and stops once a whole
 // page is older than the cursor minus 24 h; the overlap catches long
 // sessions that finished late, and the upsert keeps it idempotent.
-func (s *Syncer) syncTautulliHistory(ctx context.Context, c *tautulli.Client) (int, error) {
-	if err := s.keepHistory(ctx, SourceTautulli, cursorPlexHistory); err != nil {
-		return 0, err
-	}
+func (s *Syncer) syncTautulliHistory(ctx context.Context, c *tautulli.Client) ([]tautulli.User, int, error) {
 	users, err := c.Users(ctx)
 	if err != nil {
-		return 0, err
+		return nil, 0, err
 	}
 	accounts := make([]store.PlexAccount, 0, len(users))
 	for _, u := range users {
@@ -606,13 +589,13 @@ func (s *Syncer) syncTautulliHistory(ctx context.Context, c *tautulli.Client) (i
 			FriendlyName: u.FriendlyName, IsActive: u.IsActive == 1, ThumbURL: u.Thumb})
 	}
 	if err := s.Store.UpsertPlexAccounts(ctx, accounts); err != nil {
-		return 0, err
+		return nil, 0, err
 	}
 	pageSize := tautulli.HistoryPageSize
 	if s.HistoryPageSize > 0 {
 		pageSize = s.HistoryPageSize
 	}
-	return s.pageHistory(ctx, cursorTautulli, func(start int) ([]store.WatchEvent, []int64, int, int, error) {
+	n, err := s.pageHistory(ctx, cursorTautulli, func(start int) ([]store.WatchEvent, []int64, int, int, error) {
 		p, err := c.History(ctx, start, pageSize)
 		if err != nil {
 			return nil, nil, 0, 0, err
@@ -627,6 +610,68 @@ func (s *Syncer) syncTautulliHistory(ctx context.Context, c *tautulli.Client) (i
 		}
 		return events, dates, len(p.Rows), int(p.RecordsFiltered), nil
 	}, pageSize)
+	return users, n, err
+}
+
+// syncHistories reads the history sources of up, one after the other:
+// Tautulli, then the Plex history (merged mode: both, Plex ids translated to
+// Tautulli's). In a single-source mode the other source is dropped first.
+// Each source is recorded in sync_runs.
+func (s *Syncer) syncHistories(ctx context.Context, up *upstream.Clients) []SourceResult {
+	var out []SourceResult
+	step := func(source string, fn func() (int, error)) {
+		start := s.now()
+		id, err := s.Store.StartSyncRun(ctx, source, start)
+		if err != nil {
+			out = append(out, SourceResult{Source: source, Err: err})
+			return
+		}
+		t := time.Now()
+		n, err := fn()
+		if ferr := s.Store.FinishSyncRun(context.WithoutCancel(ctx), id, s.now(), n, err); ferr != nil {
+			s.Log.Error("sync run not recorded", "source", source, "err", ferr)
+		}
+		out = append(out, SourceResult{Source: source, Items: n, Duration: time.Since(t), Err: err})
+	}
+	var tautUsers []tautulli.User
+	if c := up.HistoryClient(); c != nil {
+		step(SourceTautulli, func() (int, error) {
+			if !up.Merged() {
+				if err := s.keepHistory(ctx, SourceTautulli, cursorPlexHistory); err != nil {
+					return 0, err
+				}
+			}
+			users, n, err := s.syncTautulliHistory(ctx, c)
+			tautUsers = users
+			return n, err
+		})
+	}
+	if up.PlexHistory() {
+		step(SourcePlexHistory, func() (int, error) {
+			if !up.Merged() {
+				if err := s.keepHistory(ctx, SourcePlexHistory, cursorTautulli); err != nil {
+					return 0, err
+				}
+			}
+			return s.syncPlexHistory(ctx, up.Plex, tautUsers)
+		})
+	}
+	return out
+}
+
+// mergeHistory merges the Plex history into Tautulli's (merged mode), once
+// the events are linked to media.
+func (s *Syncer) mergeHistory(ctx context.Context, up *upstream.Clients) error {
+	if !up.Merged() {
+		return nil
+	}
+	st, err := s.Store.MergePlexHistory(ctx)
+	if err != nil {
+		return err
+	}
+	s.Log.Info("history merged", "plex_entries_merged", st.Merged, "sessions_completed_by_plex", st.Completed,
+		"plex_only_plays_estimated", st.Estimated)
+	return nil
 }
 
 // keepHistory makes source the only history in the database: the events of
@@ -660,21 +705,42 @@ func PlexEvent(h plex.HistoryEntry) (store.WatchEvent, bool) {
 	return e, true
 }
 
-func (s *Syncer) syncPlexHistory(ctx context.Context, c *plex.Client) (int, error) {
-	if err := s.keepHistory(ctx, SourcePlexHistory, cursorTautulli); err != nil {
-		return 0, err
-	}
+// syncPlexHistory reads the Plex history. tautUsers (merged mode) translate
+// the Plex account ids to Tautulli's: the server owner is 1 for Plex and
+// its plex.tv id for Tautulli; accounts are matched by user name.
+func (s *Syncer) syncPlexHistory(ctx context.Context, c *plex.Client, tautUsers []tautulli.User) (int, error) {
 	accs, err := c.Accounts(ctx)
 	if err != nil {
 		return 0, err
 	}
-	accounts := make([]store.PlexAccount, 0, len(accs))
-	for _, a := range accs {
-		if a.ID > 0 && a.Name != "" {
-			accounts = append(accounts, store.PlexAccount{AccountID: int64(a.ID), Username: a.Name, IsActive: true})
+	byName := map[string]int64{}
+	for _, u := range tautUsers {
+		if u.UserID == 0 {
+			continue
+		}
+		for _, name := range []string{u.FriendlyName, u.Username} { // the user name wins
+			if name != "" {
+				byName[strings.ToLower(name)] = int64(u.UserID)
+			}
 		}
 	}
+	ids := map[int64]int64{}
+	accounts := make([]store.PlexAccount, 0, len(accs))
+	for _, a := range accs {
+		if a.ID <= 0 || a.Name == "" {
+			continue
+		}
+		if tid, ok := byName[strings.ToLower(a.Name)]; ok {
+			ids[int64(a.ID)] = tid // a Tautulli user: already stored with richer data
+			continue
+		}
+		accounts = append(accounts, store.PlexAccount{AccountID: int64(a.ID), Username: a.Name, IsActive: true})
+	}
 	if err := s.Store.UpsertPlexAccounts(ctx, accounts); err != nil {
+		return 0, err
+	}
+	// Entries stored before the translation existed (or before Tautulli).
+	if err := s.Store.RemapHistoryUsers(ctx, SourcePlexHistory, ids); err != nil {
 		return 0, err
 	}
 	return s.pageHistory(ctx, cursorPlexHistory, func(start int) ([]store.WatchEvent, []int64, int, int, error) {
@@ -687,6 +753,9 @@ func (s *Syncer) syncPlexHistory(ctx context.Context, c *plex.Client) (int, erro
 		for _, h := range entries {
 			dates = append(dates, int64(h.ViewedAt))
 			if e, ok := PlexEvent(h); ok {
+				if tid, ok := ids[e.UserID]; ok {
+					e.UserID = tid
+				}
 				events = append(events, e)
 			}
 		}

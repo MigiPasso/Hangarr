@@ -16,10 +16,12 @@ import (
 	"cleanarr/internal/secretbox"
 )
 
-// History sources.
+// History sources (HISTORY_SOURCE). auto resolves to merged when Tautulli
+// is configured, plex otherwise.
 const (
-	HistoryTautulli = "tautulli"
-	HistoryPlex     = "plex"
+	HistoryTautulli = "tautulli" // Tautulli only
+	HistoryPlex     = "plex"     // Plex history only (no durations)
+	HistoryMerged   = "merged"   // Plex history as reference, enriched by Tautulli
 	HistoryAuto     = "auto"
 )
 
@@ -43,7 +45,7 @@ type Config struct {
 	RadarrPublicURL string
 	PlexPublicURL   string
 
-	// HistorySource is the requested mode: "auto", "tautulli" or "plex".
+	// HistorySource is the requested mode: "auto", "merged", "tautulli" or "plex".
 	// It is resolved against the effective service configuration (which may
 	// come from the UI) by the upstream package.
 	HistorySource         string
@@ -278,9 +280,9 @@ func Load(lookup LookupFunc, readFile ReadFileFunc) (*Config, error) {
 	c.Location = loc
 
 	switch c.HistorySource {
-	case HistoryAuto, HistoryTautulli, HistoryPlex:
+	case HistoryAuto, HistoryTautulli, HistoryPlex, HistoryMerged:
 	default:
-		l.fail("HISTORY_SOURCE: expected tautulli, plex or auto, got %q", c.HistorySource)
+		l.fail("HISTORY_SOURCE: expected auto, merged, tautulli or plex, got %q", c.HistorySource)
 	}
 
 	if mk := l.secret("CLEANARR_MASTER_KEY"); mk != "" {

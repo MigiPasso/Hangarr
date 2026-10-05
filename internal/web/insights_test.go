@@ -53,6 +53,11 @@ func TestStatsPages(t *testing.T) {
 	if !strings.Contains(r.body, "· Alice") || !strings.Contains(r.body, "Les plus regardés (heures)") {
 		t.Error("user filter / sort by hours")
 	}
+	for _, global := range []string{"Classement des spectateurs", "Coût par lecture", "Qui regarde quoi"} {
+		if strings.Contains(r.body, global) {
+			t.Errorf("%q is about every viewer: hidden for one", global)
+		}
+	}
 	r = e.do(e.c, "GET", "/stats/users/1002", nil, nil)
 	if r.status != http.StatusOK || !strings.Contains(r.body, "<h1>Bob</h1>") || !strings.Contains(r.body, "Heures regardées par mois") ||
 		!strings.Contains(r.body, "Shōgun") {

@@ -12,7 +12,7 @@
 <div class="config-grid">
 {{range .Data.Services}}{{template "service_section" .}}{{end}}
 </div>
-<p class="small muted config-intro">{{t "History source:"}} {{if eq .Data.HistorySource "tautulli"}}Tautulli{{else}}Plex{{end}}{{template "info" (t "Set by HISTORY_SOURCE. Plex only knows the plays still in its library.")}}</p>
+<p class="small muted config-intro">{{t "History source:"}} {{if eq .Data.HistorySource "merged"}}Plex + Tautulli{{else if eq .Data.HistorySource "tautulli"}}Tautulli{{else}}Plex{{end}}{{template "info" (t "Set by HISTORY_SOURCE. Plex + Tautulli: Plex says what was watched, Tautulli adds durations and devices. Plex only knows the plays still in its library.")}}</p>
 {{end}}
 
 {{define "service_section"}}

@@ -340,14 +340,20 @@ func (s *Server) stats(w http.ResponseWriter, r *http.Request) {
 	d.Heatmap = heatmap(l, grid, l.T("Play sessions by weekday and hour"))
 	d.Hours = l.Hours(secs)
 
-	if d.Ranking, err = s.Store.UserRanking(ctx, since); fail(err) {
+	ranking, err := s.Store.UserRanking(ctx, since)
+	if fail(err) {
 		return
 	}
-	for _, u := range d.Ranking {
+	for _, u := range ranking {
 		if d.User == 0 || u.UserID == d.User {
 			d.Plays += u.Plays
 			d.Titles += u.Titles
 		}
+	}
+	// Viewer-wide sections (ranking, cost per play, who watches what) only
+	// make sense for everyone: hidden for a single viewer.
+	if d.User == 0 {
+		d.Ranking = ranking
 	}
 	if d.TopSeries, err = s.Store.TopMedia(ctx, "series", since, d.User, d.ByHours, 10); fail(err) {
 		return
@@ -377,8 +383,10 @@ func (s *Server) stats(w http.ResponseWriter, r *http.Request) {
 		playsName = l.T("Plays by %s", d.UserName)
 	}
 	d.Genres = pairedBars(l, rows, l.T("Stored space"), playsName, l.T("Share of stored space and plays per genre"))
-	if d.Cost, err = s.Store.CostPerPlay(ctx, 15); fail(err) {
-		return
+	if d.User == 0 {
+		if d.Cost, err = s.Store.CostPerPlay(ctx, 15); fail(err) {
+			return
+		}
 	}
 	resumeUsers := d.Users
 	if d.User != 0 {
@@ -395,8 +403,10 @@ func (s *Server) stats(w http.ResponseWriter, r *http.Request) {
 		}
 		d.Abandoned = append(d.Abandoned, items...)
 	}
-	if d.WhoWatches, err = s.Store.WhoWatchesWhat(ctx, 10); fail(err) {
-		return
+	if d.User == 0 {
+		if d.WhoWatches, err = s.Store.WhoWatchesWhat(ctx, 10); fail(err) {
+			return
+		}
 	}
 	if d.Completion, err = s.Store.MovieCompletion(ctx, since, d.User, 10); fail(err) {
 		return

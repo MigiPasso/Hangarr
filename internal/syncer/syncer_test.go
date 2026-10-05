@@ -206,7 +206,7 @@ func TestFullSync(t *testing.T) {
 		t.Errorf("Expanse S2 should be a never-watched season, got %d", n)
 	}
 	runs, _ := e.store.LatestSyncRuns(context.Background())
-	if len(runs) != 4 {
+	if len(runs) != 5 { // sonarr, radarr, plex, tautulli, plex_history (merged)
 		t.Fatalf("sync runs: %+v", runs)
 	}
 	for _, r := range runs {
@@ -335,6 +335,65 @@ func TestPlexHistoryFallback(t *testing.T) {
 	}
 }
 
+// Merged mode: the Plex history says what was watched, Tautulli enriches the
+// plays it knows. Plex numbers the owner 1, Tautulli uses its plex.tv id.
+func TestMergedHistory(t *testing.T) {
+	e := newEnv(t)
+	e.fsys["plex/accounts.json"] = &fstest.MapFile{Data: []byte(`{"MediaContainer":{"Account":[
+ {"id":0,"name":""},{"id":1,"name":"ALICE"},{"id":1002,"name":"bob"},{"id":1003,"name":"carol"}]}}`)}
+	e.fsys["plex/history.json"] = &fstest.MapFile{Data: []byte(`{"MediaContainer":{"size":3,"totalSize":3,"offset":0,"Metadata":[
+ {"historyKey":"/status/sessions/history/913","ratingKey":"102","title":"Dune","type":"movie","viewedAt":1790714800,"accountID":1},
+ {"historyKey":"/status/sessions/history/912","ratingKey":"104","title":"Interstellar","type":"movie","viewedAt":1790000000,"accountID":1},
+ {"historyKey":"/status/sessions/history/911","ratingKey":"101","title":"Inception","type":"movie","viewedAt":1788301680,"accountID":1002}]}}`)}
+	vals := upstream.TestValues(e.urls, key)
+	// Plex alone first: entries stored under the Plex owner id.
+	e.s.Upstreams.Set(upstream.Build(vals, "plex"))
+	e.run()
+	if n := e.count(`SELECT COUNT(*) FROM watch_events WHERE user_id = 1`); n != 2 {
+		t.Fatalf("owner entries before the merge: %d", n)
+	}
+
+	e.s.Upstreams.Set(upstream.Build(vals, "auto")) // Tautulli configured: merged
+	if res := e.run(); res.Failed() {
+		t.Fatalf("sources: %+v", res.Sources)
+	}
+	if n := e.count(`SELECT COUNT(*) FROM watch_events WHERE user_id = 1`); n != 0 {
+		t.Errorf("Plex owner id must be translated to Tautulli's: %d entries left", n)
+	}
+	if n := e.count(`SELECT COUNT(*) FROM plex_accounts WHERE account_id = 1`); n != 0 {
+		t.Error("the Plex owner account duplicates a Tautulli user")
+	}
+	if n := e.count(`SELECT COUNT(*) FROM plex_accounts`); n != 3 {
+		t.Errorf("accounts: %d", n)
+	}
+	// Dune and Inception are known to Tautulli: only Interstellar stays from Plex.
+	var user, secs int64
+	if err := e.store.DB().QueryRow(`SELECT user_id, play_seconds FROM watch_events WHERE source = 'plex_history'`).
+		Scan(&user, &secs); err != nil {
+		t.Fatalf("one Plex-only play expected: %v (%d plex rows)", err,
+			e.count(`SELECT COUNT(*) FROM watch_events WHERE source = 'plex_history'`))
+	}
+	if user != 1001 || secs != 169*60 {
+		t.Errorf("Plex-only play: user %d, %d s (want alice, runtime estimate)", user, secs)
+	}
+	if n := e.count(`SELECT watched FROM watch_events WHERE source = 'tautulli' AND stopped_at = 1790714700`); n != 1 {
+		t.Error("the partial Dune session must be completed by the Plex view")
+	}
+	if got := e.media("movie", "Inception").Plays; got != 2 {
+		t.Errorf("Inception plays: %d (Plex view merged, not added)", got)
+	}
+	if st := e.media("movie", "Interstellar").State; st != "completed" {
+		t.Errorf("Interstellar: %s", st)
+	}
+
+	// Idempotent: a second sync neither duplicates nor loses anything.
+	before := e.count(`SELECT COUNT(*) FROM watch_events`)
+	e.run()
+	if after := e.count(`SELECT COUNT(*) FROM watch_events`); after != before {
+		t.Errorf("events %d → %d after a second sync", before, after)
+	}
+}
+
 func TestConcurrentRunRejected(t *testing.T) {
 	e := newEnv(t)
 	e.s.running.Store(true)
@@ -391,8 +450,13 @@ func TestSwitchHistorySourceKeepsOne(t *testing.T) {
 		t.Fatal("plex history expected first")
 	}
 	inceptionPlexPlays := e.media("movie", "Inception").Plays
+	// The Plex server numbers its owner 1, Tautulli uses the plex.tv id:
+	// the same person, recorded twice while Plex was the history source.
+	if _, err := e.store.DB().Exec(`INSERT INTO plex_accounts(account_id, username, is_active) VALUES (1, 'owner', 1)`); err != nil {
+		t.Fatal(err)
+	}
 
-	e.s.Upstreams.Set(upstream.Build(vals, "auto")) // Tautulli configured: it becomes the source
+	e.s.Upstreams.Set(upstream.Build(vals, "tautulli"))
 	e.run()
 	if n := e.count(`SELECT COUNT(*) FROM watch_events WHERE source = 'plex_history'`); n != 0 {
 		t.Errorf("plex history must be dropped once Tautulli is the source: %d events left", n)
@@ -402,6 +466,12 @@ func TestSwitchHistorySourceKeepsOne(t *testing.T) {
 	}
 	if n := e.count(`SELECT COALESCE(SUM(play_seconds), 0) FROM watch_events`); n == 0 {
 		t.Error("Tautulli sessions carry durations")
+	}
+	if n := e.count(`SELECT COUNT(*) FROM plex_accounts WHERE account_id = 1`); n != 0 {
+		t.Error("accounts of the dropped source must not stay (duplicated viewers)")
+	}
+	if n := e.count(`SELECT COUNT(*) FROM plex_accounts`); n != 3 {
+		t.Errorf("Tautulli users expected after the switch, got %d accounts", n)
 	}
 	if got := e.media("movie", "Inception").Plays; got != 2 || got == inceptionPlexPlays+2 {
 		t.Errorf("Inception plays after the switch: %d (Tautulli only, not added to Plex's)", got)
