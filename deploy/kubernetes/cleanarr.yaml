@@ -1,0 +1,144 @@
+# Cleanarr on Kubernetes: plain manifests (no kustomize).
+#
+#   1. Put the image in a registry the nodes can pull from, and set it below
+#      (search "image:"). See README, « Kubernetes ».
+#   2. Create the master key secret (never commit it):
+#        kubectl create namespace cleanarr
+#        kubectl -n cleanarr create secret generic cleanarr-master-key \
+#          --from-literal=master-key="$(docker run --rm <image> master-key)"
+#   3. kubectl apply -f deploy/kubernetes/cleanarr.yaml
+#   4. Initial admin password (shown once):
+#        kubectl -n cleanarr logs deploy/cleanarr | grep -A4 "INITIAL ADMIN"
+#   5. Open the app (port-forward, or the Service / Ingress you choose), then
+#      configure Sonarr, Radarr, Plex and Tautulli in « Services » with their
+#      in-cluster addresses, e.g. http://sonarr.media.svc.cluster.local:8989.
+#
+# One replica only (SQLite on a ReadWriteOnce volume), Recreate strategy.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: cleanarr
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cleanarr-config
+  namespace: cleanarr
+data:
+  # Keep true until you really want deletions to happen.
+  DRY_RUN: "true"
+  PROTECTED_TAGS: "keep"
+  TZ: "Europe/Paris"
+  DEFAULT_LANG: "en"
+  # true when the app is reached over HTTPS (Ingress, Tailscale) or through
+  # `kubectl port-forward` on localhost; false only for plain HTTP elsewhere.
+  COOKIE_SECURE: "true"
+  # CIDR of the ingress controller / proxy pods allowed to send
+  # X-Forwarded-For (empty: the TCP peer is the client).
+  TRUSTED_PROXIES: ""
+  LOG_FORMAT: "json"
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: cleanarr-data
+  namespace: cleanarr
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: 1Gi
+  # storageClassName: <your-storage-class>
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cleanarr
+  namespace: cleanarr
+  labels:
+    app.kubernetes.io/name: cleanarr
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: cleanarr
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: cleanarr
+    spec:
+      automountServiceAccountToken: false
+      # Private registry (e.g. a private GHCR package):
+      # imagePullSecrets:
+      #   - name: ghcr-pull
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        fsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      terminationGracePeriodSeconds: 30 # the app drains for 20 s on SIGTERM
+      containers:
+        - name: cleanarr
+          image: ghcr.io/CHANGE-ME/cleanarr:latest # set your registry / tag
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+          envFrom:
+            - configMapRef:
+                name: cleanarr-config
+          env:
+            - name: CLEANARR_MASTER_KEY_FILE
+              value: /run/secrets/cleanarr/master-key
+          securityContext:
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          startupProbe:
+            httpGet: { path: /healthz, port: http }
+            periodSeconds: 2
+            failureThreshold: 30
+          livenessProbe:
+            httpGet: { path: /healthz, port: http }
+            periodSeconds: 20
+          readinessProbe:
+            httpGet: { path: /readyz, port: http }
+            periodSeconds: 10
+          resources:
+            requests: { cpu: 50m, memory: 128Mi }
+            limits: { memory: 512Mi }
+          volumeMounts:
+            - { name: data, mountPath: /data }
+            - { name: master-key, mountPath: /run/secrets/cleanarr, readOnly: true }
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: cleanarr-data
+        - name: master-key
+          secret:
+            secretName: cleanarr-master-key
+            defaultMode: 0440 # readable by the fsGroup (65532), not only root
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: cleanarr
+  namespace: cleanarr
+  # With the Tailscale operator, expose the app in your tailnet:
+  # annotations:
+  #   tailscale.com/expose: "true"
+  #   tailscale.com/hostname: "cleanarr"
+spec:
+  selector:
+    app.kubernetes.io/name: cleanarr
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+# Tautulli webhook (optional): in Tautulli, use
+#   http://cleanarr.cleanarr.svc.cluster.local:8080/webhooks/tautulli
