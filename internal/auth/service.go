@@ -94,8 +94,8 @@ func (s *Service) event(ctx context.Context, name string, userID *int64, usernam
 // Banner returns the one-time admin password banner (SPEC §11.1).
 func Banner(username, password string) string {
 	line := strings.Repeat("=", 64)
-	return fmt.Sprintf("%s\n CLEANARR : COMPTE ADMIN INITIAL CRÉÉ\n Utilisateur  : %s\n Mot de passe : %s\n"+
-		" Ce mot de passe ne sera plus jamais affiché.\n Il devra être changé à la première connexion.\n%s\n",
+	return fmt.Sprintf("%s\n CLEANARR: INITIAL ADMIN ACCOUNT CREATED\n Username : %s\n Password : %s\n"+
+		" This password will never be shown again.\n It must be changed at the first sign-in.\n%s\n",
 		line, username, password, line)
 }
 
@@ -143,8 +143,8 @@ func (s *Service) ResetPassword(ctx context.Context, username string, out io.Wri
 		return err
 	}
 	s.event(ctx, EventPasswordResetCLI, &u.ID, u.Username, ClientMeta{IP: "cli"})
-	_, err = fmt.Fprintf(out, "Nouveau mot de passe temporaire pour %q : %s\n"+
-		"Il devra être changé à la prochaine connexion. Toutes les sessions de ce compte ont été révoquées.\n",
+	_, err = fmt.Fprintf(out, "New temporary password for %q: %s\n"+
+		"It must be changed at the next sign-in. Every session of this account was revoked.\n",
 		u.Username, pw)
 	return err
 }

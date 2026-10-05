@@ -1,26 +1,28 @@
 {{define "nav"}}
 <header class="topbar">
   <a class="brand" href="/">Cleanarr</a>
-  <nav class="nav" aria-label="Navigation principale">
+  <nav class="nav" aria-label="{{t "Main navigation"}}">
     {{if .Session.MustChangePassword}}
-      <span class="nav-hint">Changez votre mot de passe pour continuer</span>
+      <span class="nav-hint">{{t "Change your password to continue"}}</span>
     {{else}}
-      <a href="/"{{if eq .Active "dashboard"}} aria-current="page"{{end}}>Dashboard</a>
-      <a href="/series"{{if eq .Active "series"}} aria-current="page"{{end}}>Séries</a>
-      <a href="/movies"{{if eq .Active "movie"}} aria-current="page"{{end}}>Films</a>
-      <a href="/cleanup"{{if eq .Active "cleanup"}} aria-current="page"{{end}}>Nettoyage</a>
-      <a href="/stats"{{if eq .Active "stats"}} aria-current="page"{{end}}>Stats</a>
-      <a href="/health"{{if eq .Active "health"}} aria-current="page"{{end}}>Santé</a>
-      <a href="/journal"{{if eq .Active "journal"}} aria-current="page"{{end}}>Journal</a>
-      <a href="/settings"{{if eq .Active "settings"}} aria-current="page"{{end}}>Réglages</a>
-      <a href="/config"{{if eq .Active "config"}} aria-current="page"{{end}}>Configuration</a>
-      <a href="/account"{{if eq .Active "account"}} aria-current="page"{{end}}>Compte</a>
+      <a href="/"{{if eq .Active "dashboard"}} aria-current="page"{{end}}>{{t "Dashboard"}}</a>
+      <a href="/series"{{if eq .Active "series"}} aria-current="page"{{end}}>{{t "Series"}}</a>
+      <a href="/movies"{{if eq .Active "movie"}} aria-current="page"{{end}}>{{t "Movies"}}</a>
+      <a href="/cleanup"{{if eq .Active "cleanup"}} aria-current="page"{{end}}>{{t "Cleanup"}}</a>
+      <a href="/stats"{{if eq .Active "stats"}} aria-current="page"{{end}}>{{t "Stats"}}</a>
+      <a href="/health"{{if eq .Active "health"}} aria-current="page"{{end}}>{{t "Health"}}</a>
+      <a href="/journal"{{if eq .Active "journal"}} aria-current="page"{{end}}>{{t "Log"}}</a>
+      <a href="/settings"{{if eq .Active "settings"}} aria-current="page"{{end}}>{{t "Settings"}}</a>
+      <a href="/config"{{if eq .Active "config"}} aria-current="page"{{end}}>{{t "Services"}}</a>
+      <a href="/account"{{if eq .Active "account"}} aria-current="page"{{end}}>{{t "Account"}}</a>
     {{end}}
     <div class="nav-end">
       {{if not .Session.MustChangePassword}}{{template "sync_status" .}}{{end}}
+      {{template "lang_switch" .}}
+      {{template "theme_toggle"}}
       <form method="post" action="/logout" class="inline">
         <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
-        <button type="submit" class="link">Déconnexion</button>
+        <button type="submit" class="link">{{t "Log out"}}</button>
       </form>
     </div>
   </nav>
@@ -31,16 +33,16 @@
 <div id="sync-status" class="sync-status"{{if $.OOB}} hx-swap-oob="true"{{end}}{{if .Running}} hx-get="/sync/status" hx-trigger="every 2s" hx-swap="outerHTML"{{end}}>
   {{if .Running}}
     <span class="spinner" aria-hidden="true"></span>
-    <span class="small">Synchronisation{{with .Progress}} : {{.}}{{end}}…</span>
+    <span class="small">{{t "Syncing"}}{{with .Progress}}: {{tv . $.Sync.ProgressArgs}}{{end}}…</span>
   {{else}}
     <span class="small muted">
-      {{if .LastAt}}Synchro {{relptr .LastAt}}{{else}}Jamais synchronisé{{end}}
-      {{if .Failed}}· <span class="warn">erreur : {{range $i, $f := .Failed}}{{if $i}}, {{end}}{{$f}}{{end}}</span>{{end}}
+      {{if .LastAt}}{{t "Synced %s" (relptr .LastAt)}}{{else}}{{t "Never synced"}}{{end}}
+      {{if .Failed}}· <span class="warn">{{t "error:"}} {{range $i, $f := .Failed}}{{if $i}}, {{end}}{{$f}}{{end}}</span>{{end}}
     </span>
     {{if .Disabled}}
-    <a class="small" href="/config">Configurer</a>
+    <a class="small" href="/config">{{t "Configure"}}</a>
     {{else}}
-    <button type="button" class="small" hx-post="/sync" hx-target="#sync-status" hx-swap="outerHTML">Synchroniser</button>
+    <button type="button" class="small" hx-post="/sync" hx-target="#sync-status" hx-swap="outerHTML">{{t "Sync now"}}</button>
     {{end}}
   {{end}}
 </div>
@@ -49,8 +51,14 @@
 {{define "config_banner"}}
 <div id="config-banner"{{if .OOB}} hx-swap-oob="true"{{end}}>{{if .Missing}}
   <div class="config-banner" role="status">
-    Configuration incomplète ({{range $i, $m := .Missing}}{{if $i}}, {{end}}{{$m}}{{end}}) : la synchronisation est
-    désactivée.{{if ne .Active "config"}} <a href="/config">Configurer les services</a>{{end}}
+    {{t "Services not configured (%s): sync disabled." (join .Missing ", ")}}{{if ne .Active "config"}} <a href="/config">{{t "Configure the services"}}</a>{{end}}
   </div>
 {{end}}</div>
 {{end}}
+
+{{define "theme_toggle"}}<button type="button" class="theme-toggle" data-theme-toggle aria-label="{{t "Switch theme (light / dark)"}}" title="{{t "Light / dark theme"}}"><svg class="to-dark" viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M6 .3a.6.6 0 0 1 .1.7A6 6 0 0 0 14.9 9.9a.6.6 0 0 1 .8.7A7.5 7.5 0 1 1 5.4.2a.6.6 0 0 1 .6.1z"/></svg><svg class="to-light" viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M8 11.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7zM8 0a.75.75 0 0 1 .75.75v1.5a.75.75 0 0 1-1.5 0V.75A.75.75 0 0 1 8 0zm0 13a.75.75 0 0 1 .75.75v1.5a.75.75 0 0 1-1.5 0v-1.5A.75.75 0 0 1 8 13zm8-5a.75.75 0 0 1-.75.75h-1.5a.75.75 0 0 1 0-1.5h1.5A.75.75 0 0 1 16 8zM3 8a.75.75 0 0 1-.75.75H.75a.75.75 0 0 1 0-1.5h1.5A.75.75 0 0 1 3 8zm10.66-5.66a.75.75 0 0 1 0 1.06l-1.06 1.06a.75.75 0 1 1-1.06-1.06l1.06-1.06a.75.75 0 0 1 1.06 0zM4.46 11.54a.75.75 0 0 1 0 1.06L3.4 13.66a.75.75 0 1 1-1.06-1.06l1.06-1.06a.75.75 0 0 1 1.06 0zm9.2 2.12a.75.75 0 0 1-1.06 0l-1.06-1.06a.75.75 0 1 1 1.06-1.06l1.06 1.06a.75.75 0 0 1 0 1.06zM4.46 4.46a.75.75 0 0 1-1.06 0L2.34 3.4A.75.75 0 1 1 3.4 2.34l1.06 1.06a.75.75 0 0 1 0 1.06z"/></svg></button>{{end}}
+
+{{define "lang_switch"}}{{if eq .Lang "fr"}}<a class="lang-switch" href="/lang/en?next={{.Path}}" hreflang="en" lang="en" title="English">EN</a>{{else}}<a class="lang-switch" href="/lang/fr?next={{.Path}}" hreflang="fr" lang="fr" title="Français">FR</a>{{end}}{{end}}
+
+{{/* info: a small "i" showing its text on hover or keyboard focus. */}}
+{{define "info"}}<span class="info" tabindex="0" role="img" aria-label="{{.}}" data-tip="{{.}}">i</span>{{end}}

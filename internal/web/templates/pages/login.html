@@ -1,23 +1,21 @@
 {{define "content"}}
 <section class="card auth-card">
   <h1>Cleanarr</h1>
-  <p class="muted">Connectez-vous pour continuer.</p>
+  <p class="muted">{{t "Sign in to continue."}}</p>
   {{if .Data.InsecureCookies}}
   <div class="alert alert-warning" role="alert">
-    <strong>Connexion impossible en HTTP.</strong> L'application est servie sans HTTPS alors que
-    <code>COOKIE_SECURE=true</code> : le navigateur refusera le cookie de session. Passez par HTTPS (reverse proxy), ou,
-    pour un test sur le réseau local uniquement, définissez <code>COOKIE_SECURE=false</code> et redémarrez.
+    <strong>{{t "Sign-in impossible over HTTP."}}</strong> {{t "COOKIE_SECURE=true: the browser drops the session cookie without HTTPS. Use HTTPS, or set COOKIE_SECURE=false for a local test and restart."}}
   </div>
   {{end}}
   {{with .Data.Error}}<p class="alert alert-error" role="alert">{{.}}</p>{{end}}
   <form method="post" action="/login" class="stack">
     <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
-    <label for="username">Nom d'utilisateur</label>
+    <label for="username">{{t "Username"}}</label>
     <input id="username" name="username" type="text" autocomplete="username" autocapitalize="none"
            spellcheck="false" required autofocus value="{{.Data.Username}}">
-    <label for="password">Mot de passe</label>
+    <label for="password">{{t "Password"}}</label>
     <input id="password" name="password" type="password" autocomplete="current-password" required>
-    <button type="submit" class="primary">Se connecter</button>
+    <button type="submit" class="primary">{{t "Sign in"}}</button>
   </form>
 </section>
 {{end}}

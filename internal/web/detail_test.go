@@ -102,7 +102,7 @@ func TestDeleteFlowDryRun(t *testing.T) {
 	e := newLibEnv(t, 0)
 	id := e.mediaID("series", "The Expanse")
 	r := e.do(e.c, "GET", "/series/"+id+"/delete?season=2", nil, map[string]string{"HX-Request": "true"})
-	if !strings.Contains(r.body, "Mode simulation") || strings.Contains(r.body, "import_exclusion") ||
+	if !strings.Contains(r.body, "Simulation (DRY_RUN)") || strings.Contains(r.body, "import_exclusion") ||
 		!strings.Contains(r.body, "4,5 Go") || strings.Contains(r.body, "<html") {
 		t.Fatalf("season form:\n%s", r.body)
 	}
@@ -271,7 +271,7 @@ func TestBatchProtect(t *testing.T) {
 	tok := csrfFrom(t, e.do(e.c, "GET", "/movies", nil, nil).body)
 	r := e.do(e.c, "POST", "/batch/protect", url.Values{"csrf_token": {tok},
 		"ids": {e.mediaID("movie", "Dune"), e.mediaID("movie", "Inception")}}, map[string]string{"HX-Request": "true"})
-	if !strings.Contains(r.body, "Protection de la sélection (simulation)") || !strings.Contains(r.body, "2 réussites") ||
+	if !strings.Contains(r.body, "Protéger la sélection (simulation)") || !strings.Contains(r.body, "2 réussites") ||
 		!strings.Contains(r.header.Get("HX-Trigger"), "Simulation") {
 		t.Errorf("protect report: %s\n%s", r.header.Get("HX-Trigger"), r.body)
 	}

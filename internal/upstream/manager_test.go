@@ -13,12 +13,16 @@ import (
 	"testing"
 	"time"
 
+	"cleanarr/internal/i18n"
 	"cleanarr/internal/mockarr"
 	"cleanarr/internal/secretbox"
 	"cleanarr/internal/store"
 )
 
 const apiKey = "0123456789abcdef0123456789abcdef"
+
+// fr: the assertions below check the French messages.
+var fr = i18n.For(i18n.FR)
 
 func newBox(t *testing.T, fill string) *secretbox.Box {
 	t.Helper()
@@ -162,7 +166,7 @@ func TestSaveValidation(t *testing.T) {
 	if !errors.As(err, &verr) || verr[TautulliURL] == "" || verr[TautulliAPIKey] == "" || verr[TautulliWebhook] == "" {
 		t.Fatalf("expected errors on the three fields, got %v", err)
 	}
-	if !strings.Contains(verr[TautulliAPIKey], "clé maître") {
+	if !strings.Contains(verr[TautulliAPIKey], "master key") {
 		t.Errorf("no master key message: %q", verr[TautulliAPIKey])
 	}
 	// URLs can be saved without a master key.
@@ -239,11 +243,11 @@ func TestConnectionTest(t *testing.T) {
 		}
 	}
 	_, err := m.Test(ctx, Sonarr, input(SonarrURL, urls[Sonarr], SonarrAPIKey, "wrong"))
-	if msg := Describe(err); !strings.Contains(msg, "Accès refusé (HTTP 401)") {
+	if msg := Describe(fr, err); !strings.Contains(msg, "Accès refusé (HTTP 401)") {
 		t.Errorf("bad key: %q", msg)
 	}
 	_, err = m.Test(ctx, Sonarr, input(SonarrURL, urls[Radarr], SonarrAPIKey, apiKey))
-	if msg := Describe(err); !strings.Contains(msg, "Radarr, pas comme Sonarr") {
+	if msg := Describe(fr, err); !strings.Contains(msg, "Radarr, pas comme Sonarr") {
 		t.Errorf("wrong service: %q", msg)
 	}
 	_, err = m.Test(ctx, Tautulli, input(TautulliURL, urls[Tautulli], TautulliAPIKey, "wrong"))

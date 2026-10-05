@@ -12,10 +12,10 @@ import (
 	"strconv"
 	"strings"
 	"time"
-	"unicode/utf8"
 
 	"cleanarr/internal/actions"
 	"cleanarr/internal/clients/sonarr"
+	"cleanarr/internal/i18n"
 	"cleanarr/internal/store"
 )
 
@@ -291,7 +291,7 @@ func (s *Server) detail(kind string) http.HandlerFunc {
 		d.Exact = eps != nil
 		d.Seasons, d.Users = buildProgress(eps, watches, seasons)
 		d.Modal = isHTMX(r) && r.Header.Get("HX-Target") == "modal-body"
-		pd := s.page(r, m.Title, kind, d)
+		pd := s.pageRaw(r, m.Title, kind, d)
 		if d.Modal {
 			s.render(w, r, http.StatusOK, "detail", "detail_body", pd)
 			return
@@ -346,7 +346,7 @@ func seasonParam(v string) *int {
 }
 
 func (s *Server) renderDelete(w http.ResponseWriter, r *http.Request, status int, d deleteData) {
-	pd := s.page(r, "Supprimer "+d.M.Title, d.M.Kind, d)
+	pd := s.pageRaw(r, s.loc(r).T("Delete %s", d.M.Title), d.M.Kind, d)
 	if isHTMX(r) {
 		s.render(w, r, http.StatusOK, "delete", "delete_form", pd)
 		return
@@ -373,18 +373,31 @@ func (s *Server) deletePage(kind string) http.HandlerFunc {
 	}
 }
 
-// userMessage turns an actions error into a French message.
-func userMessage(err error) string {
-	for _, known := range []error{actions.ErrNotFound, actions.ErrNotDeletable, actions.ErrProtected,
-		actions.ErrConfirmMismatch, actions.ErrNoSuchSeason, actions.ErrNotManaged, actions.ErrNoProtectedTag,
-		actions.ErrUnconfigured} {
-		if errors.Is(err, known) {
-			msg := known.Error()
-			r, size := utf8.DecodeRuneInString(msg)
-			return strings.ToUpper(string(r)) + msg[size:] + "."
+// actionErrors explain the known actions errors (English keys).
+var actionErrors = []struct {
+	err error
+	msg string
+}{
+	{actions.ErrNotFound, "Item not found."},
+	{actions.ErrNotDeletable, "Not managed by Sonarr/Radarr: cannot be deleted."},
+	{actions.ErrProtected, "Protected by a tag."},
+	{actions.ErrConfirmMismatch, "The typed title does not match."},
+	{actions.ErrNoSuchSeason, "Season not found."},
+	{actions.ErrNotManaged, "Not managed by Sonarr/Radarr: cannot be protected."},
+	{actions.ErrNoProtectedTag, "No protection tag configured (PROTECTED_TAGS)."},
+	{actions.ErrUnconfigured, "Service not configured."},
+	{actions.ErrUnmonitorAfterDelete, "Files deleted, but the season could not be unmonitored: Sonarr may download it again."},
+}
+
+// explain turns an actions error into a sentence in the user's language;
+// unknown errors are prefixed with failed ("Deletion failed: %s").
+func explain(l i18n.Localizer, err error, failed string) string {
+	for _, k := range actionErrors {
+		if errors.Is(err, k.err) {
+			return l.T(k.msg)
 		}
 	}
-	return "La suppression a échoué : " + err.Error()
+	return l.T(failed, err.Error())
 }
 
 func (s *Server) deleteSubmit(kind string) http.HandlerFunc {
@@ -402,7 +415,7 @@ func (s *Server) deleteSubmit(kind string) http.HandlerFunc {
 		d.DeleteFiles = r.PostFormValue("delete_files") == "1"
 		d.ImportExclusion = r.PostFormValue("import_exclusion") == "1"
 		if s.Actions == nil {
-			d.Error = "Suppression indisponible."
+			d.Error = s.loc(r).T("Deletion unavailable.")
 			s.renderDelete(w, r, http.StatusServiceUnavailable, d)
 			return
 		}
@@ -411,22 +424,21 @@ func (s *Server) deleteSubmit(kind string) http.HandlerFunc {
 			ConfirmTitle: r.PostFormValue("confirm_title"), Username: sessionFrom(r).Username,
 		})
 		if err != nil {
-			d.Error = userMessage(err)
+			d.Error = explain(s.loc(r), err, "Deletion failed: %s")
 			s.renderDelete(w, r, http.StatusUnprocessableEntity, d)
 			return
 		}
-		what := "« " + res.Title + " »"
-		if res.Season != nil {
-			what = fmt.Sprintf("La saison %d de « %s »", *res.Season, res.Title)
-		}
+		l := s.loc(r)
 		var msg string
 		switch {
+		case res.DryRun && res.Season != nil:
+			msg = l.T("Simulation: season %d of “%s” would have been deleted (%s). Nothing changed.", *res.Season, res.Title, l.Bytes(res.SizeFreed))
 		case res.DryRun:
-			msg = fmt.Sprintf("Simulation : %s aurait été supprimé (%s). Rien n'a été modifié.", what, formatBytes(res.SizeFreed))
+			msg = l.T("Simulation: “%s” would have been deleted (%s). Nothing changed.", res.Title, l.Bytes(res.SizeFreed))
 		case res.Season != nil:
-			msg = fmt.Sprintf("%s a été supprimée (%s libérés).", what, formatBytes(res.SizeFreed))
+			msg = l.T("Season %d of “%s” was deleted (%s freed).", *res.Season, res.Title, l.Bytes(res.SizeFreed))
 		default:
-			msg = fmt.Sprintf("%s a été supprimé (%s libérés).", what, formatBytes(res.SizeFreed))
+			msg = l.T("“%s” was deleted (%s freed).", res.Title, l.Bytes(res.SizeFreed))
 		}
 		detailURL := fmt.Sprintf("%s/%d", kindPath(kind), m.ID)
 		if !isHTMX(r) {
@@ -484,12 +496,13 @@ type journalData struct {
 	NextURL string
 }
 
+// authEventLabels name the security events (English keys, translated by the templates).
 var authEventLabels = map[string]string{ //nolint:gosec // G101: UI labels, not credentials
-	"admin_created": "Compte admin créé", "login_success": "Connexion", "login_failure": "Échec de connexion",
-	"lockout": "Compte verrouillé", "password_changed": "Mot de passe changé",
-	"password_reset_cli": "Mot de passe réinitialisé (CLI)", "logout": "Déconnexion", "session_revoked": "Session révoquée",
-	"config_sonarr": "Configuration Sonarr modifiée", "config_radarr": "Configuration Radarr modifiée",
-	"config_plex": "Configuration Plex modifiée", "config_tautulli": "Configuration Tautulli modifiée",
+	"admin_created": "Admin account created", "login_success": "Sign-in", "login_failure": "Failed sign-in",
+	"lockout": "Account locked", "password_changed": "Password changed",
+	"password_reset_cli": "Password reset (CLI)", "logout": "Sign-out", "session_revoked": "Session revoked",
+	"config_sonarr": "Sonarr configuration changed", "config_radarr": "Radarr configuration changed",
+	"config_plex": "Plex configuration changed", "config_tautulli": "Tautulli configuration changed",
 }
 
 func (s *Server) journal(w http.ResponseWriter, r *http.Request) {
@@ -517,7 +530,7 @@ func (s *Server) journal(w http.ResponseWriter, r *http.Request) {
 	if more {
 		d.NextURL = fmt.Sprintf("/journal?tab=%s&page=%d", tab, page+1)
 	}
-	s.render(w, r, http.StatusOK, "journal", "", s.page(r, "Journal", "journal", d))
+	s.render(w, r, http.StatusOK, "journal", "", s.page(r, "Log", "journal", d))
 }
 
 // protectSubmit adds or removes the protection tag (« Protéger » / « Ne plus
@@ -529,29 +542,32 @@ func (s *Server) protectSubmit(kind string) http.HandlerFunc {
 			return
 		}
 		if s.Actions == nil {
-			http.Error(w, "Protection indisponible.", http.StatusServiceUnavailable)
+			http.Error(w, s.loc(r).T("Protection unavailable."), http.StatusServiceUnavailable)
 			return
 		}
 		protect := r.PostFormValue("protect") == "1"
 		detailURL := fmt.Sprintf("%s/%d", kindPath(kind), m.ID)
 		res, err := s.Actions.SetProtected(r.Context(), actions.ProtectRequest{MediaID: m.ID, Protect: protect,
 			Username: sessionFrom(r).Username})
+		l := s.loc(r)
 		var msg, level string
 		switch {
+		case err != nil && protect:
+			msg, level = explain(l, err, "Protection failed: %s"), "error"
 		case err != nil:
-			msg, level = protectErrorMessage(protect, err), "error"
+			msg, level = explain(l, err, "Unprotecting failed: %s"), "error"
 		case res.Unchanged && protect:
-			msg, level = fmt.Sprintf("« %s » est déjà protégé.", res.Title), "info"
+			msg, level = l.T("“%s” is already protected.", res.Title), "info"
 		case res.Unchanged:
-			msg, level = fmt.Sprintf("« %s » n'est pas protégé.", res.Title), "info"
+			msg, level = l.T("“%s” is not protected.", res.Title), "info"
 		case res.DryRun && protect:
-			msg, level = fmt.Sprintf("Simulation : « %s » aurait reçu le tag %s. Rien n'a été modifié.", res.Title, res.Tag), "info"
+			msg, level = l.T("Simulation: “%s” would have received the %s tag. Nothing changed.", res.Title, res.Tag), "info"
 		case res.DryRun:
-			msg, level = fmt.Sprintf("Simulation : le tag %s aurait été retiré de « %s ». Rien n'a été modifié.", res.Tag, res.Title), "info"
+			msg, level = l.T("Simulation: the %s tag would have been removed from “%s”. Nothing changed.", res.Tag, res.Title), "info"
 		case protect:
-			msg, level = fmt.Sprintf("« %s » est protégé (tag %s) : il ne sera plus proposé au nettoyage.", res.Title, res.Tag), "success"
+			msg, level = l.T("“%s” is protected (%s tag): it will no longer be proposed for cleanup.", res.Title, res.Tag), "success"
 		default:
-			msg, level = fmt.Sprintf("« %s » n'est plus protégé (tag %s retiré).", res.Title, res.Tag), "success"
+			msg, level = l.T("“%s” is no longer protected (%s tag removed).", res.Title, res.Tag), "success"
 		}
 		if !isHTMX(r) {
 			if err != nil {
@@ -570,16 +586,4 @@ func (s *Server) protectSubmit(kind string) http.HandlerFunc {
 		w.Header().Set("HX-Reswap", "none")
 		w.WriteHeader(http.StatusOK)
 	}
-}
-
-func protectErrorMessage(protect bool, err error) string {
-	msg := userMessage(err)
-	if strings.HasPrefix(msg, "La suppression a échoué") {
-		verb := "La protection"
-		if !protect {
-			verb = "Le retrait de la protection"
-		}
-		return verb + " a échoué : " + err.Error()
-	}
-	return msg
 }

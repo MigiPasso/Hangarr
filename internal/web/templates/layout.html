@@ -1,5 +1,5 @@
 {{define "layout"}}<!doctype html>
-<html lang="fr">
+<html lang="{{lang}}"{{with .Theme}} data-theme="{{.}}"{{end}}>
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -11,19 +11,19 @@
   <script src="{{asset "app.js"}}" defer></script>
 </head>
 <body{{if .Session}} hx-headers='{{.HXHeaders}}'{{end}}>
-  {{if .DryRun}}<div class="dry-run-banner" role="status">Mode simulation (DRY_RUN) : aucune suppression ne sera réellement effectuée.</div>{{end}}
+  {{if .DryRun}}<div class="dry-run-banner" role="status">{{t "Simulation mode (DRY_RUN): nothing will actually be deleted."}}</div>{{end}}
   {{if .Session}}{{template "nav" .}}{{end}}
   {{if and .Session (not .Session.MustChangePassword)}}{{template "config_banner" .}}{{end}}
   <main class="{{if .Session}}container{{else}}centered{{end}}">
     {{template "content" .}}
   </main>
-  <footer class="footer">Cleanarr {{.Version}}</footer>
+  <footer class="footer">Cleanarr {{.Version}}{{if not .Session}}{{template "lang_switch" .}}{{template "theme_toggle"}}{{end}}</footer>
   {{if .Session}}
-  <dialog id="modal" class="modal" aria-label="Fiche détaillée">
-    <button type="button" class="modal-close" data-close aria-label="Fermer">×</button>
+  <dialog id="modal" class="modal" aria-label="{{t "Details"}}">
+    <button type="button" class="modal-close" data-close aria-label="{{t "Close"}}">×</button>
     <div id="modal-body"></div>
   </dialog>
-  <dialog id="confirm" class="modal modal-small" aria-label="Confirmer la suppression"><div id="confirm-body"></div></dialog>
+  <dialog id="confirm" class="modal modal-small" aria-label="{{t "Confirm deletion"}}"><div id="confirm-body"></div></dialog>
   <div id="toasts" class="toasts" aria-live="polite"></div>
   {{end}}
 </body>

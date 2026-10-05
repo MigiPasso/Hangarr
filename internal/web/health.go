@@ -39,15 +39,15 @@ func (s *Server) renderHealth(w http.ResponseWriter, r *http.Request, services [
 		s.serverError(w, r, err)
 		return
 	}
-	s.render(w, r, http.StatusOK, "health", "", s.page(r, "Santé", "health", d))
+	s.render(w, r, http.StatusOK, "health", "", s.page(r, "Health", "health", d))
 }
 
 // healthServices checks every service live: an HTMX fragment, or the whole
 // page without JavaScript.
 func (s *Server) healthServices(w http.ResponseWriter, r *http.Request) {
-	statuses := upstream.CheckAll(r.Context(), s.Upstreams.Get())
+	statuses := upstream.CheckAll(r.Context(), s.Upstreams.Get(), s.loc(r))
 	if isHTMX(r) {
-		s.render(w, r, http.StatusOK, "health", "health_services_partial", s.page(r, "Santé", "health", statuses))
+		s.render(w, r, http.StatusOK, "health", "health_services_partial", s.page(r, "Health", "health", statuses))
 		return
 	}
 	s.renderHealth(w, r, statuses)

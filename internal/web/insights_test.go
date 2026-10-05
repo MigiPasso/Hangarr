@@ -80,7 +80,7 @@ func TestCleanupPageAndSettings(t *testing.T) {
 		}
 	}
 	candidates := func(body string) string {
-		before, _, _ := strings.Cut(body, "<h2>Saisons jamais vues</h2>")
+		before, _, _ := strings.Cut(body, "<h2>Saisons jamais vues")
 		return before
 	}
 	if strings.Contains(candidates(r.body), ">The Expanse<") {

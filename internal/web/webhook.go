@@ -111,12 +111,12 @@ func (s *Server) webhookSecretSubmit(w http.ResponseWriter, r *http.Request) {
 		form.GeneratedSecret = secret
 	}
 	if isHTMX(r) {
-		pd := s.page(r, "Configuration", "config", *form)
+		pd := s.page(r, "Services", "config", *form)
 		pd.OOB = true
 		s.render(w, r, http.StatusOK, "config", "config_saved", pd)
 		return
 	}
-	s.render(w, r, http.StatusOK, "config", "", s.page(r, "Configuration", "config", s.configData(forms)))
+	s.render(w, r, http.StatusOK, "config", "", s.page(r, "Services", "config", s.configData(forms)))
 }
 
 func truncateUA(ua string) string {

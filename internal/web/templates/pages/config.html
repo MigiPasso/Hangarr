@@ -1,67 +1,55 @@
 {{define "content"}}
-<h1>Configuration</h1>
-<p class="muted config-intro">Adresses et clés d'accès de Sonarr, Radarr, Plex et Tautulli. Une valeur définie par une
-  variable d'environnement est prioritaire et ne peut pas être modifiée ici. Les clés et tokens sont chiffrés en base et
-  ne sont jamais réaffichés : laissez le champ vide pour conserver la valeur actuelle.</p>
+<div class="title-row"><h1>{{t "Services"}}</h1>{{template "info" (t "Environment variables win and lock their field. Keys and tokens are encrypted and never shown again: leave a field empty to keep it.")}}</div>
 {{if .Data.KeyInDataDir}}
 <div class="alert alert-warning config-intro" role="note">
-  <strong>Clé de chiffrement stockée avec les données.</strong> Les clés et tokens sont chiffrés, mais la clé a été générée
-  dans le volume de données (<code>master.key</code>) : une sauvegarde ou une copie du volume les expose. Pour une
-  meilleure protection, définissez <code>CLEANARR_MASTER_KEY</code> (ou <code>CLEANARR_MASTER_KEY_FILE</code>) ;
-  <code>cleanarr master-key</code> en génère une. Au redémarrage suivant, les secrets sont rechiffrés avec cette clé et
-  <code>master.key</code> est supprimé, sans rien ressaisir.
+  <strong>{{t "Encryption key stored with the data."}}</strong>{{template "info" (t "A backup of the volume exposes the keys. Set CLEANARR_MASTER_KEY (or _FILE; `cleanarr master-key` makes one): secrets are re-encrypted at the next start, nothing to re-enter.")}}
 </div>
 {{else if not .Data.CanStoreSecrets}}
 <div class="alert alert-warning config-intro" role="alert">
-  <strong>Aucune clé maître n'est définie.</strong> Les adresses peuvent être enregistrées, mais pas les clés d'API ni les
-  tokens. Définissez <code>CLEANARR_MASTER_KEY</code> (ou <code>CLEANARR_MASTER_KEY_FILE</code>) puis redémarrez ;
-  <code>cleanarr master-key</code> en génère une. Conservez-la en dehors du volume de données.
+  <strong>{{t "No master key: keys and tokens cannot be saved."}}</strong>{{template "info" (t "Set CLEANARR_MASTER_KEY (or _FILE) and restart; `cleanarr master-key` makes one.")}}
 </div>
 {{end}}
 <div class="config-grid">
 {{range .Data.Services}}{{template "service_section" .}}{{end}}
 </div>
-<p class="small muted config-intro">Source de l'historique de lecture :
-  {{if eq .Data.HistorySource "tautulli"}}Tautulli{{else}}Plex (seulement les lectures encore présentes dans Plex){{end}}
-  (variable <code>HISTORY_SOURCE</code>).</p>
+<p class="small muted config-intro">{{t "History source:"}} {{if eq .Data.HistorySource "tautulli"}}Tautulli{{else}}Plex{{end}}{{template "info" (t "Set by HISTORY_SOURCE. Plex only knows the plays still in its library.")}}</p>
 {{end}}
 
 {{define "service_section"}}
 <section class="card config-card" id="service-{{.Service}}" aria-labelledby="service-{{.Service}}-title">
   <div class="config-head">
     <h2 id="service-{{.Service}}-title">{{.Label}}</h2>
-    {{if .Configured}}<span class="badge badge-ok">Configuré</span>{{else}}<span class="badge badge-muted">Non configuré</span>{{end}}
+    {{if .Configured}}<span class="badge badge-ok">{{t "Configured"}}</span>{{else}}<span class="badge badge-muted">{{t "Not configured"}}</span>{{end}}
   </div>
   <form method="post" action="/config/{{.Service}}" class="stack"
         hx-post="/config/{{.Service}}" hx-target="closest section" hx-swap="outerHTML">
     <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
     {{range .Fields}}
     <div class="config-field">
-      <label for="f-{{.Key}}">{{.Label}}</label>
+      <div class="title-row"><label for="f-{{.Key}}">{{t .Label}}</label>{{with .Help}}{{template "info" (t .)}}{{end}}</div>
       {{if .Locked}}
         <input id="f-{{.Key}}" type="text" value="{{if eq .Kind "url"}}{{.Value}}{{else}}{{.Hint}}{{end}}" disabled
                aria-describedby="f-{{.Key}}-env">
-        <p id="f-{{.Key}}-env" class="small muted">Défini par l'environnement (<code>{{.Env}}</code>).</p>
+        <p id="f-{{.Key}}-env" class="small muted">{{t "Set by the environment"}} (<code>{{.Env}}</code>)</p>
       {{else if eq .Kind "url"}}
         <input id="f-{{.Key}}" name="{{.Key}}" type="url" value="{{.Value}}" placeholder="http://…" autocomplete="off"
                spellcheck="false"{{if index $.Errors .Key}} aria-invalid="true"{{end}}>
       {{else}}
         <input id="f-{{.Key}}" name="{{.Key}}" type="password" autocomplete="new-password" spellcheck="false"
-               placeholder="{{if .Hint}}{{.Hint}} (vide = conserver){{else}}Non défini{{end}}"
+               placeholder="{{if .Hint}}{{t "%s (empty = keep)" .Hint}}{{else}}{{t "Not set"}}{{end}}"
                {{if not $.CanStoreSecrets}}disabled{{end}}{{if index $.Errors .Key}} aria-invalid="true"{{end}}>
-        {{if .Broken}}<p class="field-error">Valeur enregistrée illisible (clé maître changée ?) : saisissez-la de nouveau.</p>{{end}}
-        {{if or .Hint .Broken}}<label class="check small"><input type="checkbox" name="{{.Key}}.clear" value="1"> Effacer la valeur enregistrée</label>{{end}}
+        {{if .Broken}}<p class="field-error">{{t "Saved value unreadable (master key changed?): enter it again."}}</p>{{end}}
+        {{if or .Hint .Broken}}<label class="check small"><input type="checkbox" name="{{.Key}}.clear" value="1"> {{t "Clear the saved value"}}</label>{{end}}
       {{end}}
-      {{with index $.Errors .Key}}<p class="field-error" role="alert">{{.}}</p>{{end}}
-      {{with .Help}}<p class="small muted">{{.}}</p>{{end}}
+      {{with index $.Errors .Key}}<p class="field-error" role="alert">{{t .}}</p>{{end}}
     </div>
     {{end}}
-    {{if .Saved}}<p class="small ok-text" role="status">Enregistré.{{if .SyncStarted}} Première synchronisation lancée.{{end}}</p>{{end}}
-    {{if .NothingChanged}}<p class="small muted" role="status">Aucun changement.</p>{{end}}
+    {{if .Saved}}<p class="small ok-text" role="status">{{t "Saved."}}{{if .SyncStarted}} {{t "First sync started."}}{{end}}</p>{{end}}
+    {{if .NothingChanged}}<p class="small muted" role="status">{{t "No change."}}</p>{{end}}
     <div class="config-actions">
-      {{if not .Locked}}<button type="submit" class="primary">Enregistrer</button>{{end}}
+      {{if not .Locked}}<button type="submit" class="primary">{{t "Save"}}</button>{{end}}
       <button type="submit" formaction="/config/{{.Service}}/test"
-              hx-post="/config/{{.Service}}/test" hx-target="#test-{{.Service}}" hx-swap="outerHTML">Tester la connexion</button>
+              hx-post="/config/{{.Service}}/test" hx-target="#test-{{.Service}}" hx-swap="outerHTML">{{t "Test connection"}}</button>
     </div>
     <p id="test-{{.Service}}" class="test-result" role="status">{{with .Test}}{{template "test_msg" .}}{{end}}</p>
     {{if eq .Service "tautulli"}}{{template "webhook_box" .}}{{end}}
@@ -71,29 +59,26 @@
 
 {{define "webhook_box"}}
 <div class="webhook-box">
-  <h3>Webhook (statistiques à jour sans attendre la synchronisation)</h3>
+  <div class="title-row"><h3>{{t "Webhook"}}</h3>{{template "info" (t "Tautulli calls Cleanarr when a play stops: stats are updated 30 s later instead of at the daily sync. Its content is ignored.")}}</div>
   {{with .GeneratedSecret}}
   <div class="alert alert-warning" role="alert">
-    <p><strong>Nouveau secret, affiché une seule fois :</strong></p>
+    <p><strong>{{t "New secret, shown once:"}}</strong></p>
     <p><code class="secret">{{.}}</code></p>
-    <p>En-tête JSON à coller dans Tautulli : <code class="secret">{"X-Cleanarr-Token": "{{.}}"}</code></p>
+    <p>{{t "JSON header for Tautulli:"}} <code class="secret">{"X-Cleanarr-Token": "{{.}}"}</code></p>
   </div>
   {{end}}
   <ol class="small">
-    <li>Tautulli → Settings → Notification Agents → Add a new notification agent → <strong>Webhook</strong>.</li>
-    <li>Webhook URL : <code>{{.WebhookURL}}</code> (ou l'adresse sous laquelle Tautulli joint Cleanarr, par exemple
-      <code>http://cleanarr:8080/webhooks/tautulli</code> sur le même réseau Docker) ; méthode <code>POST</code>.</li>
-    <li>Triggers : <strong>Playback Stop</strong> et <strong>Watched</strong>.</li>
-    <li>Data : pour ces deux déclencheurs, champ <em>JSON Headers</em> : <code>{"X-Cleanarr-Token": "<em>le secret</em>"}</code>.</li>
+    <li>{{t "Tautulli → Settings → Notification Agents → add a Webhook."}}</li>
+    <li>{{t "URL:"}} <code>{{.WebhookURL}}</code>{{template "info" (t "Use the address Tautulli reaches Cleanarr at, e.g. http://cleanarr:8080/webhooks/tautulli on the same Docker network.")}} · <code>POST</code></li>
+    <li>{{t "Triggers: Playback Stop and Watched."}}</li>
+    <li>{{t "Data, for both triggers, JSON Headers:"}} <code>{"X-Cleanarr-Token": "…"}</code></li>
   </ol>
-  <p class="small muted">Cleanarr relit alors l'historique Tautulli 30 secondes après une fin de lecture. Le contenu
-    envoyé par Tautulli est ignoré : l'appel ne fait que déclencher cette lecture.</p>
-  {{if .WebhookLocked}}<p class="small muted">Secret défini par l'environnement (<code>TAUTULLI_WEBHOOK_SECRET</code>).</p>
+  {{if .WebhookLocked}}<p class="small muted">{{t "Secret set by the environment"}} (<code>TAUTULLI_WEBHOOK_SECRET</code>)</p>
   {{else if not .CanStoreSecrets}}
   {{else}}
   <button type="submit" formaction="/config/tautulli/webhook-secret" hx-post="/config/tautulli/webhook-secret"
-          hx-target="closest section" hx-swap="outerHTML">{{if .WebhookSet}}Générer un nouveau secret{{else}}Générer un secret{{end}}</button>
-  {{if .WebhookSet}}<p class="small muted">Un nouveau secret remplace l'ancien : pensez à mettre à jour Tautulli.</p>{{end}}
+          hx-target="closest section" hx-swap="outerHTML">{{if .WebhookSet}}{{t "Generate a new secret"}}{{else}}{{t "Generate a secret"}}{{end}}</button>
+  {{if .WebhookSet}}{{template "info" (t "The new secret replaces the old one: update Tautulli.")}}{{end}}
   {{end}}
 </div>
 {{end}}

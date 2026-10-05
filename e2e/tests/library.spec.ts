@@ -54,7 +54,7 @@ test("search, filters, history and perspective", async ({ page }) => {
 
 test("table view is remembered", async ({ page }) => {
   await page.goto("/movies");
-  await page.getByRole("link", { name: "Tableau" }).click();
+  await page.getByRole("link", { name: "Tableau", exact: true }).click();
   await expect(page.locator("table.library-table")).toBeVisible();
   await page.goto("/movies");
   await expect(page.locator("table.library-table tbody tr")).toHaveCount(6);
@@ -81,8 +81,48 @@ test("daily sync time can be changed", async ({ page }) => {
   await expect(minute).toHaveValue("45");
   await page.locator("#settings-form").getByRole("button", { name: "Enregistrer" }).click();
   await expect(page.getByText("Enregistré.", { exact: true })).toBeVisible();
-  await expect(page.getByText(/Prochaine synchronisation : .* à 06:45/)).toBeVisible();
+  await expect(page.getByText(/Prochaine synchronisation : .* 06:45/)).toBeVisible();
   await page.reload();
   await expect(page.getByLabel("Heure", { exact: true })).toHaveValue("06");
   await expect(page.getByLabel("Minute", { exact: true })).toHaveValue("45");
+});
+
+test("theme button switches light / dark and remembers it", async ({ page }) => {
+  await page.emulateMedia({ colorScheme: "light" });
+  await page.goto("/");
+  const html = page.locator("html");
+  await expect(html).not.toHaveAttribute("data-theme", /.+/);
+  const bg = () => page.evaluate(() => getComputedStyle(document.body).backgroundColor);
+  const light = await bg();
+  await page.getByRole("button", { name: "Changer de thème (clair / sombre)" }).click();
+  await expect(html).toHaveAttribute("data-theme", "dark");
+  expect(await bg()).not.toBe(light);
+  // Rendered by the server from the cookie: no flash on reload.
+  await page.reload();
+  await expect(html).toHaveAttribute("data-theme", "dark");
+  await page.getByRole("button", { name: "Changer de thème (clair / sombre)" }).click();
+  await expect(html).toHaveAttribute("data-theme", "light");
+  expect(await bg()).toBe(light);
+});
+
+test("language: English and French, switched from the top bar", async ({ page }) => {
+  // The e2e instances start in French (DEFAULT_LANG=fr); English is the default otherwise.
+  await expect(page.getByRole("link", { name: "Tableau de bord" })).toBeVisible();
+  await page.getByRole("link", { name: "EN", exact: true }).click();
+  await expect(page.locator("html")).toHaveAttribute("lang", "en");
+  await expect(page.getByRole("heading", { name: "Dashboard" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Cleanup" })).toBeVisible();
+  await page.goto("/settings");
+  await expect(page.getByRole("heading", { name: "Settings" })).toBeVisible();
+  await page.getByRole("link", { name: "FR", exact: true }).click();
+  await expect(page).toHaveURL(/\/settings$/);
+  await expect(page.getByRole("heading", { name: "Réglages" })).toBeVisible();
+});
+
+test("help icons show their text on focus", async ({ page }) => {
+  await page.goto("/settings");
+  const info = page.locator(".info").first();
+  await info.focus();
+  await expect(info).toHaveAttribute("data-tip", /Sonarr, Radarr, Plex et Tautulli/);
+  await expect(page.getByRole("heading", { name: "Synchronisation", exact: true })).toBeVisible();
 });

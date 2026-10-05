@@ -49,7 +49,15 @@ Pas de framework web, pas de build Node pour l'app, pas de CDN.
 
 ## Conventions de code
 
-- Code, identifiants, commentaires et logs en **anglais** ; interface utilisateur en **français**.
+- Code, identifiants, commentaires, logs et CLI en **anglais**. Interface **bilingue, anglais par défaut** (décision
+  utilisateur) : `internal/i18n`, clés = texte anglais (`{{t "Dashboard"}}`, `{{tn n "%d item" "%d items"}}`,
+  `l.T(...)` / `l.N(...)` en Go, suffixe `|contexte` pour distinguer deux textes anglais identiques), catalogue
+  `internal/i18n/fr.go`, `TestFrenchCatalogComplete` vérifie chaque clé. Langue : cookie `cleanarr_lang` (lien EN / FR,
+  `GET /lang/{code}?next=` limité aux chemins locaux), sinon `DEFAULT_LANG` (`en`). Tests web et instances e2e en
+  `DEFAULT_LANG=fr`. Nombres, tailles, dates et durées relatives via le `Localizer`. Titres dynamiques : `pageRaw`.
+- Aide contextuelle : explications courtes derrière un « i » (`{{template "info" (t "…")}}`, bulle CSS au survol et au
+  focus), **toujours à côté** du titre ou du `<label>` (`.title-row`), jamais dedans (sinon le texte d'aide entre dans
+  le nom accessible). Explications concises.
 - SQL toujours paramétré ; les requêtes vivent dans `internal/store`.
 - Pages : rendu complet, ou partial si `HX-Request` est présent. Redirections HTMX via `HX-Redirect` (`redirect()`).
 - Templates : une page = `templates/pages/<nom>.html` (déclarée dans `pages` de `views.go`) + `layout.html` + `partials/*`.
@@ -137,6 +145,12 @@ Pas de framework web, pas de build Node pour l'app, pas de CDN.
   `make deploy-check` = `compose.yml` tel quel + `deploy/compose.check.yml` (mock, sans port ni `.env`) + `deploy/check.sh`.
   `cleanarr backup [PATH]` (`VACUUM INTO`, à chaud). Avertissement sur la page de connexion si HTTP avec `COOKIE_SECURE=true`
   (hors localhost). Compose ≥ 2.24 (`env_file.required`, `!reset`).
+- Thèmes clair / sombre : toutes les couleurs en variables `light-dark(clair, sombre)` dans `app.css` ; par défaut le
+  système, bouton (`data-theme-toggle`, `app.js`) → cookie `cleanarr_theme` lu par le serveur (`<html data-theme>`, pas de
+  flash). Couleurs des graphiques validées pour les deux surfaces (validateur dataviz lancé dans Docker). Les pastilles
+  posées sur les affiches restent sombres dans les deux thèmes.
+- Projets Compose : `cleanarr` = `compose.yml` (prod), `cleanarr-dev` = `compose.dev.yml`, `cleanarr-e2e`,
+  `cleanarr-deploy-check` : ne jamais leur donner le même nom (un `down` emporterait l'autre).
 - `make e2e` tourne dans le projet compose `cleanarr-e2e` (séparé) et lit le mot de passe initial dans les logs.
 
 ## Phase 6 : périmètre convenu avec l'utilisateur

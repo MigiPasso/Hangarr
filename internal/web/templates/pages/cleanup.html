@@ -1,64 +1,60 @@
 {{define "content"}}{{$d := .Data}}
 <div class="section-head">
-  <h1>Nettoyage</h1>
-  <nav class="tabs tabs-small" aria-label="Type">
-    <a href="/cleanup"{{if eq $d.Kind ""}} aria-current="page"{{end}}>Tout</a>
-    <a href="/cleanup?kind=series"{{if eq $d.Kind "series"}} aria-current="page"{{end}}>Séries</a>
-    <a href="/cleanup?kind=movie"{{if eq $d.Kind "movie"}} aria-current="page"{{end}}>Films</a>
+  <div class="title-row"><h1>{{t "Cleanup"}}</h1>{{template "info" (t "Nobody watched these for %d days or more (never watched: since added). Largest first. Protected items (%s) are never proposed. Set the delay in Settings." $d.Days $d.Protected)}}</div>
+  <nav class="tabs tabs-small" aria-label="{{t "Type"}}">
+    <a href="/cleanup"{{if eq $d.Kind ""}} aria-current="page"{{end}}>{{t "All|kinds"}}</a>
+    <a href="/cleanup?kind=series"{{if eq $d.Kind "series"}} aria-current="page"{{end}}>{{t "Series"}}</a>
+    <a href="/cleanup?kind=movie"{{if eq $d.Kind "movie"}} aria-current="page"{{end}}>{{t "Movies"}}</a>
   </nav>
 </div>
-<p class="muted">
-  Ce que personne n'a regardé depuis {{$d.Days}} jours (jamais vu : depuis l'ajout), du plus gros au plus petit.
-  Les éléments protégés ({{$d.Protected}}) ne sont jamais proposés. Le délai se règle dans <a href="/settings">Réglages</a>.
-</p>
 
 <div class="tiles">
-  <div class="tile"><span class="tile-label">Récupérable</span><span class="tile-value">{{bytes $d.Recoverable}}</span></div>
-  {{if ne $d.Kind "movie"}}<div class="tile"><span class="tile-label">Saisons jamais vues</span><span class="tile-value">{{bytes $d.SeasonsBytes}}</span>
-    <span class="tile-hint">de séries regardées par ailleurs</span></div>{{end}}
+  <div class="tile"><span class="tile-label">{{t "Recoverable"}}</span><span class="tile-value">{{bytes $d.Recoverable}}</span>
+    <span class="tile-hint">{{t "unwatched for %d+ days" $d.Days}}</span></div>
+  {{if ne $d.Kind "movie"}}<div class="tile"><span class="tile-label">{{t "Never-watched seasons"}}</span><span class="tile-value">{{bytes $d.SeasonsBytes}}</span>
+    <span class="tile-hint">{{t "in series watched otherwise"}}</span></div>{{end}}
 </div>
 
 <section class="card">
-  <h2>Candidats</h2>
+  <h2>{{t "Candidates"}}</h2>
   {{if $d.Items}}
   <div class="table-wrap">
     <table class="table cleanup-table">
-      <thead><tr><th class="select-cell"><span class="visually-hidden">Sélection</span></th><th>Titre</th><th class="num">Taille</th><th>Pourquoi</th><th>État</th><th class="num">Lectures</th><th></th></tr></thead>
+      <thead><tr><th class="select-cell"><span class="visually-hidden">{{t "Selection"}}</span></th><th>{{t "Title"}}</th><th class="num">{{t "Size"}}</th><th>{{t "Why"}}</th><th>{{t "State"}}</th><th class="num">{{t "Plays"}}</th><th></th></tr></thead>
       <tbody>
       {{range $d.Items}}
         <tr id="media-{{.ID}}">
           <td class="select-cell">{{template "select_box" .LibraryItem}}</td>
           <td><a href="{{mediaPath .Kind}}/{{.ID}}" hx-get="{{mediaPath .Kind}}/{{.ID}}" hx-target="#modal-body">{{.Title}}</a>
-            <span class="muted small">{{if eq .Kind "series"}}série{{else}}film{{end}}{{if .Year}} · {{.Year}}{{end}}</span></td>
+            <span class="muted small">{{if eq .Kind "series"}}{{t "series|kind"}}{{else}}{{t "movie|kind"}}{{end}}{{if .Year}} · {{.Year}}{{end}}</span></td>
           <td class="num">{{bytes .SizeBytes}}</td>
-          <td class="cleanup-reason">{{if .LastViewedAt}}Dernière lecture {{relptr .LastViewedAt}}{{with .LastViewedBy}} ({{.}}){{end}}{{else if .AddedAt}}Jamais vu, ajouté {{relptr .AddedAt}}{{else}}Jamais vu{{end}}</td>
+          <td class="cleanup-reason">{{if .LastViewedAt}}{{if .LastViewedBy}}{{t "Last play %s (%s)" (relptr .LastViewedAt) .LastViewedBy}}{{else}}{{t "Last play %s" (relptr .LastViewedAt)}}{{end}}{{else if .AddedAt}}{{t "Never watched, added %s" (relptr .AddedAt)}}{{else}}{{t "Never watched"}}{{end}}</td>
           <td><span class="badge state state-{{.State}}">{{stateLabel .LibraryItem}}</span></td>
           <td class="num">{{.Plays}}</td>
-          <td class="actions"><button type="button" class="danger small" hx-get="{{mediaPath .Kind}}/{{.ID}}/delete" hx-target="#confirm-body">Supprimer</button></td>
+          <td class="actions"><button type="button" class="danger small" hx-get="{{mediaPath .Kind}}/{{.ID}}/delete" hx-target="#confirm-body">{{t "Delete"}}</button></td>
         </tr>
       {{end}}
       </tbody>
     </table>
   </div>
-  {{else}}<p class="muted">Aucun candidat : tout a été regardé depuis moins de {{$d.Days}} jours ou est protégé.</p>{{end}}
+  {{else}}<p class="muted">{{t "No candidate: everything was watched in the last %d days or is protected." $d.Days}}</p>{{end}}
 </section>
 
 {{if $d.Seasons}}
 <section class="card">
-  <h2>Saisons jamais vues</h2>
-  <p class="small muted">Saisons que personne n'a regardées, dans des séries vues par ailleurs.</p>
+  <div class="title-row"><h2>{{t "Never-watched seasons"}}</h2>{{template "info" (t "Seasons nobody watched, in series watched otherwise.")}}</div>
   <div class="table-wrap">
     <table class="table">
-      <thead><tr><th>Série</th><th>Saison</th><th class="num">Épisodes</th><th class="num">Taille</th><th>Série vue pour la dernière fois</th><th></th></tr></thead>
+      <thead><tr><th>{{t "Series|one"}}</th><th>{{t "Season"}}</th><th class="num">{{t "Episodes"}}</th><th class="num">{{t "Size"}}</th><th>{{t "Series last watched"}}</th><th></th></tr></thead>
       <tbody>
       {{range $d.Seasons}}
         <tr>
           <td><a href="/series/{{.MediaID}}" hx-get="/series/{{.MediaID}}" hx-target="#modal-body">{{.Title}}</a></td>
-          <td>Saison {{.Season}}</td>
+          <td>{{t "Season %d" .Season}}</td>
           <td class="num">{{.Files}}</td>
           <td class="num">{{bytes .SizeBytes}}</td>
           <td>{{relptr .LastViewedAt}}</td>
-          <td class="actions"><button type="button" class="danger small" hx-get="/series/{{.MediaID}}/delete?season={{.Season}}" hx-target="#confirm-body">Supprimer la saison</button></td>
+          <td class="actions"><button type="button" class="danger small" hx-get="/series/{{.MediaID}}/delete?season={{.Season}}" hx-target="#confirm-body">{{t "Delete season"}}</button></td>
         </tr>
       {{end}}
       </tbody>

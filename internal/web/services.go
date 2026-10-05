@@ -92,7 +92,7 @@ func (s *Server) configPage(w http.ResponseWriter, r *http.Request) {
 		s.serverError(w, r, err)
 		return
 	}
-	s.render(w, r, http.StatusOK, "config", "", s.page(r, "Configuration", "config", s.configData(forms)))
+	s.render(w, r, http.StatusOK, "config", "", s.page(r, "Services", "config", s.configData(forms)))
 }
 
 // serviceInput reads the form of one service.
@@ -159,12 +159,12 @@ func (s *Server) configSubmit(w http.ResponseWriter, r *http.Request) {
 	if isHTMX(r) {
 		// The section is swapped; the banner and the sync status depend on
 		// the configuration too and are swapped out of band.
-		pd := s.page(r, "Configuration", "config", form)
+		pd := s.page(r, "Services", "config", form)
 		pd.OOB = true
 		s.render(w, r, http.StatusOK, "config", "config_saved", pd)
 		return
 	}
-	s.render(w, r, status, "config", "", s.page(r, "Configuration", "config", s.configData(forms)))
+	s.render(w, r, status, "config", "", s.page(r, "Services", "config", s.configData(forms)))
 }
 
 func (s *Server) configTest(w http.ResponseWriter, r *http.Request) {
@@ -173,24 +173,24 @@ func (s *Server) configTest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	res := testResult{Service: svc}
+	l := s.loc(r)
 	version, err := s.Services.Test(r.Context(), svc, serviceInput(r, svc))
 	var verr upstream.ValidationError
 	switch {
 	case errors.As(err, &verr):
-		res.Message = "Adresse invalide : http(s) attendue."
+		res.Message = l.T("Expected an http(s) address, e.g. http://host:port.")
 	case err != nil:
-		res.Message = upstream.Describe(err)
+		res.Message = upstream.Describe(l, err)
 		s.Log.Info("connection test failed", "service", svc, "err", err)
 	default:
 		res.OK = true
-		res.Message = "Connexion réussie"
+		res.Message = l.T("Connected.")
 		if version != "" {
-			res.Message += " : " + upstream.ServiceLabel(svc) + " " + version
+			res.Message = l.T("Connected: %s %s.", upstream.ServiceLabel(svc), version)
 		}
-		res.Message += "."
 	}
 	if isHTMX(r) {
-		s.render(w, r, http.StatusOK, "config", "test_result", s.page(r, "Configuration", "config", res))
+		s.render(w, r, http.StatusOK, "config", "test_result", s.page(r, "Services", "config", res))
 		return
 	}
 	// Without JavaScript: the page, with the result in the service section.
@@ -204,5 +204,5 @@ func (s *Server) configTest(w http.ResponseWriter, r *http.Request) {
 			forms[i].Test = &res
 		}
 	}
-	s.render(w, r, http.StatusOK, "config", "", s.page(r, "Configuration", "config", s.configData(forms)))
+	s.render(w, r, http.StatusOK, "config", "", s.page(r, "Services", "config", s.configData(forms)))
 }

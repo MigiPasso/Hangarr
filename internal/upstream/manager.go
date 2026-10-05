@@ -17,6 +17,7 @@ import (
 
 	"cleanarr/internal/clients/httpx"
 	"cleanarr/internal/clients/tautulli"
+	"cleanarr/internal/i18n"
 	"cleanarr/internal/secretbox"
 	"cleanarr/internal/store"
 )
@@ -271,7 +272,7 @@ func (m *Manager) apply(svc string, saved Values, broken map[string]bool, in Inp
 			v := normalizeURL(in.Values[f.Key])
 			switch {
 			case v != "" && !validURL(v):
-				verr[f.Key] = "Adresse http(s) attendue, par exemple http://" + svc + ":port."
+				verr[f.Key] = "Expected an http(s) address, e.g. http://host:port."
 			case v == saved[f.Key] && (v != "" || !has):
 			case v == "":
 				del, changed = append(del, key), append(changed, f.Key)
@@ -288,9 +289,9 @@ func (m *Manager) apply(svc string, saved Values, broken map[string]bool, in Inp
 			}
 		case v == "" || (v == saved[f.Key] && !broken[f.Key]):
 		case f.Key == TautulliWebhook && len(v) < MinWebhookSecret:
-			verr[f.Key] = fmt.Sprintf("Au moins %d caractères.", MinWebhookSecret)
+			verr[f.Key] = "At least 32 characters." // MinWebhookSecret
 		case m.Box == nil:
-			verr[f.Key] = "Enregistrement impossible : aucune clé maître n'est définie (CLEANARR_MASTER_KEY)."
+			verr[f.Key] = "Cannot save: no master key (CLEANARR_MASTER_KEY)."
 		default:
 			sealed, serr := m.Box.Seal(f.Key, v)
 			if serr != nil {
@@ -355,7 +356,7 @@ func (m *Manager) Test(ctx context.Context, svc string, in Input) (string, error
 		}
 	}
 	if u := v[svc+".url"]; u != "" && !validURL(u) {
-		return "", ValidationError{svc + ".url": "Adresse http(s) attendue."}
+		return "", ValidationError{svc + ".url": "Expected an http(s) address, e.g. http://host:port."}
 	}
 	return Check(ctx, Build(v, m.HistoryMode), svc)
 }
@@ -408,9 +409,9 @@ func (e *WrongServiceError) Error() string {
 	return fmt.Sprintf("this URL serves %s, not %s", e.Got, e.Want)
 }
 
-// Describe explains a connection error in French for the UI. Messages never
-// contain credentials (httpx strips URLs from errors).
-func Describe(err error) string {
+// Describe explains a connection error for the UI. Messages never contain
+// credentials (httpx strips URLs from errors).
+func Describe(l i18n.Localizer, err error) string {
 	var se *httpx.StatusError
 	var te *tautulli.APIError
 	var we *WrongServiceError
@@ -421,25 +422,24 @@ func Describe(err error) string {
 	case err == nil:
 		return ""
 	case errors.Is(err, ErrNotConfigured):
-		return "Champs obligatoires manquants (URL et clé)."
+		return l.T("Required fields missing (URL and key).")
 	case errors.As(err, &re):
-		return fmt.Sprintf("Cette adresse redirige vers un autre hôte (%s) : refusé pour ne pas lui envoyer la clé. "+
-			"Indiquez directement l'adresse finale.", re.Host)
+		return l.T("This address redirects to another host (%s): refused so the key is not sent there. Enter the final address.", re.Host)
 	case errors.As(err, &we):
-		return fmt.Sprintf("Cette adresse répond comme %s, pas comme %s.", we.Got, we.Want)
+		return l.T("This address answers as %s, not %s.", we.Got, we.Want)
 	case errors.As(err, &se) && (se.Status == http.StatusUnauthorized || se.Status == http.StatusForbidden):
-		return fmt.Sprintf("Accès refusé (HTTP %d) : vérifiez la clé d'API ou le token.", se.Status)
+		return l.T("Access denied (HTTP %d): check the API key or token.", se.Status)
 	case errors.As(err, &se) && se.Status == http.StatusNotFound:
-		return "Introuvable (HTTP 404) : vérifiez l'URL (port, chemin de base)."
+		return l.T("Not found (HTTP 404): check the URL (port, base path).")
 	case errors.As(err, &se):
-		return fmt.Sprintf("Réponse inattendue (HTTP %d).", se.Status)
+		return l.T("Unexpected response (HTTP %d).", se.Status)
 	case errors.As(err, &te):
-		return "Tautulli refuse la requête : " + te.Message + "."
+		return l.T("Tautulli refused the request: %s.", te.Message)
 	case errors.As(err, &syn), errors.As(err, &ut):
-		return "Réponse illisible : cette adresse ne semble pas être l'API attendue."
+		return l.T("Unreadable response: this address does not look like the expected API.")
 	case errors.Is(err, context.DeadlineExceeded):
-		return fmt.Sprintf("Pas de réponse en %d s.", int(CheckTimeout/time.Second))
+		return l.T("No answer within %d s.", int(CheckTimeout/time.Second))
 	default:
-		return "Injoignable : " + err.Error()
+		return l.T("Unreachable: %s", err.Error())
 	}
 }

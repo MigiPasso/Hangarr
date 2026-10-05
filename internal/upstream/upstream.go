@@ -79,29 +79,29 @@ const (
 	TautulliAPIKey   = "tautulli.api_key" //nolint:gosec // G101: field name, not a credential
 	TautulliWebhook  = "tautulli.webhook_secret"
 	MinWebhookSecret = 32
-	publicURLHelp    = "Adresse ouverte par le navigateur pour les liens « Ouvrir dans … ». Par défaut : l'URL de l'API."
+	publicURLHelp    = "Address your browser opens for the “open in” links. Default: the API URL."
 )
 
 // Fields lists every configurable value.
 var Fields = []Field{
-	{Key: SonarrURL, Service: Sonarr, Env: "SONARR_URL", Label: "URL de l'API", Kind: KindURL, Required: true},
-	{Key: SonarrPublicURL, Service: Sonarr, Env: "SONARR_PUBLIC_URL", Label: "URL publique", Help: publicURLHelp, Kind: KindURL},
-	{Key: SonarrAPIKey, Service: Sonarr, Env: "SONARR_API_KEY", Label: "Clé d'API", Kind: KindSecret, Required: true,
+	{Key: SonarrURL, Service: Sonarr, Env: "SONARR_URL", Label: "API URL", Kind: KindURL, Required: true},
+	{Key: SonarrPublicURL, Service: Sonarr, Env: "SONARR_PUBLIC_URL", Label: "Public URL", Help: publicURLHelp, Kind: KindURL},
+	{Key: SonarrAPIKey, Service: Sonarr, Env: "SONARR_API_KEY", Label: "API key", Kind: KindSecret, Required: true,
 		Help: "Settings → General → Security → API Key."},
-	{Key: RadarrURL, Service: Radarr, Env: "RADARR_URL", Label: "URL de l'API", Kind: KindURL, Required: true},
-	{Key: RadarrPublicURL, Service: Radarr, Env: "RADARR_PUBLIC_URL", Label: "URL publique", Help: publicURLHelp, Kind: KindURL},
-	{Key: RadarrAPIKey, Service: Radarr, Env: "RADARR_API_KEY", Label: "Clé d'API", Kind: KindSecret, Required: true,
+	{Key: RadarrURL, Service: Radarr, Env: "RADARR_URL", Label: "API URL", Kind: KindURL, Required: true},
+	{Key: RadarrPublicURL, Service: Radarr, Env: "RADARR_PUBLIC_URL", Label: "Public URL", Help: publicURLHelp, Kind: KindURL},
+	{Key: RadarrAPIKey, Service: Radarr, Env: "RADARR_API_KEY", Label: "API key", Kind: KindSecret, Required: true,
 		Help: "Settings → General → Security → API Key."},
-	{Key: PlexURL, Service: Plex, Env: "PLEX_URL", Label: "URL du serveur", Kind: KindURL, Required: true},
-	{Key: PlexPublicURL, Service: Plex, Env: "PLEX_PUBLIC_URL", Label: "URL publique", Kind: KindURL,
-		Help: "Adresse de Plex Web pour les liens « Ouvrir dans Plex ». Par défaut : app.plex.tv."},
+	{Key: PlexURL, Service: Plex, Env: "PLEX_URL", Label: "Server URL", Kind: KindURL, Required: true},
+	{Key: PlexPublicURL, Service: Plex, Env: "PLEX_PUBLIC_URL", Label: "Public URL", Kind: KindURL,
+		Help: "Plex Web address for the “open in Plex” links. Default: app.plex.tv."},
 	{Key: PlexToken, Service: Plex, Env: "PLEX_TOKEN", Label: "Token (X-Plex-Token)", Kind: KindSecret, Required: true,
-		Help: "Plex Web : ⋯ → Obtenir des infos → Afficher le XML ; l'URL contient X-Plex-Token=…"},
-	{Key: TautulliURL, Service: Tautulli, Env: "TAUTULLI_URL", Label: "URL de l'API", Kind: KindURL, Required: true},
-	{Key: TautulliAPIKey, Service: Tautulli, Env: "TAUTULLI_API_KEY", Label: "Clé d'API", Kind: KindSecret, Required: true,
-		Help: "Settings → Web Interface → API (cocher « Enable API »)."},
-	{Key: TautulliWebhook, Service: Tautulli, Env: "TAUTULLI_WEBHOOK_SECRET", Label: "Secret du webhook", Kind: KindSecret,
-		Help: "Optionnel, au moins 32 caractères. Permet à Tautulli de signaler les fins de lecture sans attendre la synchronisation."},
+		Help: "Plex Web: ⋯ → Get Info → View XML; the URL contains X-Plex-Token=…"},
+	{Key: TautulliURL, Service: Tautulli, Env: "TAUTULLI_URL", Label: "API URL", Kind: KindURL, Required: true},
+	{Key: TautulliAPIKey, Service: Tautulli, Env: "TAUTULLI_API_KEY", Label: "API key", Kind: KindSecret, Required: true,
+		Help: "Settings → Web Interface → API (check “Enable API”)."},
+	{Key: TautulliWebhook, Service: Tautulli, Env: "TAUTULLI_WEBHOOK_SECRET", Label: "Webhook secret", Kind: KindSecret,
+		Help: "Optional, 32 characters or more. See Webhook below."},
 }
 
 // FieldsOf returns the fields of a service.

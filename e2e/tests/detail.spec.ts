@@ -55,11 +55,11 @@ test("season deletion in dry-run touches nothing", async ({ page, request }) => 
 
   const confirm = page.locator("#confirm");
   await expect(confirm).toBeVisible();
-  await expect(confirm).toContainText("Mode simulation");
+  await expect(confirm).toContainText("Simulation (DRY_RUN)");
   await expect(confirm).toContainText("4,5 Go");
   await confirm.getByRole("button", { name: "Simuler la suppression" }).click();
 
-  await expect(page.locator(".toast")).toContainText("Simulation : La saison 2 de « The Expanse »");
+  await expect(page.locator(".toast")).toContainText("Simulation : la saison 2 de « The Expanse »");
   await expect(confirm).toBeHidden();
   const calls = await (await request.get(`${mockURL}/_calls`)).json();
   expect(calls).toEqual([]);

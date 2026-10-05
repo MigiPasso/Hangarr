@@ -1,18 +1,18 @@
 {{define "library_results"}}{{$d := .Data}}
 <p class="summary">
-  <strong>{{$d.Count}}</strong> {{if eq $d.Kind "series"}}{{word $d.Count "série" "séries"}}{{else}}{{word $d.Count "film" "films"}}{{end}}
+  <strong>{{if eq $d.Kind "series"}}{{tn $d.Count "%d series" "%d series|many"}}{{else}}{{tn $d.Count "%d movie" "%d movies"}}{{end}}</strong>
   · {{bytes $d.SizeBytes}}
-  {{with $d.UserName}}· point de vue de <strong>{{.}}</strong>{{end}}
+  {{with $d.UserName}}· {{t "as seen by"}} <strong>{{.}}</strong>{{end}}
 </p>
 {{if not $d.Items}}
-  <p class="empty muted">Aucun résultat{{if $d.Active}} pour ces filtres. <a href="{{$d.Path}}">Réinitialiser</a>{{else}} : lancez une synchronisation.{{end}}</p>
+  <p class="empty muted">{{if $d.Active}}{{t "No results for these filters."}} <a href="{{$d.Path}}">{{t "Reset"}}</a>{{else}}{{t "Nothing yet: run a sync."}}{{end}}</p>
 {{else if eq $d.View "table"}}
   <div class="table-wrap">
     <table class="table library-table">
       <thead>
         <tr>
-          <th class="select-cell"><span class="visually-hidden">Sélection</span></th><th>Titre</th><th>État</th><th>Dernier visionnage</th><th class="num">Taille</th>
-          <th class="num">Lectures</th><th class="num">Spect.</th><th>Ajouté</th>
+          <th class="select-cell"><span class="visually-hidden">{{t "Selection"}}</span></th><th>{{t "Title"}}</th><th>{{t "State"}}</th><th>{{t "Last watched"}}</th><th class="num">{{t "Size"}}</th>
+          <th class="num">{{t "Plays"}}</th><th class="num">{{t "Viewers"}}</th><th>{{t "Added"}}</th>
         </tr>
       </thead>
       <tbody>{{template "library_items" .}}</tbody>
@@ -26,14 +26,14 @@
 {{define "library_items"}}{{$d := .Data}}
 {{if eq $d.View "table"}}
   {{range $d.Items}}{{template "library_row" .}}{{end}}
-  {{with $d.NextURL}}<tr class="sentinel" hx-get="{{.}}" hx-trigger="revealed" hx-swap="outerHTML"><td colspan="9">Chargement…</td></tr>{{end}}
+  {{with $d.NextURL}}<tr class="sentinel" hx-get="{{.}}" hx-trigger="revealed" hx-swap="outerHTML"><td colspan="9">{{t "Loading…"}}</td></tr>{{end}}
 {{else}}
   {{range $d.Items}}{{template "library_card" .}}{{end}}
-  {{with $d.NextURL}}<div class="sentinel" hx-get="{{.}}" hx-trigger="revealed" hx-swap="outerHTML">Chargement…</div>{{end}}
+  {{with $d.NextURL}}<div class="sentinel" hx-get="{{.}}" hx-trigger="revealed" hx-swap="outerHTML">{{t "Loading…"}}</div>{{end}}
 {{end}}
 {{end}}
 
-{{define "lock"}}<svg class="lock" viewBox="0 0 16 16" width="14" height="14" role="img" aria-label="Protégé"><title>Protégé (tag de protection)</title><path fill="currentColor" d="M4 7V5a4 4 0 1 1 8 0v2h.5A1.5 1.5 0 0 1 14 8.5v6a1.5 1.5 0 0 1-1.5 1.5h-9A1.5 1.5 0 0 1 2 14.5v-6A1.5 1.5 0 0 1 3.5 7H4zm2 0h4V5a2 2 0 1 0-4 0v2z"/></svg>{{end}}
+{{define "lock"}}<svg class="lock" viewBox="0 0 16 16" width="14" height="14" role="img" aria-label="{{t "Protected"}}"><title>{{t "Protected (protection tag)"}}</title><path fill="currentColor" d="M4 7V5a4 4 0 1 1 8 0v2h.5A1.5 1.5 0 0 1 14 8.5v6a1.5 1.5 0 0 1-1.5 1.5h-9A1.5 1.5 0 0 1 2 14.5v-6A1.5 1.5 0 0 1 3.5 7H4zm2 0h4V5a2 2 0 1 0-4 0v2z"/></svg>{{end}}
 
 {{define "library_card"}}
 <article id="media-{{.ID}}" class="media-card state-{{.State}}">
@@ -50,9 +50,9 @@
   </div>
   <div class="media-meta">
     <h3 title="{{.Title}}">{{.Title}}</h3>
-    <p class="small muted">{{if .Year}}{{.Year}} · {{end}}{{if .SizeBytes}}{{bytes .SizeBytes}}{{else}}aucun fichier{{end}}{{if eq .MatchState "plex_only"}} · Plex seul{{else if eq .MatchState "arr_only"}} · absent de Plex{{end}}</p>
-    <p class="small">{{if .LastViewedAt}}Vu {{relptr .LastViewedAt}}{{with .LastViewedBy}} par {{.}}{{end}}{{else}}<span class="muted">Jamais vu</span>{{end}}</p>
-    <p class="small muted">{{plural .Plays "lecture" "lectures"}} · {{plural .Viewers "spectateur" "spectateurs"}}</p>
+    <p class="small muted">{{if .Year}}{{.Year}} · {{end}}{{if .SizeBytes}}{{bytes .SizeBytes}}{{else}}{{t "no file"}}{{end}}{{if eq .MatchState "plex_only"}} · {{t "Plex only"}}{{else if eq .MatchState "arr_only"}} · {{t "not in Plex"}}{{end}}</p>
+    <p class="small">{{if .LastViewedAt}}{{if .LastViewedBy}}{{t "Watched %s by %s" (relptr .LastViewedAt) .LastViewedBy}}{{else}}{{t "Watched %s" (relptr .LastViewedAt)}}{{end}}{{else}}<span class="muted">{{t "Never watched"}}</span>{{end}}</p>
+    <p class="small muted">{{tn .Plays "%d play" "%d plays"}} · {{tn .Viewers "%d viewer" "%d viewers"}}</p>
   </div>
   </a>
 </article>
@@ -63,7 +63,7 @@
   <td class="select-cell">{{template "select_box" .}}</td>
   <td>{{if protected .Tags}}{{template "lock"}} {{end}}<a href="{{mediaPath .Kind}}/{{.ID}}" hx-get="{{mediaPath .Kind}}/{{.ID}}" hx-target="#modal-body">{{.Title}}</a>{{if .Year}} <span class="muted">({{.Year}})</span>{{end}}</td>
   <td><span class="badge state">{{stateLabel .}}</span></td>
-  <td>{{if .LastViewedAt}}{{relptr .LastViewedAt}}{{with .LastViewedBy}} · {{.}}{{end}}{{else}}<span class="muted">jamais</span>{{end}}</td>
+  <td>{{if .LastViewedAt}}{{relptr .LastViewedAt}}{{with .LastViewedBy}} · {{.}}{{end}}{{else}}<span class="muted">{{t "never"}}</span>{{end}}</td>
   <td class="num">{{bytes .SizeBytes}}</td>
   <td class="num">{{.Plays}}</td>
   <td class="num">{{.Viewers}}</td>

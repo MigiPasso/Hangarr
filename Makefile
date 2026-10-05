@@ -47,9 +47,9 @@ e2e: ## Playwright against the runtime image on a blank database
 	@status=0; \
 	$(E2E_COMPOSE) up -d --wait app-e2e app-e2e-live app-e2e-config mock || status=$$?; \
 	if [ $$status -eq 0 ]; then \
-	  pw=$$($(E2E_COMPOSE) logs --no-log-prefix app-e2e | sed -n 's/^ Mot de passe : //p' | head -n 1); \
-	  pwlive=$$($(E2E_COMPOSE) logs --no-log-prefix app-e2e-live | sed -n 's/^ Mot de passe : //p' | head -n 1); \
-	  pwcfg=$$($(E2E_COMPOSE) logs --no-log-prefix app-e2e-config | sed -n 's/^ Mot de passe : //p' | head -n 1); \
+	  pw=$$($(E2E_COMPOSE) logs --no-log-prefix app-e2e | sed -n 's/^ Password : //p' | head -n 1); \
+	  pwlive=$$($(E2E_COMPOSE) logs --no-log-prefix app-e2e-live | sed -n 's/^ Password : //p' | head -n 1); \
+	  pwcfg=$$($(E2E_COMPOSE) logs --no-log-prefix app-e2e-config | sed -n 's/^ Password : //p' | head -n 1); \
 	  if [ -z "$$pw" ] || [ -z "$$pwlive" ] || [ -z "$$pwcfg" ]; then \
 	    echo "initial admin password not found in app-e2e logs" >&2; status=1; \
 	  else \
@@ -95,7 +95,7 @@ deploy-check: ## Validate compose.yml and smoke-test it (as shipped) against the
 	if [ $$status -eq 0 ]; then $(DEPLOY_COMPOSE) run --rm check || status=$$?; fi; \
 	if [ $$status -eq 0 ]; then \
 	  logs=$$($(DEPLOY_COMPOSE) logs --no-log-prefix cleanarr); \
-	  echo "$$logs" | grep -q "COMPTE ADMIN INITIAL" || { echo "FAIL: no initial admin banner" >&2; status=1; }; \
+	  echo "$$logs" | grep -q "INITIAL ADMIN ACCOUNT CREATED" || { echo "FAIL: no initial admin banner" >&2; status=1; }; \
 	  echo "$$logs" | grep -q "generated a master key" || { echo "FAIL: master key not generated in /data" >&2; status=1; }; \
 	fi; \
 	if [ $$status -eq 0 ]; then \

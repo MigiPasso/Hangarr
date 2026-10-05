@@ -394,15 +394,15 @@ func syncOnce(args []string) error {
 }
 
 func printSummary(w io.Writer, res *syncer.Result) {
-	fmt.Fprintf(w, "Synchronisation terminée en %s\n\n", res.Duration.Round(time.Millisecond))
+	fmt.Fprintf(w, "Sync finished in %s\n\n", res.Duration.Round(time.Millisecond))
 	for _, s := range res.Sources {
 		status := "ok"
 		if s.Err != nil {
-			status = "ERREUR : " + s.Err.Error()
+			status = "ERROR: " + s.Err.Error()
 		}
-		fmt.Fprintf(w, "  %-13s %6d éléments  %8s  %s\n", s.Source, s.Items, s.Duration.Round(time.Millisecond), status)
+		fmt.Fprintf(w, "  %-13s %6d items  %8s  %s\n", s.Source, s.Items, s.Duration.Round(time.Millisecond), status)
 	}
-	fmt.Fprintf(w, "\nRapprochement : %d rapprochés, %d seulement dans Sonarr/Radarr, %d seulement dans Plex\n",
+	fmt.Fprintf(w, "\nMatching: %d matched, %d only in Sonarr/Radarr, %d only in Plex\n",
 		res.Matches["matched"], res.Matches["arr_only"], res.Matches["plex_only"])
-	fmt.Fprintf(w, "Historique    : %d sessions rattachées, %d orphelines (médias disparus)\n", res.Linked, res.Orphans)
+	fmt.Fprintf(w, "History : %d sessions linked, %d orphans (deleted media)\n", res.Linked, res.Orphans)
 }

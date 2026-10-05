@@ -2,65 +2,62 @@
 <section class="card narrow">{{if .Data.Report}}{{template "batch_report" .}}{{else}}{{template "batch_confirm" .}}{{end}}</section>
 {{end}}
 
+{{define "batch_excluded"}}{{if .}}
+  <details class="small"><summary>{{tn (len .) "%d item excluded" "%d items excluded"}}</summary>
+    <ul class="batch-list">{{range .}}<li>{{.Title}} <span class="muted">: {{t .Reason}}</span></li>{{end}}</ul>
+  </details>
+{{end}}{{end}}
+
 {{define "batch_confirm"}}{{$d := .Data}}
 <form id="batch-confirm" class="stack" method="post" action="/batch/delete"
       hx-post="/batch/delete" hx-target="this" hx-swap="outerHTML">
   <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
   <input type="hidden" name="step" value="run">
   {{range $d.Items}}<input type="hidden" name="ids" value="{{.ID}}">{{end}}
-  <h2>Supprimer la sélection</h2>
-  {{with $d.Error}}<p class="alert alert-error" role="alert">{{.}}</p>{{end}}
+  <div class="title-row"><h2>{{t "Delete selection"}}</h2>{{template "info" (t "Items are removed from Sonarr/Radarr one by one; each one is checked and logged like a single deletion.")}}</div>
+  {{with $d.Error}}<p class="alert alert-error" role="alert">{{t .}}</p>{{end}}
   {{if $d.Items}}
-  <p>{{plural (len $d.Items) "élément sera retiré" "éléments seront retirés"}} de Sonarr/Radarr, l'un après l'autre.
-    Espace libéré : <strong>{{bytes $d.TotalBytes}}</strong> (si les fichiers sont supprimés).</p>
+  <p>{{tn (len $d.Items) "%d item will be removed" "%d items will be removed"}} · {{t "Space freed:"}} <strong>{{bytes $d.TotalBytes}}</strong></p>
   <ul class="batch-list">
-    {{range $d.Items}}<li>{{.Title}} <span class="small muted">{{if eq .Kind "series"}}série{{else}}film{{end}} · {{if .SizeBytes}}{{bytes .SizeBytes}}{{else}}aucun fichier{{end}}</span></li>{{end}}
+    {{range $d.Items}}<li>{{.Title}} <span class="small muted">{{if eq .Kind "series"}}{{t "series|kind"}}{{else}}{{t "movie|kind"}}{{end}} · {{if .SizeBytes}}{{bytes .SizeBytes}}{{else}}{{t "no file"}}{{end}}</span></li>{{end}}
   </ul>
   {{end}}
-  {{if $d.Excluded}}
-  <details class="small"><summary>{{plural (len $d.Excluded) "élément exclu" "éléments exclus"}}</summary>
-    <ul class="batch-list">{{range $d.Excluded}}<li>{{.Title}} <span class="muted">: {{.Reason}}</span></li>{{end}}</ul>
-  </details>
-  {{end}}
-  {{if $d.DryRun}}<p class="alert alert-warning">Mode simulation (DRY_RUN) : les actions seront journalisées mais rien ne sera supprimé.</p>{{end}}
+  {{template "batch_excluded" $d.Excluded}}
+  {{if $d.DryRun}}<p class="alert alert-warning">{{t "Simulation (DRY_RUN): logged, nothing deleted."}}</p>{{end}}
   {{if $d.Items}}
-  <label class="check"><input type="checkbox" name="delete_files" value="1"{{if $d.DeleteFiles}} checked{{end}}> Supprimer les fichiers du disque</label>
-  <label class="check"><input type="checkbox" name="import_exclusion" value="1"{{if $d.ImportExclusion}} checked{{end}}> Ajouter une exclusion de liste d'import</label>
+  <label class="check"><input type="checkbox" name="delete_files" value="1"{{if $d.DeleteFiles}} checked{{end}}> {{t "Delete files from disk"}}</label>
+  <label class="check"><input type="checkbox" name="import_exclusion" value="1"{{if $d.ImportExclusion}} checked{{end}}> {{t "Add an import list exclusion"}}</label>
   {{if $d.ConfirmByTyping}}
-  <label for="confirm_count">La sélection contient des séries entières. Pour confirmer, saisissez le nombre d'éléments : <strong>{{len $d.Items}}</strong></label>
+  <label for="confirm_count">{{t "Whole series included. Type the number of items to confirm:"}} <strong>{{len $d.Items}}</strong></label>
   <input id="confirm_count" name="confirm_count" type="text" inputmode="numeric" autocomplete="off" required>
   {{end}}
   {{end}}
   <div class="form-actions">
-    <a class="button" href="/cleanup" data-close>Annuler</a>
-    {{if $d.Items}}<button type="submit" class="danger-solid">{{if $d.DryRun}}Simuler la suppression{{else}}Supprimer définitivement{{end}}</button>{{end}}
+    <a class="button" href="/cleanup" data-close>{{t "Cancel"}}</a>
+    {{if $d.Items}}<button type="submit" class="danger-solid">{{if $d.DryRun}}{{t "Simulate deletion"}}{{else}}{{t "Delete permanently"}}{{end}}</button>{{end}}
   </div>
 </form>
 {{end}}
 
 {{define "batch_report"}}{{$d := .Data}}
 <div class="stack" id="batch-report">
-  <h2>{{if eq $d.Action "protect"}}Protection de la sélection{{else}}Suppression de la sélection{{end}}{{if $d.DryRun}} (simulation){{end}}</h2>
-  {{with $d.Error}}<p class="alert alert-error" role="alert">{{.}}</p>{{end}}
+  <h2>{{if eq $d.Action "protect"}}{{t "Protect selection"}}{{else}}{{t "Delete selection"}}{{end}}{{if $d.DryRun}} ({{t "simulation"}}){{end}}</h2>
+  {{with $d.Error}}<p class="alert alert-error" role="alert">{{t .}}</p>{{end}}
   {{if $d.Report}}
-  <p>{{plural $d.OKCount "réussite" "réussites"}}{{if $d.FailCount}}, <span class="error-text">{{plural $d.FailCount "échec" "échecs"}}</span>{{end}}{{if and (eq $d.Action "delete") $d.Freed}} · {{bytes $d.Freed}}{{if $d.DryRun}} auraient été{{end}} libérés{{end}}.</p>
+  <p>{{tn $d.OKCount "%d success" "%d successes"}}{{if $d.FailCount}}, <span class="error-text">{{tn $d.FailCount "%d failure|count" "%d failures|count"}}</span>{{end}}{{if and (eq $d.Action "delete") $d.Freed}} · {{if $d.DryRun}}{{t "%s would be freed" (bytes $d.Freed)}}{{else}}{{t "%s freed" (bytes $d.Freed)}}{{end}}{{end}}</p>
   <div class="table-wrap"><table class="table batch-table">
     <tbody>
     {{range $d.Report}}
       <tr>
-        <td>{{if .OK}}<span class="ok-text" aria-label="Réussi">✓</span>{{else}}<span class="error-text" aria-label="Échec">✗</span>{{end}}</td>
+        <td>{{if .OK}}<span class="ok-text" aria-label="{{t "Succeeded"}}">✓</span>{{else}}<span class="error-text" aria-label="{{t "Failed"}}">✗</span>{{end}}</td>
         <td>{{.Title}}</td>
-        <td class="small">{{if not .OK}}<span class="error-text">{{.Error}}</span>{{else if .Unchanged}}<span class="muted">déjà protégé</span>{{else if eq $d.Action "delete"}}{{if .SizeFreed}}{{bytes .SizeFreed}}{{else}}–{{end}}{{end}}</td>
+        <td class="small">{{if not .OK}}<span class="error-text">{{explain .Err}}</span>{{else if .Unchanged}}<span class="muted">{{t "already protected"}}</span>{{else if eq $d.Action "delete"}}{{if .SizeFreed}}{{bytes .SizeFreed}}{{else}}–{{end}}{{end}}</td>
       </tr>
     {{end}}
     </tbody>
   </table></div>
   {{end}}
-  {{if $d.Excluded}}
-  <details class="small"><summary>{{plural (len $d.Excluded) "élément exclu" "éléments exclus"}}</summary>
-    <ul class="batch-list">{{range $d.Excluded}}<li>{{.Title}} <span class="muted">: {{.Reason}}</span></li>{{end}}</ul>
-  </details>
-  {{end}}
-  <div class="form-actions"><a class="button" href="/cleanup" data-close>Fermer</a></div>
+  {{template "batch_excluded" $d.Excluded}}
+  <div class="form-actions"><a class="button" href="/cleanup" data-close>{{t "Close"}}</a></div>
 </div>
 {{end}}

@@ -2,6 +2,7 @@ package actions
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"strings"
 	"testing"
@@ -19,7 +20,7 @@ func TestDeleteBatch(t *testing.T) {
 	if !report[0].OK || report[0].Title != "Tenet" || report[0].SizeFreed != 15_000_000_000 {
 		t.Errorf("Tenet: %+v", report[0])
 	}
-	if report[1].OK || !strings.Contains(report[1].Error, "protégé") || report[1].Title != "Severance" {
+	if report[1].OK || !errors.Is(report[1].Err, ErrProtected) || report[1].Title != "Severance" {
 		t.Errorf("Severance: %+v", report[1])
 	}
 	if !report[2].OK {
@@ -59,7 +60,7 @@ func TestProtectBatch(t *testing.T) {
 	if len(report) != 3 || !report[0].OK || report[0].Unchanged || !report[1].OK || !report[1].Unchanged || report[2].OK {
 		t.Errorf("report: %+v", report)
 	}
-	if !strings.Contains(report[2].Error, "non géré par Sonarr/Radarr") {
-		t.Errorf("plex only: %q", report[2].Error)
+	if !errors.Is(report[2].Err, ErrNotManaged) {
+		t.Errorf("plex only: %v", report[2].Err)
 	}
 }
