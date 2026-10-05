@@ -11,7 +11,7 @@
     <table class="table library-table">
       <thead>
         <tr>
-          <th>Titre</th><th>État</th><th>Dernier visionnage</th><th class="num">Taille</th>
+          <th class="select-cell"><span class="visually-hidden">Sélection</span></th><th>Titre</th><th>État</th><th>Dernier visionnage</th><th class="num">Taille</th>
           <th class="num">Lectures</th><th class="num">Spect.</th><th>Ajouté</th>
         </tr>
       </thead>
@@ -26,7 +26,7 @@
 {{define "library_items"}}{{$d := .Data}}
 {{if eq $d.View "table"}}
   {{range $d.Items}}{{template "library_row" .}}{{end}}
-  {{with $d.NextURL}}<tr class="sentinel" hx-get="{{.}}" hx-trigger="revealed" hx-swap="outerHTML"><td colspan="8">Chargement…</td></tr>{{end}}
+  {{with $d.NextURL}}<tr class="sentinel" hx-get="{{.}}" hx-trigger="revealed" hx-swap="outerHTML"><td colspan="9">Chargement…</td></tr>{{end}}
 {{else}}
   {{range $d.Items}}{{template "library_card" .}}{{end}}
   {{with $d.NextURL}}<div class="sentinel" hx-get="{{.}}" hx-trigger="revealed" hx-swap="outerHTML">Chargement…</div>{{end}}
@@ -37,6 +37,7 @@
 
 {{define "library_card"}}
 <article id="media-{{.ID}}" class="media-card state-{{.State}}">
+  {{template "select_box" .}}
   <a class="card-link" href="{{mediaPath .Kind}}/{{.ID}}" hx-get="{{mediaPath .Kind}}/{{.ID}}" hx-target="#modal-body" aria-label="{{.Title}}">
   <div class="poster">
     {{if .ArrID}}
@@ -59,6 +60,7 @@
 
 {{define "library_row"}}
 <tr id="media-{{.ID}}" class="state-{{.State}}">
+  <td class="select-cell">{{template "select_box" .}}</td>
   <td>{{if protected .Tags}}{{template "lock"}} {{end}}<a href="{{mediaPath .Kind}}/{{.ID}}" hx-get="{{mediaPath .Kind}}/{{.ID}}" hx-target="#modal-body">{{.Title}}</a>{{if .Year}} <span class="muted">({{.Year}})</span>{{end}}</td>
   <td><span class="badge state">{{stateLabel .}}</span></td>
   <td>{{if .LastViewedAt}}{{relptr .LastViewedAt}}{{with .LastViewedBy}} · {{.}}{{end}}{{else}}<span class="muted">jamais</span>{{end}}</td>

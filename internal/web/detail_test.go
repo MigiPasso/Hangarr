@@ -224,3 +224,55 @@ func TestProtectDryRun(t *testing.T) {
 		t.Errorf("dry-run: %s", trigger)
 	}
 }
+
+func TestBatchDelete(t *testing.T) {
+	e := newLibEnvDry(t, 0, false)
+	page := e.do(e.c, "GET", "/cleanup", nil, nil)
+	tenet, sev, inter := e.mediaID("movie", "Tenet"), e.mediaID("series", "Severance"), e.mediaID("movie", "Interstellar")
+	if !strings.Contains(page.body, `id="batch-form"`) || !strings.Contains(page.body, `name="ids" value="`+tenet+`" form="batch-form" data-size="15000000000"`) {
+		t.Fatal("cleanup page must offer the batch selection")
+	}
+	lib := e.do(e.c, "GET", "/series", nil, nil)
+	if strings.Contains(lib.body, `value="`+sev+`" form="batch-form"`) {
+		t.Error("protected items cannot be selected")
+	}
+	tok := csrfFrom(t, page.body)
+	hx := map[string]string{"HX-Request": "true"}
+	bb := e.mediaID("series", "Breaking Bad")
+	r := e.do(e.c, "POST", "/batch/delete", url.Values{"csrf_token": {tok}, "ids": {tenet, sev, inter, bb}}, hx)
+	for _, want := range []string{"3 éléments seront retirés", "Severance", "protégé par un tag", `name="confirm_count"`,
+		"<strong>3</strong>", `name="step" value="run"`} {
+		if !strings.Contains(r.body, want) {
+			t.Errorf("confirmation: missing %q", want)
+		}
+	}
+	run := url.Values{"csrf_token": {tok}, "step": {"run"}, "ids": {tenet, inter, bb}, "delete_files": {"1"}, "confirm_count": {"2"}}
+	if r := e.do(e.c, "POST", "/batch/delete", run, hx); !strings.Contains(r.body, "ne correspond pas") {
+		t.Error("a wrong count must be refused")
+	}
+	run.Set("confirm_count", "3")
+	r = e.do(e.c, "POST", "/batch/delete", run, hx)
+	if !strings.Contains(r.body, "3 réussites") || !strings.Contains(r.header.Get("HX-Trigger"), `"deleted":[`) {
+		t.Fatalf("report: %s\n%s", r.header.Get("HX-Trigger"), r.body)
+	}
+	if after := e.do(e.c, "GET", "/cleanup", nil, nil); strings.Contains(after.body, ">Tenet<") {
+		t.Error("deleted items must disappear")
+	}
+	if r := e.do(e.c, "POST", "/batch/delete", url.Values{"csrf_token": {tok}}, hx); !strings.Contains(r.body, "Aucun élément sélectionné") {
+		t.Error("empty selection")
+	}
+	if r := e.do(e.c, "POST", "/batch/delete", url.Values{"csrf_token": {tok}, "ids": {"x"}}, hx); !strings.Contains(r.body, "Sélection invalide") {
+		t.Error("invalid ids")
+	}
+}
+
+func TestBatchProtect(t *testing.T) {
+	e := newLibEnv(t, 0)
+	tok := csrfFrom(t, e.do(e.c, "GET", "/movies", nil, nil).body)
+	r := e.do(e.c, "POST", "/batch/protect", url.Values{"csrf_token": {tok},
+		"ids": {e.mediaID("movie", "Dune"), e.mediaID("movie", "Inception")}}, map[string]string{"HX-Request": "true"})
+	if !strings.Contains(r.body, "Protection de la sélection (simulation)") || !strings.Contains(r.body, "2 réussites") ||
+		!strings.Contains(r.header.Get("HX-Trigger"), "Simulation") {
+		t.Errorf("protect report: %s\n%s", r.header.Get("HX-Trigger"), r.body)
+	}
+}

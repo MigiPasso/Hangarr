@@ -103,6 +103,8 @@ func (s *Server) Handler() http.Handler {
 		mux.Handle("POST "+k.path+"/{id}/delete", s.authed(s.deleteSubmit(k.kind), 0))
 		mux.Handle("POST "+k.path+"/{id}/protect", s.authed(s.protectSubmit(k.kind), 0))
 	}
+	mux.Handle("POST /batch/delete", s.authed(s.batchDelete, 0))
+	mux.Handle("POST /batch/protect", s.authed(s.batchProtect, 0))
 	mux.Handle("GET /journal", s.authed(s.journal, 0))
 	mux.Handle("GET /stats", s.authed(s.stats, 0))
 	mux.Handle("GET /stats/users/{id}", s.authed(s.userStats, 0))

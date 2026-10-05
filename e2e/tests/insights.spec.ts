@@ -56,3 +56,24 @@ test("health page: live services, sync runs and data gaps", async ({ page }) => 
   await plexOnly.getByRole("link", { name: "Home Videos" }).click();
   await expect(page.locator("#modal").getByRole("heading", { name: /Home Videos/ })).toBeVisible();
 });
+
+test("batch selection on the cleanup page (dry-run)", async ({ page }) => {
+  await page.getByRole("link", { name: "Nettoyage" }).click();
+  const bar = page.locator("#batch-form");
+  await expect(bar).toBeHidden();
+  await page.getByRole("checkbox", { name: "Sélectionner Interstellar" }).check();
+  await page.getByRole("checkbox", { name: "Sélectionner Tenet" }).check();
+  await expect(bar).toBeVisible();
+  await expect(bar).toContainText("2 sélectionnés · 35,0 Go");
+  await bar.getByRole("button", { name: "Supprimer la sélection" }).click();
+  const confirm = page.locator("#confirm");
+  await expect(confirm).toContainText("2 éléments seront retirés");
+  await confirm.getByRole("button", { name: "Simuler la suppression" }).click();
+  await expect(confirm).toContainText("Suppression de la sélection (simulation)");
+  await expect(confirm).toContainText("2 réussites");
+  await expect(page.locator(".toast")).toContainText("Simulation");
+  await confirm.getByRole("link", { name: "Fermer" }).click();
+  // Nothing was deleted: rows stay, the selection is cleared.
+  await expect(page.locator(".cleanup-table")).toContainText("Interstellar");
+  await expect(bar).toBeHidden();
+});

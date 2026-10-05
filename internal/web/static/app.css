@@ -453,3 +453,19 @@ fieldset.clock select { width: auto; min-width: 4.5rem; font-variant-numeric: ta
 .webhook-box ol { padding-left: 1.2rem; margin: .5rem 0; }
 .webhook-box .alert p { margin: .25rem 0; }
 code.secret { word-break: break-all; user-select: all; }
+
+/* --- batch selection --- */
+
+.media-card { position: relative; }
+.select-box { position: absolute; top: .4rem; left: .4rem; z-index: 2; display: flex; padding: .3rem;
+  background: rgba(0, 0, 0, .65); border-radius: 6px; cursor: pointer; }
+.select-cell .select-box { position: static; background: none; padding: 0; }
+.select-box input { width: 1.1rem; height: 1.1rem; margin: 0; cursor: pointer; }
+.select-cell { width: 2rem; }
+.batch-bar { position: sticky; bottom: 0; z-index: 5; display: flex; align-items: center; gap: .6rem; flex-wrap: wrap;
+  margin-top: var(--space); padding: .7rem 1rem; background: var(--bg-elev); border: 1px solid var(--accent);
+  border-radius: var(--radius); box-shadow: 0 -4px 16px rgba(0, 0, 0, .35); }
+.batch-bar[hidden] { display: none; }
+.batch-summary { font-weight: 600; margin-right: auto; }
+.batch-list { margin: .25rem 0; padding-left: 1.1rem; max-height: 14rem; overflow-y: auto; }
+.batch-table td { padding: .35rem .5rem; }

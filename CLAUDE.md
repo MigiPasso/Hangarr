@@ -123,6 +123,12 @@ Pas de framework web, pas de build Node pour l'app, pas de CDN.
   Configuration (affiché une seule fois).
 - `internal/images` : proxy MediaCover (`poster-500.jpg`) → cache disque `DATA_DIR/cache/img`, ETag, sémaphore (4),
   singleflight, repli `remoteUrl` https, placeholder SVG. Pas de JS supplémentaire côté client.
+- Sélection en lot (bibliothèque grille/tableau + Nettoyage) : cases `name=ids form=batch-form` (absentes si protégé ou
+  Plex seul), barre collante `partials/batch.html`, `POST /batch/delete` (1er POST = confirmation, `step=run` = exécution ;
+  série dans le lot + `CONFIRM_BY_TYPING` → saisir le nombre d'éléments), `POST /batch/protect` (sans confirmation).
+  `actions.DeleteBatch/ProtectBatch` : séquentiel, `Delete` normal par élément (`Confirmed`, `SkipPlexRefresh`), un seul
+  rafraîchissement Plex par type à la fin, 100 éléments max, délai d'écriture prolongé (10 min). Rapport par élément dans la
+  modale `#confirm`, événement `cleanarr:batch-done` (cartes supprimées retirées, rechargement à la fermeture après protection).
 - Déploiement Docker : `compose.yml` (prod, projet `cleanarr`, volume `cleanarr-data`, durci comme k8s, `.env` facultatif),
   `make deploy-check` = `compose.yml` tel quel + `deploy/compose.check.yml` (mock, sans port ni `.env`) + `deploy/check.sh`.
   `cleanarr backup [PATH]` (`VACUUM INTO`, à chaud). Avertissement sur la page de connexion si HTTP avec `COOKIE_SECURE=true`

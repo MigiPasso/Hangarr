@@ -27,7 +27,7 @@ var staticFS embed.FS
 
 // pages lists every page template under templates/pages.
 var pages = []string{"login", "password", "account", "home", "notfound", "library", "settings", "detail", "delete", "journal",
-	"stats", "userstats", "cleanup", "config", "health"}
+	"stats", "userstats", "cleanup", "config", "health", "batch"}
 
 type views struct {
 	pages  map[string]*template.Template
