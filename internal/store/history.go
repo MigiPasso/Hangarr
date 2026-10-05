@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"strings"
 	"time"
 )
 
@@ -230,6 +231,37 @@ func (s *Store) RemapHistoryUsers(ctx context.Context, source string, ids map[in
 		}
 	}
 	return tx.Commit()
+}
+
+// KeepViewers deletes the accounts not in keep and their plays (merged
+// mode: users Tautulli remembers but who no longer have access to the Plex
+// server). Events without a user are kept. It returns the deleted events.
+func (s *Store) KeepViewers(ctx context.Context, keep []int64) (int64, error) {
+	if len(keep) == 0 {
+		return 0, nil // never empty the history on an empty account list
+	}
+	in := strings.TrimSuffix(strings.Repeat("?,", len(keep)), ",")
+	args := make([]any, len(keep))
+	for i, id := range keep {
+		args[i] = id
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, err
+	}
+	defer func() { _ = tx.Rollback() }()
+	res, err := tx.ExecContext(ctx, `DELETE FROM watch_events WHERE user_id IS NOT NULL AND user_id NOT IN (`+in+`)`, args...) //nolint:gosec // placeholders only
+	if err != nil {
+		return 0, err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return 0, err
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM plex_accounts WHERE account_id NOT IN (`+in+`)`, args...); err != nil { //nolint:gosec // placeholders only
+		return 0, err
+	}
+	return n, tx.Commit()
 }
 
 // MergeWindow bounds how far a Plex history entry (viewedAt, recorded near
