@@ -12,7 +12,7 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"arrstats/internal/store"
+	"cleanarr/internal/store"
 )
 
 // Errors returned to the web layer.
@@ -94,7 +94,7 @@ func (s *Service) event(ctx context.Context, name string, userID *int64, usernam
 // Banner returns the one-time admin password banner (SPEC §11.1).
 func Banner(username, password string) string {
 	line := strings.Repeat("=", 64)
-	return fmt.Sprintf("%s\n ARRSTATS : COMPTE ADMIN INITIAL CRÉÉ\n Utilisateur  : %s\n Mot de passe : %s\n"+
+	return fmt.Sprintf("%s\n CLEANARR : COMPTE ADMIN INITIAL CRÉÉ\n Utilisateur  : %s\n Mot de passe : %s\n"+
 		" Ce mot de passe ne sera plus jamais affiché.\n Il devra être changé à la première connexion.\n%s\n",
 		line, username, password, line)
 }

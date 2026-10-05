@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"arrstats/internal/secretbox"
+	"cleanarr/internal/secretbox"
 )
 
 // History sources.
@@ -273,10 +273,10 @@ func Load(lookup LookupFunc, readFile ReadFileFunc) (*Config, error) {
 		l.fail("HISTORY_SOURCE: expected tautulli, plex or auto, got %q", c.HistorySource)
 	}
 
-	if mk := l.secret("ARRSTATS_MASTER_KEY"); mk != "" {
+	if mk := l.secret("CLEANARR_MASTER_KEY"); mk != "" {
 		key, err := secretbox.ParseKey(mk)
 		if err != nil {
-			l.fail("ARRSTATS_MASTER_KEY: %w", err)
+			l.fail("CLEANARR_MASTER_KEY: %w", err)
 		}
 		c.MasterKey = key
 	}

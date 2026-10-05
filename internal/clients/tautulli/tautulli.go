@@ -11,7 +11,7 @@ import (
 	"strconv"
 	"time"
 
-	"arrstats/internal/clients/httpx"
+	"cleanarr/internal/clients/httpx"
 )
 
 // HistoryPageSize is the number of rows requested per get_history call.

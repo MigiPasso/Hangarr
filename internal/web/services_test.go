@@ -5,11 +5,12 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strings"
 	"testing"
 
-	"arrstats/internal/secretbox"
-	"arrstats/internal/upstream"
+	"cleanarr/internal/secretbox"
+	"cleanarr/internal/upstream"
 )
 
 const testAPIKey = "0123456789abcdef0123456789abcdef"
@@ -124,5 +125,71 @@ func TestConfigKeyInDataDir(t *testing.T) {
 	}
 	if strings.Contains(page.body, "Aucune clé maître") {
 		t.Error("credentials can be saved with a generated key")
+	}
+}
+
+func TestTautulliWebhook(t *testing.T) {
+	e := newLibEnv(t, 0)
+	c := e.client() // no session: the webhook is public
+	post := func(token string) resp {
+		h := map[string]string{"Content-Type": "application/json"}
+		if token != "" {
+			h["X-Cleanarr-Token"] = token
+		}
+		return e.do(c, "POST", "/webhooks/tautulli", url.Values{"payload": {"ignored"}}, h)
+	}
+	if r := post("anything"); r.status != http.StatusNotFound {
+		t.Errorf("without secret the webhook must not exist: %d", r.status)
+	}
+	secret := strings.Repeat("s", 40)
+	up := *e.srv.Upstreams.Get()
+	vals := upstream.Values{}
+	for k, v := range up.Values {
+		vals[k] = v
+	}
+	vals[upstream.TautulliWebhook] = secret
+	up.Values = vals
+	e.srv.Upstreams.Set(&up)
+
+	if r := post(""); r.status != http.StatusUnauthorized {
+		t.Errorf("missing token: %d", r.status)
+	}
+	if r := post(secret + "x"); r.status != http.StatusUnauthorized {
+		t.Errorf("wrong token: %d", r.status)
+	}
+	if r := post(secret); r.status != http.StatusAccepted || !strings.Contains(r.body, "accepted") {
+		t.Errorf("valid token: %d %s", r.status, r.body)
+	}
+	if r := e.do(c, "GET", "/webhooks/tautulli", nil, nil); r.status == http.StatusAccepted {
+		t.Error("GET must not trigger anything")
+	}
+	for i := 0; i < webhookPerMinute; i++ {
+		post(secret)
+	}
+	if r := post(secret); r.status != http.StatusTooManyRequests || r.header.Get("Retry-After") == "" {
+		t.Errorf("rate limit: %d", r.status)
+	}
+}
+
+func TestWebhookSecretGeneration(t *testing.T) {
+	h := newConfigHarness(t, nil, true)
+	c := h.loggedIn()
+	page := h.do(c, "GET", "/config", nil, nil)
+	if !strings.Contains(page.body, ">Générer un secret</button>") || !strings.Contains(page.body, "/webhooks/tautulli</code>") {
+		t.Fatal("missing webhook instructions")
+	}
+	csrf := csrfFrom(t, page.body)
+	h.do(c, "POST", "/config/tautulli", url.Values{"csrf_token": {csrf}, "tautulli.url": {"http://tautulli:8181"}}, nil)
+	r := h.do(c, "POST", "/config/tautulli/webhook-secret", url.Values{"csrf_token": {csrf}}, map[string]string{"HX-Request": "true"})
+	m := regexp.MustCompile(`"X-Cleanarr-Token": "([A-Za-z0-9_-]{43})"`).FindStringSubmatch(r.body)
+	if m == nil {
+		t.Fatalf("secret not shown:\n%s", r.body)
+	}
+	if got := h.srv.Upstreams.Get(); got.WebhookSecret() != m[1] || got.Values[upstream.TautulliURL] != "http://tautulli:8181" {
+		t.Errorf("secret not saved or URL lost: %+v", got.Values)
+	}
+	if page := h.do(c, "GET", "/config", nil, nil); strings.Contains(page.body, m[1]) ||
+		!strings.Contains(page.body, ">Générer un nouveau secret</button>") {
+		t.Error("the secret must be shown only once")
 	}
 }

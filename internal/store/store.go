@@ -27,7 +27,7 @@ var migrationsFS embed.FS
 var ErrNotFound = errors.New("not found")
 
 // DBFileName is the SQLite file inside DATA_DIR.
-const DBFileName = "arrstats.db"
+const DBFileName = "cleanarr.db"
 
 // Store wraps the database handle.
 type Store struct {
@@ -218,4 +218,14 @@ func pingWithRetry(ctx context.Context, db *sql.DB) error {
 		}
 		wait = min(wait*2, 500*time.Millisecond)
 	}
+}
+
+// BackupTo writes a consistent copy of the database to path (VACUUM INTO):
+// safe while the application runs, the target must not exist.
+func (s *Store) BackupTo(ctx context.Context, path string) error {
+	if _, err := os.Stat(path); err == nil {
+		return fmt.Errorf("%s already exists", path)
+	}
+	_, err := s.db.ExecContext(ctx, `VACUUM INTO ?`, path)
+	return err
 }

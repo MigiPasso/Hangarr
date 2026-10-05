@@ -15,9 +15,9 @@ import (
 	"testing"
 	"time"
 
-	"arrstats/internal/auth"
-	"arrstats/internal/config"
-	"arrstats/internal/store"
+	"cleanarr/internal/auth"
+	"cleanarr/internal/config"
+	"cleanarr/internal/store"
 )
 
 var (
@@ -191,6 +191,11 @@ func TestSecurityHeaders(t *testing.T) {
 	}
 	if r.header.Get("Permissions-Policy") == "" {
 		t.Error("Permissions-Policy missing")
+	}
+	for _, d := range []string{"script-src 'self'", "object-src 'none'", "base-uri 'none'", "frame-ancestors 'none'"} {
+		if !strings.Contains(r.header.Get("Content-Security-Policy"), d) {
+			t.Errorf("CSP lacks %q", d)
+		}
 	}
 	if !strings.Contains(r.body, `"allowEval":false`) {
 		t.Error("htmx-config meta missing")
@@ -400,5 +405,58 @@ func TestRelativeTime(t *testing.T) {
 		if got := relativeTime(now, now.Add(-d)); got != want {
 			t.Errorf("%s: got %q want %q", d, got, want)
 		}
+	}
+}
+
+func TestInsecureCookieWarning(t *testing.T) {
+	h := newHarness(t, func(c *config.Config) { c.CookieSecure = true })
+	cases := map[string]struct {
+		host, proto string
+		want        bool
+	}{
+		"lan over http":     {"192.168.1.10:8080", "", true},
+		"localhost":         {"localhost:8080", "", false},
+		"loopback v6":       {"[::1]:8080", "", false},
+		"behind https":      {"cleanarr.example.org", "https", false},
+		"lan without port":  {"nas.lan", "", true},
+		"loopback v4 plain": {"127.0.0.1", "", false},
+	}
+	for name, c := range cases {
+		r := httptest.NewRequest(http.MethodGet, "/login", nil)
+		r.Host = c.host
+		if c.proto != "" {
+			r.Header.Set("X-Forwarded-Proto", c.proto)
+		}
+		if got := h.srv.insecureCookieSetup(r); got != c.want {
+			t.Errorf("%s: got %v", name, got)
+		}
+	}
+	h.srv.Config.CookieSecure = false
+	r := httptest.NewRequest(http.MethodGet, "/login", nil)
+	r.Host = "192.168.1.10:8080"
+	if h.srv.insecureCookieSetup(r) {
+		t.Error("COOKIE_SECURE=false: no warning")
+	}
+	page := h.do(h.client(), "GET", "/login", nil, nil)
+	if strings.Contains(page.body, "Connexion impossible en HTTP") {
+		t.Error("warning shown with COOKIE_SECURE=false")
+	}
+}
+
+func TestPasswordChangeRateLimited(t *testing.T) {
+	// Budget of 4 per IP: the login and the forced change of loggedIn use 2.
+	h := newHarness(t, func(c *config.Config) { c.LoginMaxPerIP = 4 })
+	c := h.loggedIn()
+	tok := csrfFrom(t, h.do(c, "GET", "/account/password", nil, nil).body)
+	wrong := url.Values{"csrf_token": {tok}, "current_password": {"not-the-password"},
+		"new_password": {"An0ther-Strong-Pass!"}, "confirm_password": {"An0ther-Strong-Pass!"}}
+	for i := range 2 {
+		if r := h.do(c, "POST", "/account/password", wrong, nil); r.status != http.StatusUnprocessableEntity {
+			t.Fatalf("attempt %d: %d", i+1, r.status)
+		}
+	}
+	r := h.do(c, "POST", "/account/password", wrong, nil)
+	if r.status != http.StatusTooManyRequests || !strings.Contains(r.body, "Trop de tentatives") || r.header.Get("Retry-After") == "" {
+		t.Errorf("guessing the current password must be rate-limited: %d", r.status)
 	}
 }

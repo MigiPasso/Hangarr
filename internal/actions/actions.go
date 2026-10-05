@@ -13,11 +13,11 @@ import (
 	"strings"
 	"time"
 
-	"arrstats/internal/clients/httpx"
-	"arrstats/internal/clients/plex"
-	"arrstats/internal/clients/sonarr"
-	"arrstats/internal/store"
-	"arrstats/internal/upstream"
+	"cleanarr/internal/clients/httpx"
+	"cleanarr/internal/clients/plex"
+	"cleanarr/internal/clients/sonarr"
+	"cleanarr/internal/store"
+	"cleanarr/internal/upstream"
 )
 
 // Action names stored in action_log.
@@ -63,6 +63,10 @@ type Request struct {
 	DeleteFiles     bool
 	ImportExclusion bool
 	ConfirmTitle    string // required for a whole series when ConfirmByTyping
+	// Confirmed: the batch confirmation replaces ConfirmTitle.
+	Confirmed bool
+	// SkipPlexRefresh: the caller refreshes Plex once (batch).
+	SkipPlexRefresh bool
 	Username        string // app user, for the journal
 }
 
@@ -171,7 +175,7 @@ func (s *Service) Delete(ctx context.Context, req Request) (*Result, error) {
 		}
 	default:
 		res.Action = DeleteSeries
-		if s.ConfirmByTyping && !strings.EqualFold(strings.TrimSpace(req.ConfirmTitle), strings.TrimSpace(m.Title)) {
+		if s.ConfirmByTyping && !req.Confirmed && !strings.EqualFold(strings.TrimSpace(req.ConfirmTitle), strings.TrimSpace(m.Title)) {
 			return nil, ErrConfirmMismatch
 		}
 	}
@@ -285,7 +289,7 @@ func (s *Service) afterDelete(ctx context.Context, up *upstream.Clients, m *stor
 	if err != nil {
 		s.Log.Warn("local refresh after deletion failed", "media_id", m.ID, "err", err)
 	}
-	if s.PlexRefresh && up.Plex != nil && req.DeleteFiles {
+	if s.PlexRefresh && up.Plex != nil && req.DeleteFiles && !req.SkipPlexRefresh {
 		s.refreshPlex(ctx, up.Plex, m.Kind)
 	}
 }

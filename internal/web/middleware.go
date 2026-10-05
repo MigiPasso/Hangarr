@@ -8,19 +8,19 @@ import (
 	"strings"
 	"time"
 
-	"arrstats/internal/auth"
-	"arrstats/internal/store"
+	"cleanarr/internal/auth"
+	"cleanarr/internal/store"
 )
 
 const (
-	sessionCookie    = "arrstats_session"
-	preSessionCookie = "arrstats_presession"
+	sessionCookie    = "cleanarr_session"
+	preSessionCookie = "cleanarr_presession"
 	csrfHeader       = "X-CSRF-Token"
 	csrfField        = "csrf_token"
 )
 
 const contentSecurityPolicy = "default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; " +
-	"frame-ancestors 'none'; form-action 'self'"
+	"object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'"
 
 const permissionsPolicy = "accelerometer=(), camera=(), geolocation=(), gyroscope=(), magnetometer=(), " +
 	"microphone=(), payment=(), usb=(), browsing-topics=()"

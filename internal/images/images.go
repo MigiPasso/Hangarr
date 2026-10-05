@@ -22,7 +22,7 @@ import (
 
 	"golang.org/x/sync/singleflight"
 
-	"arrstats/internal/clients/httpx"
+	"cleanarr/internal/clients/httpx"
 )
 
 // Tunables.
@@ -68,7 +68,7 @@ type Proxy struct {
 func New(dir string, client func(kind string) *httpx.Client, lookup Lookup, log *slog.Logger) *Proxy {
 	return &Proxy{
 		Dir: dir, Client: client, Lookup: lookup, Log: log,
-		Remote: &http.Client{Timeout: fetchTimeout},
+		Remote: &http.Client{Timeout: fetchTimeout, CheckRedirect: httpsOnly},
 		sem:    make(chan struct{}, MaxConcurrentFetches),
 		misses: map[string]time.Time{},
 	}
@@ -182,6 +182,18 @@ func (p *Proxy) fetch(ctx context.Context, kind string, arrID int64, variant str
 		lastErr = err
 	}
 	return lastErr
+}
+
+// httpsOnly is the redirect policy of remote image downloads: at most 3
+// redirects, all https (no downgrade to a plain-HTTP or internal service).
+func httpsOnly(req *http.Request, via []*http.Request) error {
+	if len(via) >= 3 {
+		return errors.New("too many redirects")
+	}
+	if req.URL.Scheme != "https" {
+		return errors.New("redirect to a non-https URL refused")
+	}
+	return nil
 }
 
 // fetchRemote downloads the *arr remoteUrl (TVDB/TMDB CDN), https only.

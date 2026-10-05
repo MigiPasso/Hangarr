@@ -14,9 +14,9 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"arrstats/internal/actions"
-	"arrstats/internal/clients/sonarr"
-	"arrstats/internal/store"
+	"cleanarr/internal/actions"
+	"cleanarr/internal/clients/sonarr"
+	"cleanarr/internal/store"
 )
 
 // historyLimit bounds the play history shown on the detail page.
@@ -442,8 +442,8 @@ func (s *Server) deleteSubmit(kind string) http.HandlerFunc {
 			level = "info"
 		}
 		trigger := map[string]any{
-			"arrstats:toast": map[string]any{"message": msg, "level": level},
-			"arrstats:deleted": map[string]any{"mediaId": m.ID, "season": res.Season, "dryRun": res.DryRun,
+			"cleanarr:toast": map[string]any{"message": msg, "level": level},
+			"cleanarr:deleted": map[string]any{"mediaId": m.ID, "season": res.Season, "dryRun": res.DryRun,
 				"detailUrl": detailURL, "libraryUrl": kindPath(kind)},
 		}
 		w.Header().Set("HX-Trigger", asciiJSON(trigger))
@@ -561,10 +561,10 @@ func (s *Server) protectSubmit(kind string) http.HandlerFunc {
 			http.Redirect(w, r, detailURL, http.StatusSeeOther)
 			return
 		}
-		trigger := map[string]any{"arrstats:toast": map[string]any{"message": msg, "level": level}}
+		trigger := map[string]any{"cleanarr:toast": map[string]any{"message": msg, "level": level}}
 		// Unchanged too: the local tags were realigned with Sonarr/Radarr.
 		if err == nil && (!res.DryRun || res.Unchanged) {
-			trigger["arrstats:changed"] = map[string]any{"detailUrl": detailURL}
+			trigger["cleanarr:changed"] = map[string]any{"detailUrl": detailURL}
 		}
 		w.Header().Set("HX-Trigger", asciiJSON(trigger))
 		w.Header().Set("HX-Reswap", "none")

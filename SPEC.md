@@ -1,8 +1,8 @@
-# arrstats : spécification
+# Cleanarr : spécification
 
 > Application Go + HTMX auto-hébergée qui croise **Tautulli** (historique de visionnage de tous les utilisateurs), **Plex** (bibliothèque, identifiants), **Sonarr / Radarr** (catalogue, taille, fichiers) et **Prowlarr** (santé des indexeurs), pour savoir ce qui est regardé, par qui, ce qui ne l'est jamais, et faire le ménage proprement.
 >
-> Le nom `arrstats` est provisoire et peut être renommé librement.
+> Le nom `cleanarr` est provisoire et peut être renommé librement.
 
 ---
 
@@ -251,11 +251,11 @@ Index sur `media(kind, watch_state)`, `media(last_viewed_at)`, `media(size_bytes
 - Catalogue Sonarr/Radarr/Plex : rafraîchissement complet, upsert en transaction, suppression des éléments disparus.
 - Historique Tautulli : **incrémental**. On pagine du plus récent au plus ancien et on s'arrête quand une page entière a un `date` antérieur au curseur moins 24 h. Le recouvrement rattrape les sessions longues terminées tardivement ; l'upsert sur `(source, source_id)` rend l'opération idempotente. Première sync : historique complet, avec progression affichée.
 - Utilisateurs Tautulli rafraîchis à chaque sync.
-- **Webhook Tautulli (optionnel, recommandé)** : `POST /webhooks/tautulli`, authentifié par le header `X-Arrstats-Token` (= `TAUTULLI_WEBHOOK_SECRET`). Il **ne fait pas confiance au contenu** : il déclenche seulement une sync incrémentale de l'historique, avec un anti-rebond de 30 s. À configurer dans Tautulli → Notification Agents → Webhook, déclencheurs « Playback Stop » et « Watched », URL du Service Kubernetes interne. Les stats sont ainsi à jour quelques secondes après la fin d'un épisode, sans attendre `SYNC_INTERVAL`.
+- **Webhook Tautulli (optionnel, recommandé)** : `POST /webhooks/tautulli`, authentifié par le header `X-Cleanarr-Token` (= `TAUTULLI_WEBHOOK_SECRET`). Il **ne fait pas confiance au contenu** : il déclenche seulement une sync incrémentale de l'historique, avec un anti-rebond de 30 s. À configurer dans Tautulli → Notification Agents → Webhook, déclencheurs « Playback Stop » et « Watched », URL du Service Kubernetes interne. Les stats sont ainsi à jour quelques secondes après la fin d'un épisode, sans attendre `SYNC_INTERVAL`.
 - Après la sync : rapprochement, recalcul de `play_count`, `last_viewed_at`, `watch_state`, `cleanup_score`.
 - Une erreur sur une source n'empêche pas les autres ; état visible dans la page Santé.
 - Bouton « Synchroniser maintenant » (HTMX, `POST /sync`, statut rafraîchi par `hx-trigger="every 2s"` tant que la sync tourne).
-- Commande CLI `arrstats sync --once` qui affiche un résumé (utile en dev).
+- Commande CLI `cleanarr sync --once` qui affiche un résumé (utile en dev).
 
 ### États de visionnage (`watch_state`)
 
@@ -377,7 +377,7 @@ Deux onglets :
 ## 9. Arborescence du code
 
 ```
-cmd/arrstats/main.go            # sous-commandes : serve, sync --once, admin reset-password, healthcheck, version
+cmd/cleanarr/main.go            # sous-commandes : serve, sync --once, admin reset-password, healthcheck, version
 cmd/mockarr/                    # faux Sonarr/Radarr/Prowlarr/Plex/Tautulli pour le dev et les tests (section 14)
 internal/auth/                  # hash, politique mdp, sessions, middleware, rate limit, bootstrap admin
 internal/auth/common-passwords.txt  # liste embarquée de mots de passe courants
@@ -449,7 +449,7 @@ Toute variable secrète (`*_API_KEY`, `PLEX_TOKEN`, `TAUTULLI_WEBHOOK_SECRET`) a
 - Le mot de passe en clair est écrit **une seule fois**, sur stdout, en texte brut (même si `LOG_FORMAT=json`) pour rester lisible dans `docker logs` / `kubectl logs` :
   ```
   ================================================================
-   ARRSTATS : COMPTE ADMIN INITIAL CRÉÉ
+   CLEANARR : COMPTE ADMIN INITIAL CRÉÉ
    Utilisateur  : admin
    Mot de passe : xxxxxxxxxxxxxxxxxxxxxxxx
    Ce mot de passe ne sera plus jamais affiché.
@@ -458,7 +458,7 @@ Toute variable secrète (`*_API_KEY`, `PLEX_TOKEN`, `TAUTULLI_WEBHOOK_SECRET`) a
   ```
   Il n'est ni stocké, ni écrit ailleurs, ni relogué ensuite. Une ligne slog `admin_created` (sans le mot de passe) et une entrée `auth_events` sont ajoutées.
 - Redémarrage, ou nouveau pod sur le même volume : **rien n'est régénéré ni affiché**.
-- **Récupération** : `arrstats admin reset-password [--username admin]`, lancé via `docker exec` ou `kubectl exec`. Génère un nouveau mot de passe temporaire affiché **uniquement sur la sortie de la commande** (pas dans les logs du serveur), remet `must_change_password = 1`, déverrouille le compte, invalide toutes ses sessions, journalise `password_reset_cli`. SQLite en mode WAL + `busy_timeout` pour l'accès concurrent avec le serveur.
+- **Récupération** : `cleanarr admin reset-password [--username admin]`, lancé via `docker exec` ou `kubectl exec`. Génère un nouveau mot de passe temporaire affiché **uniquement sur la sortie de la commande** (pas dans les logs du serveur), remet `must_change_password = 1`, déverrouille le compte, invalide toutes ses sessions, journalise `password_reset_cli`. SQLite en mode WAL + `busy_timeout` pour l'accès concurrent avec le serveur.
 
 ### 11.2 Politique de mot de passe (validée côté serveur, seule source de vérité)
 - 12 à 128 caractères, Unicode accepté, normalisé en NFKC avant validation et hachage.
@@ -479,7 +479,7 @@ Toute variable secrète (`*_API_KEY`, `PLEX_TOKEN`, `TAUTULLI_WEBHOOK_SECRET`) a
 - Sémaphore limitant à 2 hachages simultanés, pour rester dans la limite mémoire du pod.
 
 ### 11.5 Sessions
-- Jeton de 32 octets (`crypto/rand`, base64url) dans le cookie `arrstats_session` ; la base ne stocke que son SHA-256.
+- Jeton de 32 octets (`crypto/rand`, base64url) dans le cookie `cleanarr_session` ; la base ne stocke que son SHA-256.
 - Cookie `HttpOnly`, `Secure` (selon `COOKIE_SECURE`), `SameSite=Lax`, `Path=/`.
 - Expiration après inactivité (`SESSION_IDLE_TIMEOUT`) et durée absolue (`SESSION_MAX_AGE`). `last_seen_at` mis à jour au plus une fois par minute.
 - Nouvelle session à chaque connexion (pas de fixation de session) ; purge périodique des sessions expirées.
@@ -504,7 +504,7 @@ Toute variable secrète (`*_API_KEY`, `PLEX_TOKEN`, `TAUTULLI_WEBHOOK_SECRET`) a
   - ne fait que déclencher une sync.
 - **CSRF** sur tous les `POST` / `PUT` / `DELETE`, formulaire de login compris : jeton lié à la session (cookie de pré-session pour `/login`), envoyé par HTMX via `hx-headers` défini dans le layout.
 - En-têtes de sécurité :
-  - `Content-Security-Policy: default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; frame-ancestors 'none'; form-action 'self'`
+  - `Content-Security-Policy: default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'`
   - HTMX compatible CSP via `<meta name="htmx-config" content='{"includeIndicatorStyles":false,"allowEval":false}'>` (styles d'indicateur dans `app.css`).
   - `X-Content-Type-Options: nosniff`, `Referrer-Policy: same-origin`, `Permissions-Policy` restrictive, `Strict-Transport-Security` si `COOKIE_SECURE=true`.
 - `http.Server` avec `ReadHeaderTimeout`, `ReadTimeout`, `WriteTimeout`, `IdleTimeout` ; taille des corps de requête limitée.
@@ -519,8 +519,8 @@ Toute variable secrète (`*_API_KEY`, `PLEX_TOKEN`, `TAUTULLI_WEBHOOK_SECRET`) a
 - `Dockerfile` multi-stage : `deps` (`go mod download` avec cache mounts BuildKit), `dev` (hot reload avec `air`), `test`, `lint`, `build` (`CGO_ENABLED=0`, `-trimpath`, `-ldflags "-s -w -X main.version=…"`), `runtime` (`gcr.io/distroless/static-debian12:nonroot`).
 - Utilisateur non-root UID/GID 65532, port 8080, seul répertoire inscriptible : `/data`.
 - Compatible `readOnlyRootFilesystem` : base SQLite et cache d'images dans `/data`, `PRAGMA temp_store=MEMORY`.
-- Pas de shell dans distroless : sous-commande `arrstats healthcheck` (appelle `/healthz` en local) pour le `HEALTHCHECK` Docker. Sous Kubernetes, sondes `httpGet`.
-- Build multi-arch amd64/arm64 via `docker buildx`, labels OCI, version via `arrstats version`.
+- Pas de shell dans distroless : sous-commande `cleanarr healthcheck` (appelle `/healthz` en local) pour le `HEALTHCHECK` Docker. Sous Kubernetes, sondes `httpGet`.
+- Build multi-arch amd64/arm64 via `docker buildx`, labels OCI, version via `cleanarr version`.
 
 ### 13.2 Comportement à l'exécution
 - Configuration uniquement par variables d'environnement (et `_FILE` pour les secrets), logs JSON sur stdout.
@@ -535,7 +535,7 @@ Toute variable secrète (`*_API_KEY`, `PLEX_TOKEN`, `TAUTULLI_WEBHOOK_SECRET`) a
 
 Le Deployment impose : `runAsNonRoot`, `runAsUser/runAsGroup/fsGroup: 65532`, `readOnlyRootFilesystem: true`, `allowPrivilegeEscalation: false`, `capabilities.drop: [ALL]`, `seccompProfile: RuntimeDefault`, `automountServiceAccountToken: false`.
 
-Récupérer le mot de passe initial : `kubectl -n arrstats logs deploy/arrstats | grep -A4 "COMPTE ADMIN"`. Les logs étant souvent collectés (Loki, etc.), le changement à la première connexion est obligatoire.
+Récupérer le mot de passe initial : `kubectl -n cleanarr logs deploy/cleanarr | grep -A4 "COMPTE ADMIN"`. Les logs étant souvent collectés (Loki, etc.), le changement à la première connexion est obligatoire.
 
 ## 14. Développement et tests : tout dans Docker
 
@@ -564,7 +564,7 @@ Volumes nommés pour le cache des modules et du build Go. Profil `real` : utilis
 | `make image` | build de l'image runtime multi-arch |
 | `make k8s-validate` | `kustomize build` + `kubeconform` dans un conteneur |
 | `make capture-fixtures` | conteneur qui interroge les vraies instances et écrit des fixtures anonymisées dans `testdata/` |
-| `make reset-admin` | `docker compose exec app arrstats admin reset-password` |
+| `make reset-admin` | `docker compose exec app cleanarr admin reset-password` |
 | `make clean` | supprime conteneurs, volumes et base de dev |
 
 ### 14.3 Couverture de tests attendue
@@ -587,7 +587,7 @@ Volumes nommés pour le cache des modules et du build Go. Profil `real` : utilis
 ## 15. Livraison par phases
 
 1. **Socle Docker et authentification** : Dockerfile (tous les stages), `compose.dev.yml`, `Makefile`, `mockarr` minimal, config, store + migrations, auth complète (premier démarrage, login, changement forcé, sessions, CSRF, rate limit, en-têtes), `/healthz` et `/readyz`, arrêt propre, e2e des scénarios d'authentification.
-2. **Données** : clients Sonarr / Radarr / Plex / Tautulli, sync (dont historique Tautulli incrémental et utilisateurs), rapprochement, scoring, `arrstats sync --once`, fixtures, `make capture-fixtures`.
+2. **Données** : clients Sonarr / Radarr / Plex / Tautulli, sync (dont historique Tautulli incrémental et utilisateurs), rapprochement, scoring, `cleanarr sync --once`, fixtures, `make capture-fixtures`.
 3. **Bibliothèque** : layout, grille d'affiches, proxy d'images, filtres, tri, scroll infini.
 4. **Détail et suppression** : fiche, saisons, modal de confirmation, dry-run, tag de protection, journal (actions + sécurité).
 5. **Dashboard, Stats, Nettoyage**.
@@ -615,16 +615,16 @@ spec:
         seccompProfile:
           type: RuntimeDefault
       containers:
-        - name: arrstats
-          image: registry.example.com/arrstats:1.0.0
+        - name: cleanarr
+          image: registry.example.com/cleanarr:1.0.0
           ports:
             - containerPort: 8080
           envFrom:
             - configMapRef:
-                name: arrstats-config
+                name: cleanarr-config
           env:
             - name: SONARR_API_KEY_FILE
-              value: /run/secrets/arrstats/sonarr-api-key
+              value: /run/secrets/cleanarr/sonarr-api-key
             # … idem RADARR, PROWLARR, PLEX, TAUTULLI, TAUTULLI_WEBHOOK_SECRET
           securityContext:
             readOnlyRootFilesystem: true
@@ -640,12 +640,12 @@ spec:
             limits: { memory: 512Mi }
           volumeMounts:
             - { name: data, mountPath: /data }
-            - { name: secrets, mountPath: /run/secrets/arrstats, readOnly: true }
+            - { name: secrets, mountPath: /run/secrets/cleanarr, readOnly: true }
       volumes:
         - name: data
           persistentVolumeClaim:
-            claimName: arrstats-data
+            claimName: cleanarr-data
         - name: secrets
           secret:
-            secretName: arrstats-secrets
+            secretName: cleanarr-secrets
 ```

@@ -83,7 +83,7 @@ test("the synchronized library and the security journal", async ({ page }) => {
   }
 });
 
-test("without ARRSTATS_MASTER_KEY a key is generated in /data and the UI warns about it", async ({ page }) => {
+test("without CLEANARR_MASTER_KEY a key is generated in /data and the UI warns about it", async ({ page }) => {
   // app-e2e has no master key; auth.spec.ts already set its password.
   const base = process.env.BASE_URL ?? "http://app-e2e:8080";
   await page.goto(`${base}/login`);
@@ -94,4 +94,26 @@ test("without ARRSTATS_MASTER_KEY a key is generated in /data and the UI warns a
   await expect(page.getByText("Clé de chiffrement stockée avec les données.")).toBeVisible();
   // Services come from the environment there: locked fields.
   await expect(page.locator("#service-sonarr").getByLabel("URL de l'API")).toBeDisabled();
+});
+
+test("Tautulli webhook: secret generated once, then the webhook accepts it", async ({ page, request }) => {
+  await login(page, username, newPassword);
+  await page.goto("/config");
+  const tautulli = page.locator("#service-tautulli");
+  const base = process.env.BASE_URL_CONFIG ?? "http://app-e2e-config:8080";
+  expect((await request.post(`${base}/webhooks/tautulli`)).status()).toBe(404);
+
+  await tautulli.getByRole("button", { name: "Générer un secret" }).click();
+  const shown = tautulli.locator("code.secret").first();
+  await expect(shown).toBeVisible();
+  const secret = (await shown.textContent())!.trim();
+  expect(secret).toHaveLength(43);
+
+  const hook = `${base}/webhooks/tautulli`;
+  expect((await request.post(hook, { data: { event: "stop" } })).status()).toBe(401);
+  expect((await request.post(hook, { headers: { "X-Cleanarr-Token": secret }, data: { event: "stop" } })).status()).toBe(202);
+
+  await page.reload();
+  expect(await page.content()).not.toContain(secret);
+  await expect(tautulli.getByRole("button", { name: "Générer un nouveau secret" })).toBeVisible();
 });

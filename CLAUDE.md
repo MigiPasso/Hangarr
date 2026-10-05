@@ -1,11 +1,11 @@
-# CLAUDE.md : conventions arrstats
+# CLAUDE.md : conventions cleanarr
 
 `SPEC.md` est la spécification de référence (Go + HTMX, croise Plex / Tautulli / Sonarr / Radarr).
 **Prowlarr est hors périmètre** (décision utilisateur) : aucun client, aucune config, aucune page ; ignorer SPEC §3.3,
 la partie Prowlarr de §7.7 et `PROWLARR_*` de §10.
 **Pas de « lectures en cours »** (décision utilisateur) : ignorer `get_activity` (SPEC §3.5) et le bloc « En cours de
 lecture » du Dashboard (§7.1).
-Le dépôt s'appelle `cleanarr`, mais l'application, le binaire et le module Go s'appellent **`arrstats`**.
+L'application s'appelle **Cleanarr** (affichage) ; dépôt, binaire, module Go, image et préfixe des variables : `cleanarr` / `CLEANARR_` (renommée depuis « arrstats », décision utilisateur ; aucune compatibilité gardée, rien n'était déployé).
 
 ## Règle n°1 : tout passe par Docker
 
@@ -24,7 +24,8 @@ Rien ne s'exécute sur la machine hôte en dehors de `docker`, `docker compose`,
 | npm pour e2e | `docker compose -f compose.dev.yml --profile e2e run --rm --no-deps e2e npm …` |
 | Télécharger htmx / la liste de mots de passe | `make vendor-assets` |
 | Image runtime locale / multi-arch | `make image-load` / `make image` (`PUSH=1` pour pousser) |
-| Lancer une sync dans l'app de dev | `make sync` (`arrstats sync --once`) |
+| Vérifier le déploiement Docker (`compose.yml`) | `make deploy-check` |
+| Lancer une sync dans l'app de dev | `make sync` (`cleanarr sync --once`) |
 | Capturer de vraies réponses API (anonymisées) | `make capture-fixtures` (lit `.env`, écrit `testdata/captured/`) |
 | Réinitialiser le mot de passe admin (dev) | `make reset-admin` |
 | Tout supprimer (conteneurs, volumes, base de dev) | `make clean` |
@@ -68,13 +69,17 @@ Pas de framework web, pas de build Node pour l'app, pas de CDN.
 - Auth (SPEC §11) : admin créé une seule fois au premier démarrage, mot de passe affiché une seule fois sur stdout,
   changement forcé, argon2id (PHC), sessions stockées hachées (SHA-256), verrouillage progressif, rate limit par IP,
   `X-Forwarded-For` seulement depuis `TRUSTED_PROXIES`.
+- Requêtes sortantes : clients amont via `httpx` uniquement (redirections suivies seulement vers le même hôte,
+  `httpx.SameHostOnly`, sinon la clé partirait ailleurs) ; images distantes : https seulement, redirections https, 3 max.
+  Jamais `http.DefaultClient` pour un appel authentifié.
+- Rate limit par IP partagé entre connexion et changement de mot de passe ; CSP avec `object-src 'none'; base-uri 'none'`.
 - Kubernetes : image distroless nonroot (65532), rootfs en lecture seule, seul `/data` est inscriptible,
   `/healthz` (liveness) et `/readyz` (readiness, sans dépendre des *arr*), arrêt propre sur SIGTERM (20 s).
   Une seule réplique (SQLite).
 
 ## Repères
 
-- `cmd/arrstats` : `serve`, `admin reset-password`, `healthcheck`, `version`.
+- `cmd/cleanarr` : `serve`, `sync --once`, `admin reset-password`, `master-key`, `backup [PATH]`, `healthcheck`, `version`.
 - `internal/mockarr` (servi par `cmd/mockarr`) : faux upstreams (sonarr :8989, radarr :7878, plex :32400,
   tautulli :8181) depuis `testdata/`, appels destructeurs exposés sur `GET /_calls`, `POST /_reset`.
   Les tests d'intégration l'utilisent via `httptest`. `MOCK_SHIFT_DATES=true` recale l'historique sur aujourd'hui.
@@ -113,14 +118,31 @@ Pas de framework web, pas de build Node pour l'app, pas de CDN.
   tag `PROTECTED_TAGS[0]` créé s'il manque (`POST /api/v3/tag`), retrait = tous les tags de protection, autres tags
   conservés, `PUT` de l'objet brut. Sans changement (déjà dans l'état demandé) : rien d'envoyé ni journalisé, mais copie
   locale des tags réalignée. Le mock enregistre aussi les `POST` dans `/_calls`.
+- Santé (`/health`) : services vérifiés en direct (`upstream.CheckAll`, chargés en différé par HTMX, alertes
+  `/api/v3/health` de Sonarr/Radarr), derniers passages et historique de `sync_runs`, écarts de données
+  (`store.DataHealth`).
+- Webhook Tautulli (`POST /webhooks/tautulli`, seule route sans session) : 404 sans secret, `X-Cleanarr-Token` comparé
+  en temps constant, corps ignoré, 60 req/min/IP, puis `syncer.RequestHistorySync` (anti-rebond 30 s, historique seul,
+  partage le verrou de la sync complète). `LastSyncAt` ne compte que les sources de catalogue. Secret généré dans
+  Configuration (affiché une seule fois).
 - `internal/images` : proxy MediaCover (`poster-500.jpg`) → cache disque `DATA_DIR/cache/img`, ETag, sémaphore (4),
   singleflight, repli `remoteUrl` https, placeholder SVG. Pas de JS supplémentaire côté client.
-- `make e2e` tourne dans le projet compose `arrstats-e2e` (séparé) et lit le mot de passe initial dans les logs.
+- Sélection en lot (bibliothèque grille/tableau + Nettoyage) : cases `name=ids form=batch-form` (absentes si protégé ou
+  Plex seul), barre collante `partials/batch.html`, `POST /batch/delete` (1er POST = confirmation, `step=run` = exécution ;
+  série dans le lot + `CONFIRM_BY_TYPING` → saisir le nombre d'éléments), `POST /batch/protect` (sans confirmation).
+  `actions.DeleteBatch/ProtectBatch` : séquentiel, `Delete` normal par élément (`Confirmed`, `SkipPlexRefresh`), un seul
+  rafraîchissement Plex par type à la fin, 100 éléments max, délai d'écriture prolongé (10 min). Rapport par élément dans la
+  modale `#confirm`, événement `cleanarr:batch-done` (cartes supprimées retirées, rechargement à la fermeture après protection).
+- Déploiement Docker : `compose.yml` (prod, projet `cleanarr`, volume `cleanarr-data`, durci comme k8s, `.env` facultatif),
+  `make deploy-check` = `compose.yml` tel quel + `deploy/compose.check.yml` (mock, sans port ni `.env`) + `deploy/check.sh`.
+  `cleanarr backup [PATH]` (`VACUUM INTO`, à chaud). Avertissement sur la page de connexion si HTTP avec `COOKIE_SECURE=true`
+  (hors localhost). Compose ≥ 2.24 (`env_file.required`, `!reset`).
+- `make e2e` tourne dans le projet compose `cleanarr-e2e` (séparé) et lit le mot de passe initial dans les logs.
 
 ## Phase 6 : périmètre convenu avec l'utilisateur
 
-En plus de SPEC §15.6 (Santé sans Prowlarr, webhook Tautulli, sélection en lot, export CSV, image multi-arch,
-e2e complets) :
+En plus de SPEC §15.6 (Santé sans Prowlarr, webhook Tautulli, sélection en lot, image multi-arch, e2e complets ;
+**pas d'export CSV**, décision utilisateur) :
 
 - **Déploiement : Docker d'abord, Kubernetes reporté** (décision utilisateur). Les manifests kustomize et
   `make k8s-validate` sont repoussés à plus tard (pas en phase 6). La phase 6 livre un déploiement Docker clé en main
@@ -128,12 +150,12 @@ e2e complets) :
   telle quelle dans les deux (mêmes invariants : nonroot, rootfs en lecture seule, `/data` seul inscriptible,
   variantes `_FILE` pour les secrets Docker / Kubernetes) : ne rien introduire de spécifique à l'un des deux.
   Publication de l'image : GHCR via un workflow Forgejo Actions sur tag, **plus tard** (après la phase 6) ;
-  en attendant `make image PUSH=1 IMAGE=ghcr.io/<user>/arrstats`.
+  en attendant `make image PUSH=1 IMAGE=ghcr.io/<user>/cleanarr`.
 
 - **Configuration des services dans l'UI** (espace « Configuration ») : URL, URL publique, clé d'API / token de Sonarr,
   Radarr, Plex, Tautulli (+ secret du webhook), avec bouton « Tester la connexion ».
   - Secrets **chiffrés en base** (AES-256-GCM, nonce aléatoire par valeur). Clé maître **mode hybride** (décision
-    utilisateur) : `ARRSTATS_MASTER_KEY` / `ARRSTATS_MASTER_KEY_FILE` (secret Docker / Kubernetes) = mode recommandé ;
+    utilisateur) : `CLEANARR_MASTER_KEY` / `CLEANARR_MASTER_KEY_FILE` (secret Docker / Kubernetes) = mode recommandé ;
     sinon clé générée au premier démarrage dans `DATA_DIR/master.key` (0600), avec avertissement explicite dans l'UI
     (une sauvegarde du volume expose les secrets). Si une clé d'env apparaît alors que `master.key` existe : rechiffrement
     des secrets au démarrage puis suppression du fichier (rien à ressaisir).

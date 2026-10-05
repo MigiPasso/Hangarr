@@ -9,8 +9,8 @@ import (
 	"net/url"
 	"strconv"
 
-	"arrstats/internal/clients/httpx"
-	"arrstats/internal/clients/sonarr"
+	"cleanarr/internal/clients/httpx"
+	"cleanarr/internal/clients/sonarr"
 )
 
 // Ratings accepts both shapes seen in Radarr: the current per-source map
@@ -159,4 +159,9 @@ func (c *Client) DeleteMovie(ctx context.Context, id int64, deleteFiles, importE
 func (c *Client) DiskSpace(ctx context.Context) ([]sonarr.DiskSpace, error) {
 	var out []sonarr.DiskSpace
 	return out, c.HTTP.JSON(ctx, httpx.Request{Path: "/api/v3/diskspace"}, &out)
+}
+
+// Health lists the instance's health alerts.
+func (c *Client) Health(ctx context.Context) ([]sonarr.HealthCheck, error) {
+	return sonarr.Health(ctx, c.HTTP)
 }

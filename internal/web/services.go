@@ -6,8 +6,8 @@ import (
 	"slices"
 	"time"
 
-	"arrstats/internal/store"
-	"arrstats/internal/upstream"
+	"cleanarr/internal/store"
+	"cleanarr/internal/upstream"
 )
 
 // serviceForm is one section of the Configuration page.
@@ -20,7 +20,26 @@ type serviceForm struct {
 	NothingChanged  bool
 	SyncStarted     bool
 	Test            *testResult // connection test result without JavaScript
+	WebhookURL      string      // Tautulli: address of the webhook (as seen by the browser)
+	GeneratedSecret string      // Tautulli: new webhook secret, shown once
 }
+
+// WebhookState reports whether the webhook secret is set, and whether it
+// comes from the environment.
+func (f serviceForm) WebhookState() (set, locked bool) {
+	for _, fs := range f.Fields {
+		if fs.Key == upstream.TautulliWebhook {
+			return fs.Hint != "", fs.Locked
+		}
+	}
+	return false, false
+}
+
+// WebhookSet reports whether the webhook secret is set.
+func (f serviceForm) WebhookSet() bool { set, _ := f.WebhookState(); return set }
+
+// WebhookLocked reports whether the webhook secret comes from the environment.
+func (f serviceForm) WebhookLocked() bool { _, locked := f.WebhookState(); return locked }
 
 type configData struct {
 	Services        []serviceForm
@@ -50,7 +69,11 @@ func (s *Server) serviceForms(r *http.Request) ([]serviceForm, error) {
 		csrf = sess.CSRFToken
 	}
 	for _, st := range states {
-		out = append(out, serviceForm{ServiceState: st, CSRFToken: csrf, CanStoreSecrets: s.Services.CanStoreSecrets()})
+		f := serviceForm{ServiceState: st, CSRFToken: csrf, CanStoreSecrets: s.Services.CanStoreSecrets()}
+		if st.Service == upstream.Tautulli {
+			f.WebhookURL = webhookURL(r)
+		}
+		out = append(out, f)
 	}
 	return out, nil
 }
@@ -99,10 +122,7 @@ func (s *Server) configSubmit(w http.ResponseWriter, r *http.Request) {
 	in := serviceInput(r, svc)
 	sess := sessionFrom(r)
 	meta := s.clientMeta(r)
-	ua := meta.UserAgent
-	if len(ua) > 256 {
-		ua = ua[:256]
-	}
+	ua := truncateUA(meta.UserAgent)
 	wasReady := s.Upstreams.Get().Ready()
 	changed, err := s.Services.Save(r.Context(), svc, in,
 		store.AuthEvent{UserID: &sess.UserID, Username: sess.Username, IP: meta.IP, UserAgent: ua}, time.Now())

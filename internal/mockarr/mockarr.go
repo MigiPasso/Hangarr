@@ -146,7 +146,7 @@ func (m *Mock) arr(service, appName string) http.Handler {
 		m.hit(service + ":mediacover")
 		m.mediaCover(w, r, service)
 	})
-	for _, res := range []string{"series", "movie", "tag", "qualityprofile", "diskspace"} {
+	for _, res := range []string{"series", "movie", "tag", "qualityprofile", "diskspace", "health"} {
 		mux.HandleFunc("GET /api/v3/"+res, func(w http.ResponseWriter, _ *http.Request) {
 			m.hit(service + ":" + res)
 			m.file(w, service+"/"+res+".json")

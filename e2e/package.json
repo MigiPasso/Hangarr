@@ -1,5 +1,5 @@
 {
-  "name": "arrstats-e2e",
+  "name": "cleanarr-e2e",
   "private": true,
   "description": "Playwright end-to-end tests, run only inside the e2e compose service",
   "scripts": {

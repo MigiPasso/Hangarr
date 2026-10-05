@@ -130,7 +130,7 @@ func TestHistorySource(t *testing.T) {
 
 func TestMasterKey(t *testing.T) {
 	m := upstreams()
-	m["ARRSTATS_MASTER_KEY_FILE"] = "/run/secrets/master"
+	m["CLEANARR_MASTER_KEY_FILE"] = "/run/secrets/master"
 	key := strings.Repeat("ab", 32)
 	c, err := Load(env(m), files(map[string]string{"/run/secrets/master": key + "\n"}))
 	if err != nil {
@@ -140,7 +140,7 @@ func TestMasterKey(t *testing.T) {
 		t.Errorf("master key: %d bytes", len(c.MasterKey))
 	}
 	m = upstreams()
-	m["ARRSTATS_MASTER_KEY"] = "too-short"
+	m["CLEANARR_MASTER_KEY"] = "too-short"
 	_, err = Load(env(m), files(nil))
 	if err == nil || strings.Contains(err.Error(), "too-short") {
 		t.Errorf("invalid master key must fail without echoing it: %v", err)

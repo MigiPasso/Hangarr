@@ -1,6 +1,6 @@
 {{define "nav"}}
 <header class="topbar">
-  <a class="brand" href="/">arrstats</a>
+  <a class="brand" href="/">Cleanarr</a>
   <nav class="nav" aria-label="Navigation principale">
     {{if .Session.MustChangePassword}}
       <span class="nav-hint">Changez votre mot de passe pour continuer</span>
@@ -10,7 +10,7 @@
       <a href="/movies"{{if eq .Active "movie"}} aria-current="page"{{end}}>Films</a>
       <a href="/cleanup"{{if eq .Active "cleanup"}} aria-current="page"{{end}}>Nettoyage</a>
       <a href="/stats"{{if eq .Active "stats"}} aria-current="page"{{end}}>Stats</a>
-      <span class="nav-disabled" aria-disabled="true" title="Bientôt disponible">Santé</span>
+      <a href="/health"{{if eq .Active "health"}} aria-current="page"{{end}}>Santé</a>
       <a href="/journal"{{if eq .Active "journal"}} aria-current="page"{{end}}>Journal</a>
       <a href="/settings"{{if eq .Active "settings"}} aria-current="page"{{end}}>Réglages</a>
       <a href="/config"{{if eq .Active "config"}} aria-current="page"{{end}}>Configuration</a>

@@ -3,12 +3,14 @@ package web
 import (
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
-	"arrstats/internal/auth"
-	"arrstats/internal/store"
+	"cleanarr/internal/auth"
+	"cleanarr/internal/store"
 )
 
 func (s *Server) healthz(w http.ResponseWriter, _ *http.Request) {
@@ -39,6 +41,23 @@ func (s *Server) notFound(w http.ResponseWriter, r *http.Request) {
 type loginData struct {
 	Username string
 	Error    string
+	// InsecureCookies: the page is served over plain HTTP while
+	// COOKIE_SECURE=true, so the browser will drop the session cookie.
+	InsecureCookies bool
+}
+
+// insecureCookieSetup reports a COOKIE_SECURE=true deployment reached over
+// plain HTTP. Browsers accept Secure cookies on localhost, so it is excluded.
+func (s *Server) insecureCookieSetup(r *http.Request) bool {
+	if !s.Config.CookieSecure || r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https" {
+		return false
+	}
+	host := r.Host
+	if h, _, err := net.SplitHostPort(host); err == nil {
+		host = h
+	}
+	host = strings.Trim(host, "[]")
+	return host != "localhost" && host != "127.0.0.1" && host != "::1"
 }
 
 // preSession returns the pre-session cookie value, creating it if needed.
@@ -60,6 +79,7 @@ func (s *Server) renderLogin(w http.ResponseWriter, r *http.Request, status int,
 		s.serverError(w, r, err)
 		return
 	}
+	data.InsecureCookies = s.insecureCookieSetup(r)
 	pd := s.page(r, "Connexion", "", data)
 	pd.CSRFToken = auth.PreSessionCSRF(s.PreSessionKey, pre)
 	s.render(w, r, status, "login", "", pd)
@@ -157,6 +177,20 @@ func (s *Server) passwordPage(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) passwordSubmit(w http.ResponseWriter, r *http.Request) {
 	sess := sessionFrom(r)
+	// The current password is checked here too: same per-IP budget as the
+	// login, so a stolen session cannot guess it without limit.
+	if ok, retry := s.LoginLimiter.Allow(s.clientMeta(r).IP); !ok {
+		w.Header().Set("Retry-After", strconv.Itoa(int(retry/time.Second)+1))
+		data := passwordData{Forced: sess.MustChangePassword, Username: sess.Username,
+			CurrentError: fmt.Sprintf("Trop de tentatives. Réessayez dans %d min.", int(retry/time.Minute)+1)}
+		pd := s.page(r, "Changer le mot de passe", "account", data)
+		if isHTMX(r) {
+			s.render(w, r, http.StatusOK, "password", "password_form", pd)
+			return
+		}
+		s.render(w, r, http.StatusTooManyRequests, "password", "", pd)
+		return
+	}
 	ns, violations, err := s.Auth.ChangePassword(r.Context(), sess,
 		r.PostFormValue("current_password"), r.PostFormValue("new_password"), r.PostFormValue("confirm_password"),
 		s.clientMeta(r))

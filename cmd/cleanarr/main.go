@@ -1,4 +1,4 @@
-// Command arrstats serves the web UI and offers maintenance subcommands.
+// Command cleanarr serves the web UI and offers maintenance subcommands.
 package main
 
 import (
@@ -19,28 +19,30 @@ import (
 	"time"
 	_ "time/tzdata" // distroless has no zoneinfo; TZ must work anyway
 
-	"arrstats/internal/actions"
-	"arrstats/internal/auth"
-	"arrstats/internal/config"
-	"arrstats/internal/images"
-	"arrstats/internal/secretbox"
-	"arrstats/internal/store"
-	"arrstats/internal/syncer"
-	"arrstats/internal/upstream"
-	"arrstats/internal/web"
+	"cleanarr/internal/actions"
+	"cleanarr/internal/auth"
+	"cleanarr/internal/config"
+	"cleanarr/internal/images"
+	"cleanarr/internal/secretbox"
+	"cleanarr/internal/store"
+	"cleanarr/internal/syncer"
+	"cleanarr/internal/upstream"
+	"cleanarr/internal/web"
 )
 
 // version is set at build time with -ldflags "-X main.version=...".
 var version = "dev"
 
-const usage = `Usage: arrstats <command>
+const usage = `Usage: cleanarr <command>
 
 Commands:
   serve                                  start the web server (default)
   sync --once                            run one synchronization and print a summary
   admin reset-password [--username NAME] print a new temporary password for an account
   healthcheck                            exit 0 if the local server answers /healthz
-  master-key                             print a new random master key (ARRSTATS_MASTER_KEY)
+  master-key                             print a new random master key (CLEANARR_MASTER_KEY)
+  backup [PATH]                          consistent copy of the database, safe while serving
+                                         (default: DATA_DIR/backups/cleanarr-YYYYMMDD-HHMMSS.db)
   version                                print the version
 `
 
@@ -62,6 +64,8 @@ func main() {
 		err = healthcheck()
 	case "master-key":
 		err = masterKey()
+	case "backup":
+		err = backup(args)
 	case "version", "--version", "-v":
 		fmt.Println(version)
 	case "help", "--help", "-h":
@@ -100,7 +104,7 @@ func serve() error {
 	}
 	log := newLogger(cfg, os.Stdout)
 	slog.SetDefault(log)
-	log.Info("starting arrstats", "version", version, "dry_run", cfg.DryRun, "master_key", cfg.MasterKey != nil)
+	log.Info("starting cleanarr", "version", version, "dry_run", cfg.DryRun, "master_key", cfg.MasterKey != nil)
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, os.Interrupt)
 	defer stop()
@@ -178,7 +182,7 @@ func serve() error {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		janitor(ctx, log, svc, limiter)
+		janitor(ctx, log, svc, func() { limiter.Sweep(); srv.SweepLimiters() })
 	}()
 	wg.Add(1)
 	go func() {
@@ -197,7 +201,7 @@ func serve() error {
 }
 
 // janitor purges expired sessions and rate-limit entries until ctx ends.
-func janitor(ctx context.Context, log *slog.Logger, svc *auth.Service, limiter *auth.RateLimiter) {
+func janitor(ctx context.Context, log *slog.Logger, svc *auth.Service, sweep func()) {
 	t := time.NewTicker(10 * time.Minute)
 	defer t.Stop()
 	for {
@@ -206,7 +210,7 @@ func janitor(ctx context.Context, log *slog.Logger, svc *auth.Service, limiter *
 		} else if n > 0 {
 			log.Info("expired sessions purged", "count", n)
 		}
-		limiter.Sweep()
+		sweep()
 		select {
 		case <-ctx.Done():
 			return
@@ -217,7 +221,7 @@ func janitor(ctx context.Context, log *slog.Logger, svc *auth.Service, limiter *
 
 func admin(args []string) error {
 	if len(args) == 0 || args[0] != "reset-password" {
-		return errors.New("usage: arrstats admin reset-password [--username NAME]")
+		return errors.New("usage: cleanarr admin reset-password [--username NAME]")
 	}
 	cfg, err := loadConfig()
 	if err != nil {
@@ -302,6 +306,42 @@ func newSyncer(cfg *config.Config, st *store.Store, reg *upstream.Registry, log 
 	}
 }
 
+// backup writes a consistent copy of the database (VACUUM INTO).
+func backup(args []string) error {
+	if len(args) > 1 {
+		return errors.New("usage: cleanarr backup [PATH]")
+	}
+	cfg, err := loadConfig()
+	if err != nil {
+		return err
+	}
+	path := filepath.Join(cfg.DataDir, "backups", "cleanarr-"+time.Now().Format("20060102-150405")+".db")
+	if len(args) == 1 {
+		path = args[0]
+	}
+	// The path is given by the operator on the command line.
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil { //nolint:gosec // G703: operator-provided path
+		return err
+	}
+	ctx := context.Background()
+	st, err := store.Open(ctx, cfg.DataDir)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = st.Close() }()
+	if err := st.BackupTo(ctx, path); err != nil {
+		return fmt.Errorf("backup: %w", err)
+	}
+	fmt.Println(path)
+	if cfg.MasterKey == nil {
+		fmt.Fprintf(os.Stderr, "note: the saved credentials are encrypted with %s; keep it with the backup.\n",
+			filepath.Join(cfg.DataDir, upstream.KeyFileName))
+	} else {
+		fmt.Fprintln(os.Stderr, "note: the saved credentials are encrypted with CLEANARR_MASTER_KEY; keep the key to restore them.")
+	}
+	return nil
+}
+
 // masterKey prints a fresh master key. It is never written to disk: store it
 // in a Docker or Kubernetes secret.
 func masterKey() error {
@@ -321,7 +361,7 @@ func syncOnce(args []string) error {
 		return err
 	}
 	if !*once {
-		return errors.New("usage: arrstats sync --once")
+		return errors.New("usage: cleanarr sync --once")
 	}
 	cfg, err := loadConfig()
 	if err != nil {

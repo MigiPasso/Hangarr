@@ -9,19 +9,20 @@ import (
 	"strings"
 	"time"
 
-	"arrstats/internal/store"
-	"arrstats/internal/syncer"
+	"cleanarr/internal/store"
+	"cleanarr/internal/syncer"
 )
 
 // DefaultPageSize is the number of items per infinite-scroll batch.
 const DefaultPageSize = 48
 
-const viewCookie = "arrstats_view"
+const viewCookie = "cleanarr_view"
 
 // SyncRunner is the part of the syncer used by the UI.
 type SyncRunner interface {
 	Status() syncer.Status
 	Start(ctx context.Context) bool
+	RequestHistorySync(ctx context.Context) bool
 	DailyTime() syncer.ClockTime
 	SetDailyTime(at syncer.ClockTime)
 	NextRun() time.Time

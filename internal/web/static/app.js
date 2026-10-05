@@ -1,4 +1,4 @@
-// arrstats: minimal client script (CSP script-src 'self', no eval).
+// cleanarr: minimal client script (CSP script-src 'self', no eval).
 // Live password checklist: purely informative, the server stays the only
 // source of truth and the password is never sent while typing.
 (function () {
@@ -86,15 +86,15 @@
     setTimeout(function () { t.remove(); }, 6000);
   }
 
-  document.addEventListener("arrstats:toast", function (e) { toast(e.detail.message, e.detail.level); });
+  document.addEventListener("cleanarr:toast", function (e) { toast(e.detail.message, e.detail.level); });
 
   // Protection changed: reload the detail (modal or page) to show the new state.
-  document.addEventListener("arrstats:changed", function (e) {
+  document.addEventListener("cleanarr:changed", function (e) {
     var modal = document.getElementById("modal");
     if (modal && modal.open) { htmx.ajax("GET", e.detail.detailUrl, { target: "#modal-body" }); } else { location.reload(); }
   });
 
-  document.addEventListener("arrstats:deleted", function (e) {
+  document.addEventListener("cleanarr:deleted", function (e) {
     var d = e.detail;
     var confirm = document.getElementById("confirm");
     if (confirm && confirm.open) { confirm.close(); }
@@ -110,3 +110,59 @@
   });
 })();
 
+
+// Batch selection: checkboxes (name=ids, form=batch-form) on cards and rows,
+// sticky bar with count and size; cards removed after a batch deletion.
+(function () {
+  "use strict";
+
+  function boxes() { return document.querySelectorAll("input[name=ids][form=batch-form]"); }
+
+  function formatBytes(n) {
+    var units = ["o", "Ko", "Mo", "Go", "To", "Po"], i = 0;
+    while (n >= 1000 && i < units.length - 1) { n /= 1000; i++; }
+    if (i === 0) { return n + " o"; }
+    return n.toFixed(n >= 100 ? 0 : 1).replace(".", ",") + " " + units[i];
+  }
+
+  function update() {
+    var bar = document.getElementById("batch-form");
+    if (!bar) { return; }
+    var count = 0, size = 0;
+    boxes().forEach(function (b) {
+      if (b.checked) { count++; size += parseInt(b.getAttribute("data-size") || "0", 10); }
+    });
+    bar.hidden = count === 0;
+    var summary = bar.querySelector("[data-batch-summary]");
+    if (summary) {
+      summary.textContent = count + (count > 1 ? " sélectionnés · " : " sélectionné · ") + formatBytes(size);
+    }
+  }
+
+  document.addEventListener("change", function (e) {
+    if (e.target.matches && e.target.matches("input[name=ids][form=batch-form]")) { update(); }
+  });
+  document.addEventListener("click", function (e) {
+    if (e.target.closest && e.target.closest("[data-batch-clear]")) {
+      boxes().forEach(function (b) { b.checked = false; });
+      update();
+    }
+  });
+  // New cards from infinite scroll or filters keep the bar in sync.
+  document.addEventListener("htmx:afterSwap", update);
+  document.addEventListener("DOMContentLoaded", update);
+
+  var reloadOnClose = false;
+  document.addEventListener("cleanarr:batch-done", function (e) {
+    (e.detail.deleted || []).forEach(function (id) {
+      var el = document.getElementById("media-" + id);
+      if (el) { el.remove(); }
+    });
+    boxes().forEach(function (b) { b.checked = false; });
+    update();
+    reloadOnClose = !!e.detail.reload;
+  });
+  document.addEventListener("close", function (e) {
+    if (reloadOnClose && e.target.id === "confirm") { location.reload(); }
+  }, true);
+})();

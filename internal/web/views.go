@@ -16,7 +16,7 @@ import (
 	"strings"
 	"time"
 
-	"arrstats/internal/store"
+	"cleanarr/internal/store"
 )
 
 //go:embed templates
@@ -27,7 +27,7 @@ var staticFS embed.FS
 
 // pages lists every page template under templates/pages.
 var pages = []string{"login", "password", "account", "home", "notfound", "library", "settings", "detail", "delete", "journal",
-	"stats", "userstats", "cleanup", "config"}
+	"stats", "userstats", "cleanup", "config", "health", "batch"}
 
 type views struct {
 	pages  map[string]*template.Template
@@ -127,7 +127,20 @@ func newViews(loc *time.Location, protectedTags []string, abandonDays int) (*vie
 			}
 			return episodeLabel(*season, *episode)
 		},
-		"duration":  formatDuration,
+		"duration": formatDuration,
+		"sourceLabel": func(src string) string {
+			if l, ok := map[string]string{"sonarr": "Sonarr", "radarr": "Radarr", "plex": "Plex (catalogue)",
+				"tautulli": "Tautulli (historique)", "plex_history": "Plex (historique)"}[src]; ok {
+				return l
+			}
+			return src
+		},
+		"runDuration": func(r store.SyncRun) string {
+			if r.FinishedAt == nil {
+				return "en cours"
+			}
+			return formatDuration(*r.FinishedAt - r.StartedAt)
+		},
 		"transcode": transcodeLabel,
 		"authLabel": func(e string) string {
 			if l, ok := authEventLabels[e]; ok {

@@ -1,4 +1,4 @@
-module arrstats
+module cleanarr
 
 go 1.27
 

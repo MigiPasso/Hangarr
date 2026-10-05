@@ -9,10 +9,10 @@ import (
 	"strings"
 	"testing"
 
-	"arrstats/internal/clients/plex"
-	"arrstats/internal/clients/radarr"
-	"arrstats/internal/clients/sonarr"
-	"arrstats/internal/clients/tautulli"
+	"cleanarr/internal/clients/plex"
+	"cleanarr/internal/clients/radarr"
+	"cleanarr/internal/clients/sonarr"
+	"cleanarr/internal/clients/tautulli"
 )
 
 func fixtureDirs(t *testing.T) []string {

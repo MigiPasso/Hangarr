@@ -113,3 +113,28 @@ func TestCleanupPageAndSettings(t *testing.T) {
 		t.Error("dashboard tile must follow the rule")
 	}
 }
+
+func TestHealthPage(t *testing.T) {
+	e := newLibEnv(t, 0)
+	r := e.do(e.c, "GET", "/health", nil, nil)
+	if r.status != http.StatusOK {
+		t.Fatalf("status %d", r.status)
+	}
+	for _, want := range []string{`hx-get="/health/services" hx-trigger="load"`, "Tautulli (historique)",
+		"Dans Plex mais pas dans Sonarr/Radarr", ">Home Videos<", "Rapprochements approximatifs", ">Shōgun<",
+		`href="/health" aria-current="page"`} {
+		if !strings.Contains(r.body, want) {
+			t.Errorf("missing %q", want)
+		}
+	}
+	r = e.do(e.c, "GET", "/health/services", nil, map[string]string{"HX-Request": "true"})
+	if strings.Contains(r.body, "<html") || strings.Count(r.body, "badge-ok") != 4 ||
+		!strings.Contains(r.body, "Version 4.0.0.0-mock") || !strings.Contains(r.body, "Indexers unavailable due to failures") {
+		t.Errorf("services fragment:\n%s", r.body)
+	}
+	// Without JavaScript: the whole page with the services checked.
+	r = e.do(e.c, "GET", "/health/services", nil, nil)
+	if !strings.Contains(r.body, "<html") || strings.Contains(r.body, `hx-trigger="load"`) || !strings.Contains(r.body, "badge-ok") {
+		t.Error("no-JS page must include the checked services")
+	}
+}

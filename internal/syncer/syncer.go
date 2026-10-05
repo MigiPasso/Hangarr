@@ -18,14 +18,14 @@ import (
 
 	"golang.org/x/sync/errgroup"
 
-	"arrstats/internal/clients/plex"
-	"arrstats/internal/clients/radarr"
-	"arrstats/internal/clients/sonarr"
-	"arrstats/internal/clients/tautulli"
-	"arrstats/internal/matching"
-	"arrstats/internal/scoring"
-	"arrstats/internal/store"
-	"arrstats/internal/upstream"
+	"cleanarr/internal/clients/plex"
+	"cleanarr/internal/clients/radarr"
+	"cleanarr/internal/clients/sonarr"
+	"cleanarr/internal/clients/tautulli"
+	"cleanarr/internal/matching"
+	"cleanarr/internal/scoring"
+	"cleanarr/internal/store"
+	"cleanarr/internal/upstream"
 )
 
 // Source names, as stored in sync_runs.
@@ -60,12 +60,16 @@ type Syncer struct {
 	// Location is the time zone of the daily schedule (TZ).
 	Location *time.Location
 
-	running  atomic.Bool
-	mu       sync.Mutex
-	progress string
-	last     *Result
-	daily    ClockTime
-	wake     chan struct{}
+	// HistoryDebounce overrides DefaultHistoryDebounce (tests).
+	HistoryDebounce time.Duration
+
+	historyPending bool
+	running        atomic.Bool
+	mu             sync.Mutex
+	progress       string
+	last           *Result
+	daily          ClockTime
+	wake           chan struct{}
 }
 
 // SourceResult is the outcome of one source.

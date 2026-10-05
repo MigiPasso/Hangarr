@@ -15,11 +15,11 @@ import (
 	"testing/fstest"
 	"time"
 
-	"arrstats/internal/clients/sonarr"
-	"arrstats/internal/mockarr"
-	"arrstats/internal/store"
-	"arrstats/internal/syncer"
-	"arrstats/internal/upstream"
+	"cleanarr/internal/clients/sonarr"
+	"cleanarr/internal/mockarr"
+	"cleanarr/internal/store"
+	"cleanarr/internal/syncer"
+	"cleanarr/internal/upstream"
 )
 
 type env struct {

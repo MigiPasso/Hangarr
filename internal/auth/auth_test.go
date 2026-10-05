@@ -17,7 +17,7 @@ import (
 	"testing"
 	"time"
 
-	"arrstats/internal/store"
+	"cleanarr/internal/store"
 )
 
 // testParams keep argon2id cheap in tests; production params are checked separately.

@@ -10,7 +10,7 @@ import (
 	"net/url"
 	"strconv"
 
-	"arrstats/internal/clients/httpx"
+	"cleanarr/internal/clients/httpx"
 )
 
 // Image is a poster/fanart/banner reference.
@@ -255,4 +255,21 @@ func WithTags(raw json.RawMessage, ids []int64) (json.RawMessage, error) {
 	}
 	obj["tags"] = b
 	return json.Marshal(obj)
+}
+
+// HealthCheck is an entry of GET /api/v3/health (Sonarr and Radarr).
+type HealthCheck struct {
+	Source  string `json:"source"`
+	Type    string `json:"type"` // ok | notice | warning | error
+	Message string `json:"message"`
+	WikiURL string `json:"wikiUrl"`
+}
+
+// Health lists the instance's health alerts.
+func (c *Client) Health(ctx context.Context) ([]HealthCheck, error) { return Health(ctx, c.HTTP) }
+
+// Health lists the health alerts of a Sonarr or Radarr instance.
+func Health(ctx context.Context, h *httpx.Client) ([]HealthCheck, error) {
+	var out []HealthCheck
+	return out, h.JSON(ctx, httpx.Request{Path: "/api/v3/health"}, &out)
 }

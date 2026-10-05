@@ -89,3 +89,50 @@ func TestFlexTypes(t *testing.T) {
 		t.Errorf("Time: %v %v", v.K, v.L)
 	}
 }
+
+func TestRedirectToAnotherHostKeepsTheKey(t *testing.T) {
+	var leaked atomic.Value
+	leaked.Store("")
+	other := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		leaked.Store(r.Header.Get("X-Api-Key"))
+		_, _ = w.Write([]byte(`{}`))
+	}))
+	defer other.Close()
+	// Same port, another host name: 127.0.0.1 -> localhost.
+	otherURL := strings.Replace(other.URL, "127.0.0.1", "localhost", 1)
+	src := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, otherURL+"/login", http.StatusFound)
+	}))
+	defer src.Close()
+	c := New("sonarr", src.URL, func(r *http.Request) { r.Header.Set("X-Api-Key", "secret-key") })
+	c.Retries = 0
+	err := c.JSON(context.Background(), Request{Path: "/api/v3/system/status"}, nil)
+	var re *RedirectError
+	if !errors.As(err, &re) || re.Host != "localhost" {
+		t.Errorf("cross-host redirect must be refused: %v", err)
+	}
+	if v := leaked.Load().(string); v != "" {
+		t.Fatalf("API key sent to another host: %q", v)
+	}
+}
+
+func TestRedirectOnSameHostIsFollowed(t *testing.T) {
+	var ts *httptest.Server
+	ts = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/old" {
+			http.Redirect(w, r, ts.URL+"/new", http.StatusMovedPermanently)
+			return
+		}
+		if r.Header.Get("X-Api-Key") != "k" {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		_, _ = w.Write([]byte(`{"ok":true}`))
+	}))
+	defer ts.Close()
+	c := New("sonarr", ts.URL, func(r *http.Request) { r.Header.Set("X-Api-Key", "k") })
+	var out struct{ OK bool }
+	if err := c.JSON(context.Background(), Request{Path: "/old"}, &out); err != nil || !out.OK {
+		t.Fatalf("same-host redirect: %v %v", err, out)
+	}
+}

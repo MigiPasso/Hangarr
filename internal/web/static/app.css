@@ -1,4 +1,4 @@
-/* arrstats: hand-written CSS, dark theme by default. No inline styles are
+/* cleanarr: hand-written CSS, dark theme by default. No inline styles are
    allowed by the CSP (style-src 'self'), so every visual state lives here. */
 
 :root {
@@ -437,3 +437,35 @@ fieldset.clock { border: 0; padding: 0; margin: 0; display: flex; align-items: c
 fieldset.clock legend { font-weight: 600; font-size: .9rem; margin: .5rem 0; padding: 0; }
 fieldset.clock select { width: auto; min-width: 4.5rem; font-variant-numeric: tabular-nums; }
 .cleanup-reason { white-space: nowrap; }
+
+/* --- health --- */
+
+.health-services { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 15rem), 1fr)); gap: var(--space); }
+.health-service h3, .health-list h3 { margin: 0; font-size: 1rem; }
+.health-service p { margin: .35rem 0 0; }
+.health-alerts { margin: .5rem 0 0; padding-left: 1.1rem; font-size: .85rem; }
+.health-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 22rem), 1fr)); gap: var(--space); }
+.health-list ul { margin: .5rem 0 0; padding-left: 1.1rem; font-size: .9rem; max-height: 16rem; overflow-y: auto; }
+.health-list p { margin: .25rem 0 0; }
+.badge-error { background: rgba(229, 72, 77, .15); color: var(--danger); }
+.webhook-box { border-top: 1px solid var(--border); margin-top: var(--space); padding-top: var(--space); }
+.webhook-box h3 { margin: 0 0 .5rem; font-size: 1rem; }
+.webhook-box ol { padding-left: 1.2rem; margin: .5rem 0; }
+.webhook-box .alert p { margin: .25rem 0; }
+code.secret { word-break: break-all; user-select: all; }
+
+/* --- batch selection --- */
+
+.media-card { position: relative; }
+.select-box { position: absolute; top: .4rem; left: .4rem; z-index: 2; display: flex; padding: .3rem;
+  background: rgba(0, 0, 0, .65); border-radius: 6px; cursor: pointer; }
+.select-cell .select-box { position: static; background: none; padding: 0; }
+.select-box input { width: 1.1rem; height: 1.1rem; margin: 0; cursor: pointer; }
+.select-cell { width: 2rem; }
+.batch-bar { position: sticky; bottom: 0; z-index: 5; display: flex; align-items: center; gap: .6rem; flex-wrap: wrap;
+  margin-top: var(--space); padding: .7rem 1rem; background: var(--bg-elev); border: 1px solid var(--accent);
+  border-radius: var(--radius); box-shadow: 0 -4px 16px rgba(0, 0, 0, .35); }
+.batch-bar[hidden] { display: none; }
+.batch-summary { font-weight: 600; margin-right: auto; }
+.batch-list { margin: .25rem 0; padding-left: 1.1rem; max-height: 14rem; overflow-y: auto; }
+.batch-table td { padding: .35rem .5rem; }

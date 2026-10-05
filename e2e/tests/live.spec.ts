@@ -102,3 +102,19 @@ test("protect then unprotect a series from its detail", async ({ page, request }
   await page.goto("/journal");
   await expect(page.getByRole("row", { name: /Breaking Bad/ }).first()).toContainText("Protégé");
 });
+
+test("batch deletion from the movie grid", async ({ page, request }) => {
+  await login(page, username, newPassword);
+  await request.post(`${mockURL}/_reset`);
+  await page.goto("/movies");
+  await page.getByRole("checkbox", { name: "Sélectionner Interstellar" }).check();
+  await page.getByRole("checkbox", { name: "Sélectionner Dune" }).check();
+  await page.locator("#batch-form").getByRole("button", { name: "Supprimer la sélection" }).click();
+  const confirm = page.locator("#confirm");
+  await confirm.getByRole("button", { name: "Supprimer définitivement" }).click();
+  await expect(confirm).toContainText("2 réussites");
+  await expect(page.locator(".media-card", { hasText: "Interstellar" })).toHaveCount(0);
+  await expect(page.locator(".media-card", { hasText: "Dune" })).toHaveCount(0);
+  const calls = await arrCalls(request);
+  expect(calls.map((c) => `${c.method} ${c.path}`).sort()).toEqual(["DELETE /api/v3/movie/2", "DELETE /api/v3/movie/4"]);
+});

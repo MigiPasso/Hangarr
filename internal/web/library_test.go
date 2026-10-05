@@ -15,12 +15,12 @@ import (
 	"testing"
 	"time"
 
-	"arrstats/internal/actions"
-	"arrstats/internal/config"
-	"arrstats/internal/images"
-	"arrstats/internal/mockarr"
-	"arrstats/internal/syncer"
-	"arrstats/internal/upstream"
+	"cleanarr/internal/actions"
+	"cleanarr/internal/config"
+	"cleanarr/internal/images"
+	"cleanarr/internal/mockarr"
+	"cleanarr/internal/syncer"
+	"cleanarr/internal/upstream"
 )
 
 type libEnv struct {
