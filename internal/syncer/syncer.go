@@ -575,27 +575,36 @@ func TautulliEvent(r tautulli.HistoryRow) (store.WatchEvent, bool) {
 // syncTautulliHistory pages from newest to oldest and stops once a whole
 // page is older than the cursor minus 24 h; the overlap catches long
 // sessions that finished late, and the upsert keeps it idempotent.
-func (s *Syncer) syncTautulliHistory(ctx context.Context, c *tautulli.Client) ([]tautulli.User, int, error) {
-	users, err := c.Users(ctx)
-	if err != nil {
-		return nil, 0, err
-	}
-	accounts := make([]store.PlexAccount, 0, len(users))
-	for _, u := range users {
-		if u.UserID == 0 {
-			continue
+func (s *Syncer) syncTautulliHistory(ctx context.Context, c *tautulli.Client, users []tautulli.User, v *viewers) (int, error) {
+	var accounts []store.PlexAccount
+	if v != nil {
+		accounts = v.accounts
+	} else {
+		for _, u := range users {
+			if u.UserID == 0 {
+				continue
+			}
+			accounts = append(accounts, store.PlexAccount{AccountID: int64(u.UserID), Username: u.Username,
+				FriendlyName: u.FriendlyName, IsActive: u.IsActive == 1, ThumbURL: u.Thumb})
 		}
-		accounts = append(accounts, store.PlexAccount{AccountID: int64(u.UserID), Username: u.Username,
-			FriendlyName: u.FriendlyName, IsActive: u.IsActive == 1, ThumbURL: u.Thumb})
 	}
 	if err := s.Store.UpsertPlexAccounts(ctx, accounts); err != nil {
-		return nil, 0, err
+		return 0, err
+	}
+	if v != nil {
+		n, err := s.Store.KeepViewers(ctx, v.keep())
+		if err != nil {
+			return 0, err
+		}
+		if n > 0 {
+			s.Log.Info("plays of users unknown to Tautulli dropped", "deleted_events", n)
+		}
 	}
 	pageSize := tautulli.HistoryPageSize
 	if s.HistoryPageSize > 0 {
 		pageSize = s.HistoryPageSize
 	}
-	n, err := s.pageHistory(ctx, cursorTautulli, func(start int) ([]store.WatchEvent, []int64, int, int, error) {
+	return s.pageHistory(ctx, cursorTautulli, func(start int) ([]store.WatchEvent, []int64, int, int, error) {
 		p, err := c.History(ctx, start, pageSize)
 		if err != nil {
 			return nil, nil, 0, 0, err
@@ -604,13 +613,72 @@ func (s *Syncer) syncTautulliHistory(ctx context.Context, c *tautulli.Client) ([
 		dates := make([]int64, 0, len(p.Rows))
 		for _, r := range p.Rows {
 			dates = append(dates, int64(r.Date))
-			if e, ok := TautulliEvent(r); ok {
+			if e, ok := TautulliEvent(r); ok && v.allows(e.UserID) {
 				events = append(events, e)
 			}
 		}
 		return events, dates, len(p.Rows), int(p.RecordsFiltered), nil
 	}, pageSize)
-	return users, n, err
+}
+
+// viewers is the viewer list of merged mode: the Tautulli users. The Plex
+// server accounts are matched to them by name (the server owner is 1 for
+// Plex and its plex.tv id for Tautulli); Plex accounts Tautulli does not
+// know are left out, with their plays.
+type viewers struct {
+	ids      map[int64]int64 // Plex account id → Tautulli user id
+	accounts []store.PlexAccount
+}
+
+func newViewers(accs []plex.Account, users []tautulli.User) *viewers {
+	v := &viewers{ids: map[int64]int64{}}
+	byName := map[string]int64{}
+	for _, u := range users {
+		if u.UserID == 0 {
+			continue
+		}
+		v.accounts = append(v.accounts, store.PlexAccount{AccountID: int64(u.UserID), Username: u.Username,
+			FriendlyName: u.FriendlyName, IsActive: u.IsActive == 1, ThumbURL: u.Thumb})
+		if u.FriendlyName != "" {
+			byName[strings.ToLower(u.FriendlyName)] = int64(u.UserID)
+		}
+	}
+	for _, u := range users { // the user name wins over a display name
+		if u.UserID != 0 && u.Username != "" {
+			byName[strings.ToLower(u.Username)] = int64(u.UserID)
+		}
+	}
+	for _, a := range accs {
+		if a.ID <= 0 || a.Name == "" {
+			continue
+		}
+		if tid, ok := byName[strings.ToLower(a.Name)]; ok {
+			v.ids[int64(a.ID)] = tid
+		}
+	}
+	return v
+}
+
+func (v *viewers) keep() []int64 {
+	out := make([]int64, 0, len(v.accounts))
+	for _, a := range v.accounts {
+		out = append(out, a.AccountID)
+	}
+	return out
+}
+
+// allows reports whether the plays of a stored user id are kept (always
+// without a viewer list).
+func (v *viewers) allows(id int64) bool {
+	if v == nil {
+		return true
+	}
+	for _, a := range v.accounts {
+		if a.AccountID == id {
+			return true
+		}
+	}
+	return false
 }
 
 // syncHistories reads the history sources of up, one after the other:
@@ -633,17 +701,32 @@ func (s *Syncer) syncHistories(ctx context.Context, up *upstream.Clients) []Sour
 		}
 		out = append(out, SourceResult{Source: source, Items: n, Duration: time.Since(t), Err: err})
 	}
-	var tautUsers []tautulli.User
+	// Merged mode: the viewer list is Tautulli's, Plex ids are translated.
+	var v *viewers
+	if up.Merged() && up.HistoryClient() != nil && up.Plex != nil {
+		users, err := up.HistoryClient().Users(ctx)
+		var accs []plex.Account
+		if err == nil {
+			accs, err = up.Plex.Accounts(ctx)
+		}
+		if err != nil {
+			return []SourceResult{{Source: SourceTautulli, Err: fmt.Errorf("viewers: %w", err)}}
+		}
+		v = newViewers(accs, users)
+	}
 	if c := up.HistoryClient(); c != nil {
 		step(SourceTautulli, func() (int, error) {
 			if !up.Merged() {
 				if err := s.keepHistory(ctx, SourceTautulli, cursorPlexHistory); err != nil {
 					return 0, err
 				}
+				users, err := c.Users(ctx)
+				if err != nil {
+					return 0, err
+				}
+				return s.syncTautulliHistory(ctx, c, users, nil)
 			}
-			users, n, err := s.syncTautulliHistory(ctx, c)
-			tautUsers = users
-			return n, err
+			return s.syncTautulliHistory(ctx, c, nil, v)
 		})
 	}
 	if up.PlexHistory() {
@@ -653,7 +736,7 @@ func (s *Syncer) syncHistories(ctx context.Context, up *upstream.Clients) []Sour
 					return 0, err
 				}
 			}
-			return s.syncPlexHistory(ctx, up.Plex, tautUsers)
+			return s.syncPlexHistory(ctx, up.Plex, v)
 		})
 	}
 	return out
@@ -705,39 +788,27 @@ func PlexEvent(h plex.HistoryEntry) (store.WatchEvent, bool) {
 	return e, true
 }
 
-// syncPlexHistory reads the Plex history. tautUsers (merged mode) translate
-// the Plex account ids to Tautulli's: the server owner is 1 for Plex and
-// its plex.tv id for Tautulli; accounts are matched by user name.
-func (s *Syncer) syncPlexHistory(ctx context.Context, c *plex.Client, tautUsers []tautulli.User) (int, error) {
-	accs, err := c.Accounts(ctx)
-	if err != nil {
-		return 0, err
-	}
-	byName := map[string]int64{}
-	for _, u := range tautUsers {
-		if u.UserID == 0 {
-			continue
+// syncPlexHistory reads the Plex history. In merged mode (v set) the
+// accounts are already stored and the Plex ids are translated to the stored
+// ones.
+func (s *Syncer) syncPlexHistory(ctx context.Context, c *plex.Client, v *viewers) (int, error) {
+	ids := map[int64]int64{}
+	if v != nil {
+		ids = v.ids
+	} else {
+		accs, err := c.Accounts(ctx)
+		if err != nil {
+			return 0, err
 		}
-		for _, name := range []string{u.FriendlyName, u.Username} { // the user name wins
-			if name != "" {
-				byName[strings.ToLower(name)] = int64(u.UserID)
+		accounts := make([]store.PlexAccount, 0, len(accs))
+		for _, a := range accs {
+			if a.ID > 0 && a.Name != "" {
+				accounts = append(accounts, store.PlexAccount{AccountID: int64(a.ID), Username: a.Name, IsActive: true})
 			}
 		}
-	}
-	ids := map[int64]int64{}
-	accounts := make([]store.PlexAccount, 0, len(accs))
-	for _, a := range accs {
-		if a.ID <= 0 || a.Name == "" {
-			continue
+		if err := s.Store.UpsertPlexAccounts(ctx, accounts); err != nil {
+			return 0, err
 		}
-		if tid, ok := byName[strings.ToLower(a.Name)]; ok {
-			ids[int64(a.ID)] = tid // a Tautulli user: already stored with richer data
-			continue
-		}
-		accounts = append(accounts, store.PlexAccount{AccountID: int64(a.ID), Username: a.Name, IsActive: true})
-	}
-	if err := s.Store.UpsertPlexAccounts(ctx, accounts); err != nil {
-		return 0, err
 	}
 	// Entries stored before the translation existed (or before Tautulli).
 	if err := s.Store.RemapHistoryUsers(ctx, SourcePlexHistory, ids); err != nil {
@@ -753,8 +824,11 @@ func (s *Syncer) syncPlexHistory(ctx context.Context, c *plex.Client, tautUsers 
 		for _, h := range entries {
 			dates = append(dates, int64(h.ViewedAt))
 			if e, ok := PlexEvent(h); ok {
-				if tid, ok := ids[e.UserID]; ok {
+				tid, ok := ids[e.UserID]
+				if ok {
 					e.UserID = tid
+				} else if v != nil {
+					continue // a Plex account Tautulli does not know
 				}
 				events = append(events, e)
 			}

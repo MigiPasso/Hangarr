@@ -340,8 +340,9 @@ func TestPlexHistoryFallback(t *testing.T) {
 func TestMergedHistory(t *testing.T) {
 	e := newEnv(t)
 	e.fsys["plex/accounts.json"] = &fstest.MapFile{Data: []byte(`{"MediaContainer":{"Account":[
- {"id":0,"name":""},{"id":1,"name":"ALICE"},{"id":1002,"name":"bob"},{"id":1003,"name":"carol"}]}}`)}
-	e.fsys["plex/history.json"] = &fstest.MapFile{Data: []byte(`{"MediaContainer":{"size":3,"totalSize":3,"offset":0,"Metadata":[
+ {"id":0,"name":""},{"id":1,"name":"ALICE"},{"id":1002,"name":"bob"},{"id":2000,"name":"Lucie"}]}}`)}
+	e.fsys["plex/history.json"] = &fstest.MapFile{Data: []byte(`{"MediaContainer":{"size":4,"totalSize":4,"offset":0,"Metadata":[
+ {"historyKey":"/status/sessions/history/914","ratingKey":"103","title":"Tenet","type":"movie","viewedAt":1790800000,"accountID":2000},
  {"historyKey":"/status/sessions/history/913","ratingKey":"102","title":"Dune","type":"movie","viewedAt":1790714800,"accountID":1},
  {"historyKey":"/status/sessions/history/912","ratingKey":"104","title":"Interstellar","type":"movie","viewedAt":1790000000,"accountID":1},
  {"historyKey":"/status/sessions/history/911","ratingKey":"101","title":"Inception","type":"movie","viewedAt":1788301680,"accountID":1002}]}}`)}
@@ -363,8 +364,14 @@ func TestMergedHistory(t *testing.T) {
 	if n := e.count(`SELECT COUNT(*) FROM plex_accounts WHERE account_id = 1`); n != 0 {
 		t.Error("the Plex owner account duplicates a Tautulli user")
 	}
+	// Viewers are the Tautulli users: the Plex account Tautulli does not
+	// know ("Lucie") is left out, with its plays.
 	if n := e.count(`SELECT COUNT(*) FROM plex_accounts`); n != 3 {
 		t.Errorf("accounts: %d", n)
+	}
+	if n := e.count(`SELECT COUNT(*) FROM plex_accounts WHERE account_id = 2000`) +
+		e.count(`SELECT COUNT(*) FROM watch_events WHERE user_id = 2000`); n != 0 {
+		t.Error("a Plex account unknown to Tautulli must not be a viewer")
 	}
 	// Dune and Inception are known to Tautulli: only Interstellar stays from Plex.
 	var user, secs int64
