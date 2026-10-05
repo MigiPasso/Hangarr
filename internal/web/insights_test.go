@@ -138,3 +138,25 @@ func TestHealthPage(t *testing.T) {
 		t.Error("no-JS page must include the checked services")
 	}
 }
+
+func TestCleanupSortableHeaders(t *testing.T) {
+	e := newLibEnv(t, 0)
+	r := e.do(e.c, "GET", "/cleanup?kind=movie", nil, nil)
+	for _, want := range []string{`aria-sort="descending"><a class="sort-link" href="/cleanup?dir=asc&amp;kind=movie&amp;sort=size">Taille`,
+		`href="/cleanup?dir=asc&amp;kind=movie&amp;sort=title">Titre`, `href="/cleanup?dir=desc&amp;kind=movie&amp;sort=plays">Lectures`} {
+		if !strings.Contains(r.body, want) {
+			t.Errorf("missing %q", want)
+		}
+	}
+	r = e.do(e.c, "GET", "/cleanup?sort=title&dir=asc", nil, nil)
+	if i, j := strings.Index(r.body, ">Interstellar<"), strings.Index(r.body, ">Tenet<"); i < 0 || j < 0 || i > j {
+		t.Error("title ascending: Interstellar before Tenet")
+	}
+	r = e.do(e.c, "GET", "/cleanup?sort=title&dir=desc", nil, nil)
+	if i, j := strings.Index(r.body, ">Interstellar<"), strings.Index(r.body, ">Tenet<"); i < 0 || j < 0 || i < j {
+		t.Error("title descending: Tenet before Interstellar")
+	}
+	if !strings.Contains(r.body, `aria-sort="descending"><a class="sort-link" href="/cleanup?dir=asc&amp;sort=title">`) {
+		t.Error("clicking the current column must reverse the direction")
+	}
+}

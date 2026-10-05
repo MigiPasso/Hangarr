@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"html/template"
 	"net/http"
+	"net/url"
 	"slices"
 	"sort"
 	"strconv"
@@ -12,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	"cleanarr/internal/config"
 	"cleanarr/internal/store"
 )
 
@@ -97,8 +99,10 @@ type dayPoint struct {
 }
 
 type dashboardData struct {
-	Overview     *store.Overview
-	CleanupDays  int
+	Overview    *store.Overview
+	CleanupDays int
+	// NoDurations: the history comes from Plex, which records no durations.
+	NoDurations  bool
 	TopAll       bool
 	TopSeries    []store.TopItem
 	TopMovies    []store.TopItem
@@ -133,6 +137,7 @@ func (s *Server) home(w http.ResponseWriter, r *http.Request) {
 	}
 	scope, days := s.cleanupScope(ctx, now)
 	d.CleanupDays = days
+	d.NoDurations = s.Upstreams.Get().HistorySource == config.HistoryPlex
 	if d.Overview, err = s.Store.Overview(ctx, scope, since); err != nil {
 		s.serverError(w, r, err)
 		return
@@ -542,6 +547,50 @@ type cleanupData struct {
 	Seasons      []store.UnwatchedSeason
 	SeasonsBytes int64
 	Protected    string
+	Columns      []sortCol // sortable headers of the candidates table
+}
+
+// sortCol is a sortable table header: a link that sorts by Key, or toggles
+// the direction when it is the current sort.
+type sortCol struct {
+	Label string // English key
+	Num   bool
+	URL   string
+	Aria  string // aria-sort: ascending | descending | "" (not sorted)
+}
+
+// cleanupColumns are the headers of the candidates table. defaultDesc says
+// which columns sort descending on the first click.
+func cleanupColumns(kind, sort string, desc bool) []sortCol {
+	cols := []struct {
+		key, label  string
+		num, defDsc bool
+	}{
+		{"title", "Title", false, false}, {"size", "Size", true, true}, {"inactivity", "Why", false, true},
+		{"state", "State", false, false}, {"plays", "Plays", true, true},
+	}
+	out := make([]sortCol, 0, len(cols))
+	for _, c := range cols {
+		dir := c.defDsc
+		col := sortCol{Label: c.label, Num: c.num}
+		if c.key == sort {
+			col.Aria = "ascending"
+			if desc {
+				col.Aria = "descending"
+			}
+			dir = !desc
+		}
+		q := url.Values{"sort": {c.key}, "dir": {"asc"}}
+		if dir {
+			q.Set("dir", "desc")
+		}
+		if kind != "" {
+			q.Set("kind", kind)
+		}
+		col.URL = "/cleanup?" + q.Encode()
+		out = append(out, col)
+	}
+	return out
 }
 
 func (s *Server) cleanup(w http.ResponseWriter, r *http.Request) {
@@ -550,8 +599,13 @@ func (s *Server) cleanup(w http.ResponseWriter, r *http.Request) {
 	kind := pick(r.URL.Query().Get("kind"), []string{"series", "movie"})
 	scope, days := s.cleanupScope(ctx, now)
 	d := cleanupData{Kind: kind, Days: days, Protected: strings.Join(s.Config.ProtectedTags, ", ")}
+	sort, desc := r.URL.Query().Get("sort"), r.URL.Query().Get("dir") == "desc"
+	if !store.ValidCleanupSort(sort) {
+		sort, desc = "size", true // largest first
+	}
+	d.Columns = cleanupColumns(kind, sort, desc)
 	var err error
-	if d.Items, d.Recoverable, err = s.Store.CleanupCandidates(ctx, scope, kind, 100); err != nil {
+	if d.Items, d.Recoverable, err = s.Store.CleanupCandidates(ctx, scope, kind, sort, desc, 100); err != nil {
 		s.serverError(w, r, err)
 		return
 	}

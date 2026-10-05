@@ -14,7 +14,7 @@ Rien ne s'exécute sur la machine hôte en dehors de `docker`, `docker compose`,
 
 | Besoin | Commande |
 |---|---|
-| Lancer l'app (hot reload + mocks) | `make dev` → http://localhost:8080 |
+| Lancer l'app (hot reload + mocks) | `make dev` → http://localhost:8080 (`DEV_PORT=8081 make dev` si le port est pris) |
 | Contre les vraies instances | `make dev-real` (lit `.env`, `DRY_RUN=true` par défaut) |
 | Tests unitaires et d'intégration (`-race`) | `make test` |
 | `go vet` + golangci-lint | `make lint` |
@@ -159,7 +159,7 @@ En plus de SPEC §15.6 (Santé sans Prowlarr, webhook Tautulli, sélection en lo
 **pas d'export CSV**, décision utilisateur) :
 
 - **Déploiement** : Docker (`compose.yml`, `make deploy-check`) et Kubernetes en **manifests YAML simples, sans
-  kustomize** (décision utilisateur) : `deploy/kubernetes/cleanarr.yaml` (Namespace, ConfigMap, PVC, Deployment,
+  kustomize** (décision utilisateur) : `deploy/kubernetes/cleanarr.yaml` (sans namespace imposé ; ConfigMap, PVC, Deployment,
   Service), validé par kubeconform. Même image et mêmes invariants pour les deux (nonroot, rootfs en lecture seule,
   `/data` seul inscriptible, variantes `_FILE`) : ne rien introduire de spécifique à l'un des deux.
   Publication de l'image : GHCR via un workflow Forgejo Actions sur tag, **plus tard** (après la phase 6) ;

@@ -60,6 +60,11 @@ première connexion. Mot de passe perdu : `make reset-admin` (ou `cleanarr admin
 - **Plex** : ouvrir un média dans Plex Web → *⋯ → Obtenir des infos → Afficher le XML* ; l'URL contient
   `X-Plex-Token=…`. Voir aussi la documentation officielle « Finding an authentication token / X-Plex-Token ».
 
+## Déploiement
+
+Guide complet, de la publication de l'image à la connexion de Sonarr, Radarr, Plex et Tautulli, avec le dépannage :
+[docs/deploiement.md](docs/deploiement.md). Les sections ci-dessous en sont l'essentiel.
+
 ## Déploiement avec Docker
 
 Le fichier [`compose.yml`](compose.yml) est prêt à l'emploi : image durcie (distroless, utilisateur 65532, système de
@@ -101,15 +106,15 @@ Ouvrir `http://<hôte>:8080`, changer le mot de passe, puis configurer Sonarr, R
 
 ## Kubernetes
 
-Manifests YAML simples dans [`deploy/kubernetes/cleanarr.yaml`](deploy/kubernetes/cleanarr.yaml) : Namespace,
-ConfigMap, PVC, Deployment (une réplique, stratégie `Recreate`, non-root, rootfs en lecture seule, sondes
+Manifests YAML simples dans [`deploy/kubernetes/cleanarr.yaml`](deploy/kubernetes/cleanarr.yaml), sans namespace
+imposé (celui de `kubectl -n` ou de l'application Argo CD) : ConfigMap, PVC, Deployment (une réplique, stratégie `Recreate`, non-root, rootfs en lecture seule, sondes
 `/healthz` et `/readyz`) et Service. Les étapes sont en tête du fichier :
 
 1. publier l'image dans un registre que les nœuds peuvent joindre (voir ci-dessous) et renseigner `image:` ;
-2. créer le secret de la clé maître : `kubectl -n cleanarr create secret generic cleanarr-master-key
-   --from-literal=master-key="$(docker run --rm <image> master-key)"` ;
-3. `kubectl apply -f deploy/kubernetes/cleanarr.yaml`, puis
-   `kubectl -n cleanarr logs deploy/cleanarr | grep -A4 "INITIAL ADMIN"` pour le mot de passe initial ;
+2. créer le secret de la clé maître : `kubectl -n <ns> create secret generic cleanarr-master-key
+   --from-literal=master-key="$(openssl rand -base64 32)"` ;
+3. `kubectl -n <ns> apply -f deploy/kubernetes/cleanarr.yaml` (ou Sync Argo CD), puis
+   `kubectl -n <ns> logs deploy/cleanarr | grep -A4 "INITIAL ADMIN"` pour le mot de passe initial ;
 4. configurer les services dans l'UI avec leurs adresses internes au cluster
    (`http://sonarr.<namespace>.svc.cluster.local:8989`…).
 

@@ -528,12 +528,36 @@ type CleanupItem struct {
 	InactiveSince int64 // last view, or added date when never watched (0: unknown)
 }
 
-// CleanupCandidates lists candidates, largest first, with their total size.
-func (s *Store) CleanupCandidates(ctx context.Context, scope CleanupScope, kind string, limit int) ([]CleanupItem, int64, error) {
+// cleanupSorts maps the cleanup sort keys to their ORDER BY expression
+// (whitelist). "inactivity" ascending puts the most recently active first.
+var cleanupSorts = map[string]string{
+	"title":      "m.title_norm",
+	"size":       "m.size_bytes",
+	"inactivity": "(0 - " + inactiveSince("m") + ")",
+	"state": `CASE m.watch_state WHEN 'never' THEN 0 WHEN 'abandoned' THEN 1 WHEN 'in_progress' THEN 2
+		WHEN 'completed' THEN 3 ELSE 4 END`,
+	"plays": "m.play_count",
+}
+
+// ValidCleanupSort reports whether name is a cleanup sort key.
+func ValidCleanupSort(name string) bool { _, ok := cleanupSorts[name]; return ok }
+
+// CleanupCandidates lists candidates sorted by sort (a cleanupSorts key;
+// default: largest first), with the total size of every candidate.
+func (s *Store) CleanupCandidates(ctx context.Context, scope CleanupScope, kind, sort string, desc bool, limit int) ([]CleanupItem, int64, error) {
 	where, args := scope.where("m")
 	if kind != "" {
 		where += " AND m.kind = ?"
 		args = append(args, kind)
+	}
+	order, ok := cleanupSorts[sort]
+	if !ok {
+		order, desc = cleanupSorts["size"], true
+	}
+	if desc {
+		order += " DESC"
+	} else {
+		order += " ASC"
 	}
 	var total int64
 	if err := s.db.QueryRowContext(ctx, `SELECT COALESCE(SUM(m.size_bytes), 0) FROM media m WHERE `+where,
@@ -546,7 +570,7 @@ func (s *Store) CleanupCandidates(ctx context.Context, scope CleanupScope, kind 
 		m.last_viewed_at, COALESCE(NULLIF(a.friendly_name, ''), a.username, ''), m.size_bytes, m.added_at,
 		`+inactiveSince("m")+`, m.tags, COALESCE(m.status, '')
 		FROM media m LEFT JOIN plex_accounts a ON a.account_id = m.last_viewed_by
-		WHERE `+where+` ORDER BY m.size_bytes DESC, `+inactiveSince("m")+` ASC LIMIT ?`, append(args, limit)...)
+		WHERE `+where+` ORDER BY `+order+`, m.size_bytes DESC, m.id LIMIT ?`, append(args, limit)...)
 	if err != nil {
 		return nil, 0, err
 	}

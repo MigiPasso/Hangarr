@@ -379,3 +379,31 @@ func TestHistorySyncDebounced(t *testing.T) {
 		t.Error("a new request after the run must schedule again")
 	}
 }
+
+// Switching the history source from Plex (no durations) to Tautulli must not
+// count every play twice: only one source stays in the database.
+func TestSwitchHistorySourceKeepsOne(t *testing.T) {
+	e := newEnv(t)
+	vals := upstream.TestValues(e.urls, key)
+	e.s.Upstreams.Set(upstream.Build(vals, "plex"))
+	e.run()
+	if n := e.count(`SELECT COUNT(*) FROM watch_events WHERE source = 'plex_history'`); n == 0 {
+		t.Fatal("plex history expected first")
+	}
+	inceptionPlexPlays := e.media("movie", "Inception").Plays
+
+	e.s.Upstreams.Set(upstream.Build(vals, "auto")) // Tautulli configured: it becomes the source
+	e.run()
+	if n := e.count(`SELECT COUNT(*) FROM watch_events WHERE source = 'plex_history'`); n != 0 {
+		t.Errorf("plex history must be dropped once Tautulli is the source: %d events left", n)
+	}
+	if n := e.count(`SELECT COUNT(*) FROM sync_cursors WHERE source = 'plex_history'`); n != 0 {
+		t.Error("the plex history cursor must be reset (a switch back re-imports everything)")
+	}
+	if n := e.count(`SELECT COALESCE(SUM(play_seconds), 0) FROM watch_events`); n == 0 {
+		t.Error("Tautulli sessions carry durations")
+	}
+	if got := e.media("movie", "Inception").Plays; got != 2 || got == inceptionPlexPlays+2 {
+		t.Errorf("Inception plays after the switch: %d (Tautulli only, not added to Plex's)", got)
+	}
+}
