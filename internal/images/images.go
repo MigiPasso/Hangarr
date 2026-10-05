@@ -132,7 +132,7 @@ func (p *Proxy) ServeImage(w http.ResponseWriter, r *http.Request, kind string, 
 	if variant == "fanart" {
 		w.Header().Set("Content-Type", "image/svg+xml")
 		w.Header().Set("Cache-Control", fmt.Sprintf("public, max-age=%d", int(MissTTL.Seconds())))
-		_, _ = w.Write([]byte(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 9"><rect width="16" height="9" fill="#1f2430"/></svg>`))
+		_, _ = w.Write([]byte(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 9"><rect width="16" height="9" fill="#2a2d33"/></svg>`))
 		return
 	}
 	servePlaceholder(w, info.Title)
@@ -289,8 +289,8 @@ func servePlaceholder(w http.ResponseWriter, title string) {
 	}
 	var b bytes.Buffer
 	b.WriteString(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 300" width="200" height="300">` +
-		`<rect width="200" height="300" fill="#1f2430"/>` +
-		`<text x="100" text-anchor="middle" font-family="system-ui,sans-serif" font-size="18" fill="#9aa3b2">`)
+		`<rect width="200" height="300" fill="#2a2d33"/>` +
+		`<text x="100" text-anchor="middle" font-family="system-ui,sans-serif" font-size="18" fill="#9aa0aa">`)
 	y := 150 - (len(lines)-1)*12
 	for i, l := range lines {
 		fmt.Fprintf(&b, `<tspan x="100" y="%d">`, y+i*24)

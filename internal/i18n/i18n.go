@@ -200,7 +200,16 @@ func (l Localizer) Duration(secs int64) string {
 	return fmt.Sprintf("%d h %02d min", h, m)
 }
 
-// Hours formats seconds as hours with one decimal: "2.5 h".
+// Hours formats seconds as hours and minutes: "2h20m", "36h", "45m".
 func (l Localizer) Hours(secs int64) string {
-	return l.Num(float64(secs)/3600) + " h"
+	m := (secs + 30) / 60
+	h, m := m/60, m%60
+	switch {
+	case h == 0:
+		return fmt.Sprintf("%dm", m)
+	case m == 0:
+		return fmt.Sprintf("%dh", h)
+	default:
+		return fmt.Sprintf("%dh%02dm", h, m)
+	}
 }

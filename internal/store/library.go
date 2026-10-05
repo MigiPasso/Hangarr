@@ -149,6 +149,11 @@ func libraryView(b *sqlBuilder, f LibraryFilter, now time.Time, abandonDays int)
 			              AND COALESCE((SELECT ue.w FROM ue WHERE ue.media_id = s.media_id
 			                            AND ue.season_number = s.season_number), 0) < s.episode_file_count)
 			           THEN 'completed'
+			         WHEN (SELECT COALESCE((SELECT ue.w FROM ue WHERE ue.media_id = s.media_id
+			                 AND ue.season_number = s.season_number), 0) >= s.episode_file_count
+			               FROM seasons s WHERE s.media_id = m.id AND s.season_number > 0 AND s.episode_file_count > 0
+			               ORDER BY s.season_number DESC LIMIT 1) = 1
+			           THEN 'completed' -- last season finished (scoring.WatchState)
 			         WHEN up.last >= ? THEN 'in_progress' ELSE 'abandoned' END
 			  END AS eff_state
 			FROM media m LEFT JOIN up ON up.media_id = m.id LEFT JOIN uw ON uw.media_id = m.id
