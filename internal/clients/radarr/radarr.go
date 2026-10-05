@@ -60,29 +60,32 @@ func (r Ratings) Best() float64 {
 
 // Movie as returned by GET /api/v3/movie.
 type Movie struct {
-	ID               int64          `json:"id"`
-	Title            string         `json:"title"`
-	SortTitle        string         `json:"sortTitle"`
-	TitleSlug        string         `json:"titleSlug"`
-	Year             httpx.Int      `json:"year"`
-	TmdbID           httpx.Int      `json:"tmdbId"`
-	ImdbID           string         `json:"imdbId"`
-	HasFile          bool           `json:"hasFile"`
-	SizeOnDisk       httpx.Int      `json:"sizeOnDisk"`
-	Genres           []string       `json:"genres"`
-	Ratings          Ratings        `json:"ratings"`
-	Overview         string         `json:"overview"`
-	Images           []sonarr.Image `json:"images"`
-	Added            httpx.Time     `json:"added"`
-	Tags             []int64        `json:"tags"`
-	QualityProfileID int64          `json:"qualityProfileId"`
-	Studio           string         `json:"studio"`
-	Runtime          httpx.Int      `json:"runtime"`
-	Path             string         `json:"path"`
-	Monitored        bool           `json:"monitored"`
-	Status           string         `json:"status"`
+	ID               int64                   `json:"id"`
+	Title            string                  `json:"title"`
+	SortTitle        string                  `json:"sortTitle"`
+	TitleSlug        string                  `json:"titleSlug"`
+	Year             httpx.Int               `json:"year"`
+	TmdbID           httpx.Int               `json:"tmdbId"`
+	ImdbID           string                  `json:"imdbId"`
+	HasFile          bool                    `json:"hasFile"`
+	SizeOnDisk       httpx.Int               `json:"sizeOnDisk"`
+	Genres           []string                `json:"genres"`
+	Ratings          Ratings                 `json:"ratings"`
+	Overview         string                  `json:"overview"`
+	Images           []sonarr.Image          `json:"images"`
+	Added            httpx.Time              `json:"added"`
+	Tags             []int64                 `json:"tags"`
+	QualityProfileID int64                   `json:"qualityProfileId"`
+	Studio           string                  `json:"studio"`
+	Runtime          httpx.Int               `json:"runtime"`
+	Path             string                  `json:"path"`
+	Monitored        bool                    `json:"monitored"`
+	Status           string                  `json:"status"`
+	OriginalTitle    string                  `json:"originalTitle"`
+	AlternateTitles  []sonarr.AlternateTitle `json:"alternateTitles"`
 	MovieFile        *struct {
-		Size httpx.Int `json:"size"`
+		Size         httpx.Int `json:"size"`
+		RelativePath string    `json:"relativePath"`
 	} `json:"movieFile"`
 }
 

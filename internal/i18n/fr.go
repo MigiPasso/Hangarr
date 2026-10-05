@@ -120,6 +120,8 @@ var fr = map[string]string{ //nolint:gosec // G101: UI texts mentioning keys and
 	"Not in Plex": "Absent de Plex",
 	"Fuzzy match": "Rapprochement approximatif",
 	"Matched by title and year: no common ID.": "Rapproché par titre et année : aucun identifiant commun.",
+	"Matched by file":                          "Rapproché par fichier",
+	"Same file or folder on disk in Plex and Sonarr/Radarr: no common ID.": "Même fichier ou dossier sur le disque dans Plex et Sonarr/Radarr : aucun identifiant commun.",
 	"Genres":           "Genres",
 	"Rating":           "Note",
 	"Network":          "Network",

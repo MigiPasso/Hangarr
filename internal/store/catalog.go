@@ -39,6 +39,9 @@ type CatalogItem struct {
 	FanartURL          string
 	TitleSlug          string
 	Seasons            []SeasonRecord
+	// Matching hints, not stored: other titles and the movie file name.
+	AltTitles []string
+	FileName  string
 }
 
 // SeasonRecord is a Sonarr season.
@@ -185,6 +188,7 @@ func upsertItems(ctx context.Context, tx *sql.Tx, kind string, items []CatalogIt
 // ArrMedia is a stored Sonarr/Radarr item, as needed for matching.
 type ArrMedia struct {
 	ID     int64
+	ArrID  int64
 	Kind   string
 	TvdbID int64
 	TmdbID int64
@@ -195,7 +199,7 @@ type ArrMedia struct {
 
 // ListArrMedia returns every media row managed by Sonarr/Radarr.
 func (s *Store) ListArrMedia(ctx context.Context) ([]ArrMedia, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT id, kind, COALESCE(tvdb_id, 0), COALESCE(tmdb_id, 0),
+	rows, err := s.db.QueryContext(ctx, `SELECT id, arr_id, kind, COALESCE(tvdb_id, 0), COALESCE(tmdb_id, 0),
 		COALESCE(imdb_id, ''), title, COALESCE(year, 0) FROM media WHERE arr_id IS NOT NULL ORDER BY id`)
 	if err != nil {
 		return nil, err
@@ -204,7 +208,7 @@ func (s *Store) ListArrMedia(ctx context.Context) ([]ArrMedia, error) {
 	var out []ArrMedia
 	for rows.Next() {
 		var m ArrMedia
-		if err := rows.Scan(&m.ID, &m.Kind, &m.TvdbID, &m.TmdbID, &m.ImdbID, &m.Title, &m.Year); err != nil {
+		if err := rows.Scan(&m.ID, &m.ArrID, &m.Kind, &m.TvdbID, &m.TmdbID, &m.ImdbID, &m.Title, &m.Year); err != nil {
 			return nil, err
 		}
 		out = append(out, m)

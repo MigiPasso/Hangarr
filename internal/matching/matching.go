@@ -22,6 +22,7 @@ const (
 	MethodTVDB  = "tvdb"
 	MethodTMDB  = "tmdb"
 	MethodIMDB  = "imdb"
+	MethodFile  = "file"
 	MethodFuzzy = "fuzzy"
 )
 
@@ -66,6 +67,11 @@ type ArrItem struct {
 	ImdbID  string
 	Title   string
 	Year    int
+	// Other titles (original, other languages) for the title match.
+	AltTitles []string
+	// Folder (series or movie directory) and movie file, any path form.
+	Folder string
+	File   string
 }
 
 // PlexItem is a Plex movie or show.
@@ -78,6 +84,30 @@ type PlexItem struct {
 	TmdbID    int64
 	ImdbID    string
 	AddedAt   int64
+	// OriginalTitle is used for the title match too.
+	OriginalTitle string
+	// Folders (show location, movie file directory) and movie files.
+	Folders []string
+	Files   []string
+}
+
+// baseName returns the last element of a Unix or Windows path, lowercased:
+// Plex and the *arr apps may see the same file under different mounts.
+func baseName(p string) string {
+	p = strings.TrimRight(p, `/\`)
+	if i := strings.LastIndexAny(p, `/\`); i >= 0 {
+		p = p[i+1:]
+	}
+	return strings.ToLower(strings.TrimSpace(p))
+}
+
+// dirName returns the base name of the directory holding a file.
+func dirName(p string) string {
+	p = strings.TrimRight(p, `/\`)
+	if i := strings.LastIndexAny(p, `/\`); i >= 0 {
+		return baseName(p[:i])
+	}
+	return ""
 }
 
 // Link pairs a media row with a Plex rating key.
@@ -120,8 +150,9 @@ func yearsCompatible(a, b int) bool {
 }
 
 // Match pairs arr items with Plex items. Exact external ids are tried first
-// for every item, so a fuzzy match can never steal an item that has an id
-// match; remaining items are paired by normalized title and year ±1.
+// for every item, so a weaker match can never steal an item that has an id
+// match; then the same file or folder on disk; then normalized title (or
+// original / alternate title) and year ±1.
 // It returns the links and the Plex items left unmatched (plex_only).
 func Match(arr []ArrItem, plex []PlexItem) ([]Link, []PlexItem) {
 	byID := map[idKey]int{}
@@ -146,11 +177,74 @@ func Match(arr []ArrItem, plex []PlexItem) ([]Link, []PlexItem) {
 		}
 	}
 
+	// Same file or folder on disk: works whatever the metadata says (no ids
+	// on the Plex side, titles in another language, wrong year). A name
+	// shared by several items on either side is ignored.
+	byFile, byFolder := map[string]int{}, map[string]int{}
+	index := func(m map[string]int, key string, i int) {
+		if prev, ok := m[key]; ok && prev != i {
+			m[key] = -1
+		} else if !ok {
+			m[key] = i
+		}
+	}
+	for i, p := range plex {
+		if used[i] {
+			continue
+		}
+		for _, f := range p.Files {
+			if n := baseName(f); n != "" {
+				index(byFile, p.Kind+"|"+n, i)
+			}
+			if d := dirName(f); d != "" {
+				index(byFolder, p.Kind+"|"+d, i)
+			}
+		}
+		for _, d := range p.Folders {
+			if n := baseName(d); n != "" {
+				index(byFolder, p.Kind+"|"+n, i)
+			}
+		}
+	}
+	arrFolders := map[string]int{}
+	for _, a := range arr {
+		if n := baseName(a.Folder); n != "" {
+			arrFolders[a.Kind+"|"+n]++
+		}
+	}
+	for ai, a := range arr {
+		if matched[ai] {
+			continue
+		}
+		pi := -1
+		if n := baseName(a.File); n != "" {
+			if i, ok := byFile[a.Kind+"|"+n]; ok {
+				pi = i
+			}
+		}
+		if n := baseName(a.Folder); pi < 0 && n != "" && arrFolders[a.Kind+"|"+n] == 1 {
+			if i, ok := byFolder[a.Kind+"|"+n]; ok {
+				pi = i
+			}
+		}
+		if pi >= 0 && !used[pi] {
+			used[pi], matched[ai] = true, true
+			links = append(links, Link{MediaID: a.MediaID, RatingKey: plex[pi].RatingKey, Method: MethodFile})
+		}
+	}
+
+	// Title and year ±1, with the original and alternate titles too.
 	byTitle := map[string][]int{}
 	for i, p := range plex {
-		if !used[i] {
-			key := p.Kind + "|" + NormalizeTitle(p.Title)
-			byTitle[key] = append(byTitle[key], i)
+		if used[i] {
+			continue
+		}
+		seen := map[string]bool{}
+		for _, t := range []string{p.Title, p.OriginalTitle} {
+			if n := NormalizeTitle(t); n != "" && !seen[n] {
+				seen[n] = true
+				byTitle[p.Kind+"|"+n] = append(byTitle[p.Kind+"|"+n], i)
+			}
 		}
 	}
 	for ai, a := range arr {
@@ -158,17 +252,22 @@ func Match(arr []ArrItem, plex []PlexItem) ([]Link, []PlexItem) {
 			continue
 		}
 		best, bestKey, bestDiff := -1, "", 1<<30
-		for _, pi := range byTitle[a.Kind+"|"+NormalizeTitle(a.Title)] {
-			p := plex[pi]
-			if used[pi] || !yearsCompatible(a.Year, p.Year) {
-				continue
+		for _, title := range append([]string{a.Title}, a.AltTitles...) {
+			for _, pi := range byTitle[a.Kind+"|"+NormalizeTitle(title)] {
+				p := plex[pi]
+				if used[pi] || !yearsCompatible(a.Year, p.Year) {
+					continue
+				}
+				diff := 0
+				if a.Year > 0 && p.Year > 0 {
+					diff = abs(a.Year - p.Year)
+				}
+				if diff < bestDiff {
+					best, bestKey, bestDiff = pi, p.RatingKey, diff
+				}
 			}
-			diff := 0
-			if a.Year > 0 && p.Year > 0 {
-				diff = abs(a.Year - p.Year)
-			}
-			if diff < bestDiff {
-				best, bestKey, bestDiff = pi, p.RatingKey, diff
+			if best >= 0 {
+				break // the main title wins over alternate ones
 			}
 		}
 		if best >= 0 {

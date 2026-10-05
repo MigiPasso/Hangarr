@@ -271,7 +271,7 @@ func (s *Syncer) run(ctx context.Context, up *upstream.Clients) (*Result, error)
 		items := 0
 		if err == nil {
 			items = len(f.plex.items)
-			err = s.applyMatches(ctx, f.plex)
+			err = s.applyMatches(ctx, f.plex, matchHints(f.series, f.movies))
 		}
 		finish(SourceResult{Source: SourcePlex, Items: items, Duration: time.Since(plexStart), Err: err})
 	}
@@ -358,6 +358,7 @@ func seriesItem(se sonarr.Series, labels, names map[int64]string) store.CatalogI
 		Rating: float64(se.Ratings.Value), AddedAt: se.Added.UnixPtr(), Tags: tagLabels(se.Tags, labels),
 		QualityProfile: names[se.QualityProfileID], Monitored: se.Monitored, Path: se.Path,
 		RuntimeMinutes: int(se.Runtime), PosterURL: poster, FanartURL: fanart,
+		AltTitles: altTitles("", se.AlternateTitles),
 	}
 	if se.Statistics != nil {
 		it.SizeBytes = int64(se.Statistics.SizeOnDisk)
@@ -389,8 +390,33 @@ func movieItem(m radarr.Movie, labels, names map[int64]string) store.CatalogItem
 		Genres: m.Genres, NetworkOrStudio: m.Studio, Rating: m.Ratings.Best(), SizeBytes: int64(m.SizeOnDisk),
 		AddedAt: m.Added.UnixPtr(), Tags: tagLabels(m.Tags, labels), QualityProfile: names[m.QualityProfileID],
 		Monitored: m.Monitored, Path: m.Path, HasFile: m.HasFile, RuntimeMinutes: int(m.Runtime),
-		PosterURL: poster, FanartURL: fanart,
+		PosterURL: poster, FanartURL: fanart, AltTitles: altTitles(m.OriginalTitle, m.AlternateTitles),
+		FileName: fileName(m),
 	}
+}
+
+func fileName(m radarr.Movie) string {
+	if m.MovieFile == nil {
+		return ""
+	}
+	return m.MovieFile.RelativePath
+}
+
+// altTitles lists the original and alternate titles, without duplicates.
+func altTitles(original string, alt []sonarr.AlternateTitle) []string {
+	var out []string
+	seen := map[string]bool{}
+	add := func(t string) {
+		if t != "" && !seen[t] {
+			seen[t] = true
+			out = append(out, t)
+		}
+	}
+	add(original)
+	for _, a := range alt {
+		add(a.Title)
+	}
+	return out
 }
 
 func (s *Syncer) fetchSeries(ctx context.Context, c *sonarr.Client) ([]store.CatalogItem, error) {
@@ -510,19 +536,41 @@ func (s *Syncer) fetchPlex(ctx context.Context, c *plex.Client) (*plexCatalog, e
 
 func plexItem(kind string, it plex.Item) matching.PlexItem {
 	tvdb, tmdb, imdb := it.ExternalIDs()
-	return matching.PlexItem{Kind: kind, RatingKey: string(it.RatingKey), Title: it.Title, Year: int(it.Year),
-		TvdbID: tvdb, TmdbID: tmdb, ImdbID: imdb, AddedAt: int64(it.AddedAt)}
+	p := matching.PlexItem{Kind: kind, RatingKey: string(it.RatingKey), Title: it.Title, Year: int(it.Year),
+		TvdbID: tvdb, TmdbID: tmdb, ImdbID: imdb, AddedAt: int64(it.AddedAt), OriginalTitle: it.OriginalTitle,
+		Files: it.Files()}
+	for _, l := range it.Location {
+		p.Folders = append(p.Folders, l.Path)
+	}
+	return p
 }
 
-func (s *Syncer) applyMatches(ctx context.Context, cat *plexCatalog) error {
+// arrHints are the matching data fetched from Sonarr/Radarr but not stored.
+type arrHints struct {
+	titles       []string
+	folder, file string
+}
+
+func matchHints(series, movies []store.CatalogItem) map[string]arrHints {
+	out := map[string]arrHints{}
+	for _, list := range [][]store.CatalogItem{series, movies} {
+		for _, it := range list {
+			out[it.Kind+"|"+strconv.FormatInt(it.ArrID, 10)] = arrHints{titles: it.AltTitles, folder: it.Path, file: it.FileName}
+		}
+	}
+	return out
+}
+
+func (s *Syncer) applyMatches(ctx context.Context, cat *plexCatalog, hints map[string]arrHints) error {
 	arr, err := s.Store.ListArrMedia(ctx)
 	if err != nil {
 		return err
 	}
 	items := make([]matching.ArrItem, 0, len(arr))
 	for _, m := range arr {
+		h := hints[m.Kind+"|"+strconv.FormatInt(m.ArrID, 10)]
 		items = append(items, matching.ArrItem{MediaID: m.ID, Kind: m.Kind, TvdbID: m.TvdbID, TmdbID: m.TmdbID,
-			ImdbID: m.ImdbID, Title: m.Title, Year: m.Year})
+			ImdbID: m.ImdbID, Title: m.Title, Year: m.Year, AltTitles: h.titles, Folder: h.folder, File: h.file})
 	}
 	links, plexOnly := matching.Match(items, cat.items)
 	storeLinks := make([]store.PlexLink, 0, len(links))
