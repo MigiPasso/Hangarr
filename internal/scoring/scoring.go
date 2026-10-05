@@ -84,13 +84,16 @@ func WatchState(in Input, now time.Time, abandonDays int) string {
 	}
 
 	seasons := countedSeasons(in)
-	watched, downloaded := 0, 0
+	watched := 0
 	complete := true
-	for _, s := range seasons {
+	var last *SeasonProgress // last season with files
+	for i, s := range seasons {
 		watched += s.Watched
-		downloaded += s.Downloaded
 		if s.Downloaded > 0 && s.Watched < s.Downloaded {
 			complete = false
+		}
+		if s.Downloaded > 0 && (last == nil || s.Number > last.Number) {
+			last = &seasons[i]
 		}
 	}
 	switch {
@@ -98,6 +101,10 @@ func WatchState(in Input, now time.Time, abandonDays int) string {
 		return StateNever
 	case complete:
 		// Every downloaded episode is watched (or nothing is left on disk).
+		return StateCompleted
+	case last != nil && last.Watched >= last.Downloaded:
+		// The last season is finished: earlier ones may have been watched
+		// elsewhere, the series is caught up, not abandoned.
 		return StateCompleted
 	case recent(in.LastViewedAt, now, abandonDays):
 		return StateInProgress

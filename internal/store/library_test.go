@@ -156,6 +156,21 @@ func TestLibraryPerspective(t *testing.T) {
 			}
 		}
 	}
+	// carol finished the last season of The Expanse long ago, earlier
+	// seasons elsewhere: caught up, not abandoned.
+	if _, err := st.DB().Exec(`INSERT INTO watch_events(source, source_id, media_id, media_type, season_number,
+		episode_number, user_id, started_at, stopped_at, watched)
+		SELECT 'test', 9000 + e.n, s.media_id, 'episode', s.season_number, e.n, 1003, 1700000000, 1700000000, 1
+		FROM seasons s JOIN media m ON m.id = s.media_id AND m.title = 'The Expanse'
+		JOIN (SELECT 1 AS n UNION SELECT 2 UNION SELECT 3 UNION SELECT 4 UNION SELECT 5 UNION SELECT 6) e
+		  ON e.n <= s.episode_file_count
+		WHERE s.season_number = (SELECT MAX(season_number) FROM seasons x WHERE x.media_id = s.media_id
+		  AND x.episode_file_count > 0)`); err != nil {
+		t.Fatal(err)
+	}
+	if got := states(t, st, store.LibraryFilter{Kind: "series", User: 1003})["The Expanse"]; got != "completed" {
+		t.Errorf("carol's Expanse (last season finished): %s", got)
+	}
 	// Watch-state filters apply to the perspective.
 	got := titles(t, st, store.LibraryFilter{Kind: "series", User: 1002, States: []string{"in_progress"}})
 	if !slices.Equal(got, []string{"Breaking Bad", "Shōgun"}) {

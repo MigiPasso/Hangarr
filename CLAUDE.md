@@ -102,7 +102,9 @@ Pas de framework web, pas de build Node pour l'app, pas de CDN.
   `testdata/captured/` : vraies réponses anonymisées, seulement vérifiées au décodage.
 - `internal/syncer` (et non `internal/sync`, pour ne pas masquer le paquet standard) : fetch parallèle, stockage,
   rapprochement (`internal/matching`), liaison de l'historique, recalcul (`internal/scoring`).
-- Saison 0 (spéciaux) exclue de la progression et de `watch_state`.
+- Saison 0 (spéciaux) exclue de la progression et de `watch_state`. Série dont la **dernière saison avec fichiers est
+  finie** = `completed` (saisons précédentes possiblement vues ailleurs, décision utilisateur) : `scoring.WatchState` et
+  SQL de `libraryView`.
 - Bibliothèque : une requête SQL paramétrée par lot (`store.LibraryQuery`, CTE `v` avec colonnes `eff_*` ; point de vue
   utilisateur calculé à la volée, mêmes règles que `scoring`). Recherche sur `title_norm` (sans accents ni article).
   Recherche déclenchée par `input` (et non `keyup` comme dans la spec) pour couvrir collage, autocomplétion, bouton ✕.
@@ -154,7 +156,10 @@ Pas de framework web, pas de build Node pour l'app, pas de CDN.
   (hors localhost). Compose ≥ 2.24 (`env_file.required`, `!reset`).
 - Thèmes clair / sombre : toutes les couleurs en variables `light-dark(clair, sombre)` dans `app.css` ; par défaut le
   système, bouton (`data-theme-toggle`, `app.js`) → cookie `cleanarr_theme` lu par le serveur (`<html data-theme>`, pas de
-  flash). Couleurs des graphiques validées pour les deux surfaces (validateur dataviz lancé dans Docker). Les pastilles
+  flash). Palette **graphite doux, légèrement bleuté** (identité propre, pas de crème/anthracite chaud façon Claude,
+  décision utilisateur ; ni blanc ni noir purs, texte ~13:1, bordures discrètes). Boutons `--btn` au-dessus des cartes
+  (visibles en sombre), `--on-accent` pour le texte sur fond accent/danger. Couleurs des graphiques validées pour les deux
+  surfaces (validateur dataviz lancé dans Docker, surfaces `#f8f9fa` / `#1f2227`). Les pastilles
   posées sur les affiches restent sombres dans les deux thèmes.
 - Projets Compose : `cleanarr` = `compose.yml` (prod), `cleanarr-dev` = `compose.dev.yml`, `cleanarr-e2e`,
   `cleanarr-deploy-check` : ne jamais leur donner le même nom (un `down` emporterait l'autre).
