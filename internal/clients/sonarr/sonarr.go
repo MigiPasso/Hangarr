@@ -61,6 +61,12 @@ type Series struct {
 	Path             string            `json:"path"`
 	Monitored        bool              `json:"monitored"`
 	Runtime          httpx.Int         `json:"runtime"`
+	AlternateTitles  []AlternateTitle  `json:"alternateTitles"`
+}
+
+// AlternateTitle is another title of a series or movie (other languages).
+type AlternateTitle struct {
+	Title string `json:"title"`
 }
 
 // Tag is a Sonarr/Radarr tag.

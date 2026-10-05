@@ -113,3 +113,57 @@ func TestTitleIndex(t *testing.T) {
 		}
 	}
 }
+
+// French films with English titles in Radarr and no ids on the Plex side
+// (unmatched agent, wrong year): paired by file or folder on disk.
+func TestMatchByFileAndFolder(t *testing.T) {
+	arr := []ArrItem{
+		{MediaID: 1, Kind: KindMovie, Title: "Anatomy of a Fall", Year: 2023,
+			Folder: "/data/movies/Anatomy of a Fall (2023)", File: "Anatomy of a Fall (2023) Bluray-1080p.mkv"},
+		{MediaID: 2, Kind: KindMovie, Title: "Love Is Overrated", Year: 2025,
+			Folder: "/data/movies/Love Is Overrated (2025)", File: "Love.Is.Overrated.2025.mkv"},
+		{MediaID: 3, Kind: KindSeries, Title: "Call My Agent!", Year: 2015, Folder: "/tv/Call My Agent!"},
+		// Two movies in one flat folder: the folder alone proves nothing.
+		{MediaID: 4, Kind: KindMovie, Title: "Flat One", Year: 2001, Folder: "/movies"},
+		{MediaID: 5, Kind: KindMovie, Title: "Flat Two", Year: 2002, Folder: "/movies"},
+	}
+	plex := []PlexItem{
+		// Different mount, file renamed: the folder still matches.
+		{Kind: KindMovie, RatingKey: "a", Title: "Anatomie d'une chute", Year: 1970,
+			Files: []string{`D:\Films\Anatomy of a Fall (2023)\anatomie.mkv`}},
+		// Same file name, different folder.
+		{Kind: KindMovie, RatingKey: "b", Title: "L'Amour c'est surcôté", Year: 2025,
+			Files: []string{"/mnt/media/films/Love/Love.Is.Overrated.2025.mkv"}},
+		{Kind: KindSeries, RatingKey: "c", Title: "Dix pour cent", Year: 2015, Folders: []string{"/media/tv/Call My Agent!/"}},
+		{Kind: KindMovie, RatingKey: "d", Title: "Autre", Year: 2001, Files: []string{"/movies/autre.mkv"}},
+	}
+	links, only := Match(arr, plex)
+	got := map[int64]string{}
+	for _, l := range links {
+		if l.Method != MethodFile {
+			t.Errorf("link %+v: want method file", l)
+		}
+		got[l.MediaID] = l.RatingKey
+	}
+	if got[1] != "a" || got[2] != "b" || got[3] != "c" || len(got) != 3 {
+		t.Errorf("links: %v", got)
+	}
+	if len(only) != 1 || only[0].RatingKey != "d" {
+		t.Errorf("plex only: %+v", only)
+	}
+}
+
+func TestMatchByAlternateTitle(t *testing.T) {
+	arr := []ArrItem{{MediaID: 1, Kind: KindMovie, Title: "Anatomy of a Fall", Year: 2023,
+		AltTitles: []string{"Anatomie d'une chute"}}}
+	plex := []PlexItem{{Kind: KindMovie, RatingKey: "a", Title: "Anatomie d’une chute", Year: 2023}}
+	links, _ := Match(arr, plex)
+	if len(links) != 1 || links[0].Method != MethodFuzzy {
+		t.Fatalf("links: %+v", links)
+	}
+	// Plex original title against the main title.
+	plex = []PlexItem{{Kind: KindMovie, RatingKey: "a", Title: "Anatomie d'une chute", OriginalTitle: "Anatomy of a Fall", Year: 2024}}
+	if links, _ := Match([]ArrItem{{MediaID: 1, Kind: KindMovie, Title: "Anatomy of a Fall", Year: 2023}}, plex); len(links) != 1 {
+		t.Errorf("original title: %+v", links)
+	}
+}

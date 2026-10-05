@@ -56,6 +56,29 @@ type Item struct {
 	// the Plex agents fill the Guid array (requires includeGuids=1).
 	LegacyGUID string `json:"guid"`
 	GUIDs      []GUID `json:"Guid"`
+	// Files on disk: Media/Part for movies, Location for shows (when sent).
+	OriginalTitle string `json:"originalTitle"`
+	Media         []struct {
+		Part []struct {
+			File string `json:"file"`
+		} `json:"Part"`
+	} `json:"Media"`
+	Location []struct {
+		Path string `json:"path"`
+	} `json:"Location"`
+}
+
+// Files returns the paths of the media files of a movie.
+func (i Item) Files() []string {
+	var out []string
+	for _, m := range i.Media {
+		for _, p := range m.Part {
+			if p.File != "" {
+				out = append(out, p.File)
+			}
+		}
+	}
+	return out
 }
 
 var (

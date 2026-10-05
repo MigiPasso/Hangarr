@@ -102,6 +102,10 @@ Pas de framework web, pas de build Node pour l'app, pas de CDN.
   `testdata/captured/` : vraies réponses anonymisées, seulement vérifiées au décodage.
 - `internal/syncer` (et non `internal/sync`, pour ne pas masquer le paquet standard) : fetch parallèle, stockage,
   rapprochement (`internal/matching`), liaison de l'historique, recalcul (`internal/scoring`).
+- Rapprochement Plex ↔ *arr (`internal/matching`) : IDs (TVDB/TMDB/IMDb) → **même fichier ou dossier** (nom de base,
+  insensible aux montages ; `Media/Part/file` et `Location` côté Plex, `path` + `movieFile.relativePath` côté *arr, non
+  stockés : indices passés par le syncer ; nom partagé par plusieurs éléments ignoré) → titre (+ titre original /
+  alternatifs) et année ±1. Cas réel : films français titrés en anglais dans Radarr, sans IDs côté Plex.
 - Saison 0 (spéciaux) exclue de la progression et de `watch_state`. Série dont la **dernière saison avec fichiers est
   finie** = `completed` (saisons précédentes possiblement vues ailleurs, décision utilisateur) : `scoring.WatchState` et
   SQL de `libraryView`.

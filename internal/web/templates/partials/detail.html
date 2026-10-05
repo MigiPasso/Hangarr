@@ -10,7 +10,7 @@
       <h1>{{$m.Title}}{{if $m.Year}} <span class="muted">({{$m.Year}})</span>{{end}}{{if $d.Protected}} {{template "lock"}}{{end}}</h1>
       <p class="badges">
         <span class="badge state">{{stateName $m.WatchState}}{{if and (eq $m.Kind "series") $m.DownloadedEpisodes}} · {{$m.WatchedEpisodes}}/{{$m.DownloadedEpisodes}}{{end}}</span>
-        {{if eq $m.MatchState "plex_only"}}<span class="badge">{{t "Plex only"}}</span>{{else if eq $m.MatchState "arr_only"}}<span class="badge">{{t "Not in Plex"}}</span>{{else if eq $m.MatchMethod "fuzzy"}}<span class="badge">{{t "Fuzzy match"}}</span>{{template "info" (t "Matched by title and year: no common ID.")}}{{end}}
+        {{if eq $m.MatchState "plex_only"}}<span class="badge">{{t "Plex only"}}</span>{{else if eq $m.MatchState "arr_only"}}<span class="badge">{{t "Not in Plex"}}</span>{{else if eq $m.MatchMethod "fuzzy"}}<span class="badge">{{t "Fuzzy match"}}</span>{{template "info" (t "Matched by title and year: no common ID.")}}{{else if eq $m.MatchMethod "file"}}<span class="badge">{{t "Matched by file"}}</span>{{template "info" (t "Same file or folder on disk in Plex and Sonarr/Radarr: no common ID.")}}{{end}}
       </p>
       <dl class="facts">
         {{with $m.Genres}}<dt>{{t "Genres"}}</dt><dd>{{range $i, $g := .}}{{if $i}}, {{end}}{{$g}}{{end}}</dd>{{end}}
