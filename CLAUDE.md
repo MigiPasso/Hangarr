@@ -75,7 +75,7 @@ Pas de framework web, pas de build Node pour l'app, pas de CDN.
 
 ## Repères
 
-- `cmd/cleanarr` : `serve`, `admin reset-password`, `healthcheck`, `version`.
+- `cmd/cleanarr` : `serve`, `sync --once`, `admin reset-password`, `master-key`, `backup [PATH]`, `healthcheck`, `version`.
 - `internal/mockarr` (servi par `cmd/mockarr`) : faux upstreams (sonarr :8989, radarr :7878, plex :32400,
   tautulli :8181) depuis `testdata/`, appels destructeurs exposés sur `GET /_calls`, `POST /_reset`.
   Les tests d'intégration l'utilisent via `httptest`. `MOCK_SHIFT_DATES=true` recale l'historique sur aujourd'hui.

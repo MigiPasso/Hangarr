@@ -138,8 +138,15 @@ func TestSaveEncryptsAndReloads(t *testing.T) {
 	if m.Registry.Get().Values[SonarrAPIKey] != apiKey {
 		t.Error("empty credential field must keep the saved value")
 	}
+	// « Effacer » checked while typing a new key: the typed key wins.
+	in := input(SonarrURL, "http://sonarr:8989", SonarrAPIKey, "new-key-0123456789")
+	in.Clear[SonarrAPIKey] = true
+	save(t, m, Sonarr, in)
+	if m.Registry.Get().Values[SonarrAPIKey] != "new-key-0123456789" {
+		t.Error("a typed credential must win over « Effacer »")
+	}
 	// Clear.
-	in := input(SonarrURL, "")
+	in = input(SonarrURL, "")
 	in.Clear[SonarrAPIKey] = true
 	save(t, m, Sonarr, in)
 	if c := m.Registry.Get(); c.Sonarr != nil || c.Values[SonarrAPIKey] != "" || c.Values[SonarrURL] != "" {

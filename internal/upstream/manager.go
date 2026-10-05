@@ -282,7 +282,7 @@ func (m *Manager) apply(svc string, saved Values, broken map[string]bool, in Inp
 		}
 		v := strings.TrimSpace(in.Values[f.Key])
 		switch {
-		case in.Clear[f.Key]:
+		case in.Clear[f.Key] && v == "": // a value typed at the same time wins
 			if has {
 				del, changed = append(del, key), append(changed, f.Key)
 			}
