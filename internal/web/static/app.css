@@ -322,6 +322,7 @@ button:disabled { opacity: .45; cursor: not-allowed; }
   border: 1px solid var(--border); box-shadow: 0 6px 24px rgba(0, 0, 0, .4); }
 .toast-success { border-color: var(--success); }
 .toast-info { border-color: var(--warning); }
+.toast-error { border-color: var(--danger); }
 
 /* --- journal --- */
 

@@ -203,6 +203,20 @@ func (s *Store) DeleteMedia(ctx context.Context, id int64) error {
 	return err
 }
 
+// SetMediaTags replaces the local copy of an item's tag labels (after they
+// were changed in Sonarr/Radarr; the next sync reads them again anyway).
+func (s *Store) SetMediaTags(ctx context.Context, id int64, labels []string) error {
+	if labels == nil {
+		labels = []string{}
+	}
+	b, err := json.Marshal(labels)
+	if err != nil {
+		return err
+	}
+	_, err = s.db.ExecContext(ctx, `UPDATE media SET tags = ? WHERE id = ?`, string(b), id)
+	return err
+}
+
 // Action is a row of action_log.
 type Action struct {
 	ID              int64

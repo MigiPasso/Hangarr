@@ -13,10 +13,10 @@
     {{range $d.Actions}}
       <tr>
         <td>{{datetime .At}}</td>
-        <td>{{if eq .Action "delete_series"}}Série supprimée{{else if eq .Action "delete_season"}}Saison supprimée{{else}}Film supprimé{{end}}</td>
+        <td>{{if eq .Action "delete_series"}}Série supprimée{{else if eq .Action "delete_season"}}Saison supprimée{{else if eq .Action "delete_movie"}}Film supprimé{{else if eq .Action "protect"}}Protégé{{else if eq .Action "unprotect"}}Protection retirée{{else}}{{.Action}}{{end}}</td>
         <td>{{.Title}}{{if .SeasonNumber}} · saison {{deref .SeasonNumber}}{{end}}</td>
         <td class="num">{{if .SizeFreedBytes}}{{bytes .SizeFreedBytes}}{{else}}–{{end}}</td>
-        <td class="small">{{if .DeleteFiles}}fichiers{{else}}sans fichiers{{end}}{{if .ImportExclusion}} · exclusion{{end}}</td>
+        <td class="small">{{if or (eq .Action "protect") (eq .Action "unprotect")}}–{{else}}{{if .DeleteFiles}}fichiers{{else}}sans fichiers{{end}}{{if .ImportExclusion}} · exclusion{{end}}{{end}}</td>
         <td>{{if not .Success}}<span class="error-text" title="{{.Error}}">Échec : {{.Error}}</span>{{else if .DryRun}}<span class="warn">Simulation</span>{{else}}<span class="ok-text">Effectuée</span>{{end}}</td>
         <td>{{.Username}}</td>
       </tr>

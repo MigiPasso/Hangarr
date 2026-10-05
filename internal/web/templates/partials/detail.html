@@ -28,6 +28,18 @@
       <p class="detail-actions">
         {{range $d.Links}}<a class="button" href="{{.URL}}" target="_blank" rel="noopener noreferrer">{{.Label}} ↗</a>{{end}}
         {{if $d.Modal}}<a class="button" href="{{$d.Path}}/{{$m.ID}}">Ouvrir la page</a>{{end}}
+        {{if $d.CanProtect}}
+        <form method="post" action="{{$d.Path}}/{{$m.ID}}/protect" class="inline" hx-post="{{$d.Path}}/{{$m.ID}}/protect">
+          <input type="hidden" name="csrf_token" value="{{$d.CSRFToken}}">
+          {{if $d.Protected}}
+          <input type="hidden" name="protect" value="0">
+          <button type="submit" title="Retire les tags de protection dans {{if eq $m.Kind "series"}}Sonarr{{else}}Radarr{{end}}">Ne plus protéger</button>
+          {{else}}
+          <input type="hidden" name="protect" value="1">
+          <button type="submit" title="Ajoute le tag « {{$d.ProtectTag}} » dans {{if eq $m.Kind "series"}}Sonarr{{else}}Radarr{{end}} : jamais proposé au nettoyage ni supprimable">Protéger</button>
+          {{end}}
+        </form>
+        {{end}}
         {{if $d.Deletable}}
         <button type="button" class="danger" hx-get="{{$d.Path}}/{{$m.ID}}/delete" hx-target="#confirm-body"
                 {{if $d.Protected}}disabled title="Protégé par un tag"{{end}}>Supprimer {{if eq $m.Kind "series"}}la série{{else}}le film{{end}}</button>

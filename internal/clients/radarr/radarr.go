@@ -4,6 +4,7 @@ package radarr
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -119,8 +120,32 @@ func (c *Client) QualityProfiles(ctx context.Context) ([]sonarr.QualityProfile, 
 
 // MovieByID returns one movie.
 func (c *Client) MovieByID(ctx context.Context, id int64) (*Movie, error) {
+	m, _, err := c.MovieByIDRaw(ctx, id)
+	return m, err
+}
+
+// MovieByIDRaw returns one movie, decoded, and its raw JSON (kept intact for
+// PUT so that fields unknown to this client are preserved).
+func (c *Client) MovieByIDRaw(ctx context.Context, id int64) (*Movie, json.RawMessage, error) {
+	b, err := c.HTTP.Do(ctx, httpx.Request{Path: "/api/v3/movie/" + strconv.FormatInt(id, 10)})
+	if err != nil {
+		return nil, nil, err
+	}
 	var m Movie
-	return &m, c.HTTP.JSON(ctx, httpx.Request{Path: "/api/v3/movie/" + strconv.FormatInt(id, 10)}, &m)
+	if err := json.Unmarshal(b, &m); err != nil {
+		return nil, nil, fmt.Errorf("radarr: decode movie %d: %w", id, err)
+	}
+	return &m, b, nil
+}
+
+// UpdateMovieRaw sends a full movie object (PUT /api/v3/movie/{id}).
+func (c *Client) UpdateMovieRaw(ctx context.Context, id int64, raw json.RawMessage) error {
+	return c.HTTP.JSON(ctx, httpx.Request{Method: http.MethodPut, Path: "/api/v3/movie/" + strconv.FormatInt(id, 10), Body: raw}, nil)
+}
+
+// CreateTag creates a tag and returns it with its id.
+func (c *Client) CreateTag(ctx context.Context, label string) (*sonarr.Tag, error) {
+	return sonarr.CreateTag(ctx, c.HTTP, label)
 }
 
 // DeleteMovie deletes a movie (and its files when deleteFiles).

@@ -109,6 +109,10 @@ Pas de framework web, pas de build Node pour l'app, pas de CDN.
   `Manager.Save` écrit + journalise (`auth_events`, `config_<service>`) dans une transaction puis `Reload`.
   Dev : clé maître fixe dans `compose.dev.yml` ; e2e : instance `app-e2e-config` sans variables de service, clé via
   secret Docker (`e2e/master.key`, test uniquement).
+- Protection (`actions.SetProtected`, `POST /{series|movies}/{id}/protect`, champ `protect=1|0`) : tags relus en live,
+  tag `PROTECTED_TAGS[0]` créé s'il manque (`POST /api/v3/tag`), retrait = tous les tags de protection, autres tags
+  conservés, `PUT` de l'objet brut. Sans changement (déjà dans l'état demandé) : rien d'envoyé ni journalisé, mais copie
+  locale des tags réalignée. Le mock enregistre aussi les `POST` dans `/_calls`.
 - `internal/images` : proxy MediaCover (`poster-500.jpg`) → cache disque `DATA_DIR/cache/img`, ETag, sémaphore (4),
   singleflight, repli `remoteUrl` https, placeholder SVG. Pas de JS supplémentaire côté client.
 - `make e2e` tourne dans le projet compose `arrstats-e2e` (séparé) et lit le mot de passe initial dans les logs.

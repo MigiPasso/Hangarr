@@ -97,6 +97,7 @@ func (s *Server) Handler() http.Handler {
 		mux.Handle("GET "+k.path+"/{id}", s.authed(s.detail(k.kind), 0))
 		mux.Handle("GET "+k.path+"/{id}/delete", s.authed(s.deletePage(k.kind), 0))
 		mux.Handle("POST "+k.path+"/{id}/delete", s.authed(s.deleteSubmit(k.kind), 0))
+		mux.Handle("POST "+k.path+"/{id}/protect", s.authed(s.protectSubmit(k.kind), 0))
 	}
 	mux.Handle("GET /journal", s.authed(s.journal, 0))
 	mux.Handle("GET /stats", s.authed(s.stats, 0))

@@ -174,3 +174,53 @@ func TestASCIIJSON(t *testing.T) {
 		t.Errorf("got %q", got)
 	}
 }
+
+func TestProtectButton(t *testing.T) {
+	e := newLibEnvDry(t, 0, false)
+	bb := e.mediaID("series", "Breaking Bad")
+	page := e.do(e.c, "GET", "/series/"+bb, nil, nil)
+	if !strings.Contains(page.body, `action="/series/`+bb+`/protect"`) || !strings.Contains(page.body, ">Protéger</button>") {
+		t.Fatal("missing « Protéger » button")
+	}
+	sev := e.do(e.c, "GET", "/series/"+e.mediaID("series", "Severance"), nil, nil)
+	if !strings.Contains(sev.body, ">Ne plus protéger</button>") {
+		t.Error("protected series must offer « Ne plus protéger »")
+	}
+	if vac := e.do(e.c, "GET", "/movies/"+e.mediaID("movie", "Vacances 2019"), nil, nil); strings.Contains(vac.body, "/protect") {
+		t.Error("plex_only item cannot be protected")
+	}
+	tok := csrfFrom(t, page.body)
+	if r := e.do(e.c, "POST", "/series/"+bb+"/protect", url.Values{"protect": {"1"}}, nil); r.status != http.StatusForbidden {
+		t.Errorf("without csrf: %d", r.status)
+	}
+	r := e.do(e.c, "POST", "/series/"+bb+"/protect", url.Values{"csrf_token": {tok}, "protect": {"1"}},
+		map[string]string{"HX-Request": "true"})
+	trigger := r.header.Get("HX-Trigger")
+	if r.status != http.StatusOK || !strings.Contains(trigger, "arrstats:changed") || !strings.Contains(trigger, `"success"`) {
+		t.Fatalf("protect: %d %s", r.status, trigger)
+	}
+	page = e.do(e.c, "GET", "/series/"+bb, nil, nil)
+	if !strings.Contains(page.body, ">Ne plus protéger</button>") || !strings.Contains(page.body, `disabled title="Protégé par un tag"`) {
+		t.Error("detail must show the protected state after protecting")
+	}
+	if j := e.do(e.c, "GET", "/journal", nil, nil); !strings.Contains(j.body, "<td>Protégé</td>") {
+		t.Error("protection not in the actions journal")
+	}
+	// Without JavaScript: redirect to the detail page.
+	r = e.do(e.c, "POST", "/series/"+bb+"/protect", url.Values{"csrf_token": {tok}, "protect": {"0"}}, nil)
+	if r.status != http.StatusSeeOther || r.header.Get("Location") != "/series/"+bb {
+		t.Errorf("unprotect without htmx: %d %s", r.status, r.header.Get("Location"))
+	}
+}
+
+func TestProtectDryRun(t *testing.T) {
+	e := newLibEnv(t, 0)
+	bb := e.mediaID("series", "Breaking Bad")
+	tok := csrfFrom(t, e.do(e.c, "GET", "/series/"+bb, nil, nil).body)
+	r := e.do(e.c, "POST", "/series/"+bb+"/protect", url.Values{"csrf_token": {tok}, "protect": {"1"}},
+		map[string]string{"HX-Request": "true"})
+	trigger := r.header.Get("HX-Trigger")
+	if !strings.Contains(trigger, "Simulation") || strings.Contains(trigger, "arrstats:changed") {
+		t.Errorf("dry-run: %s", trigger)
+	}
+}

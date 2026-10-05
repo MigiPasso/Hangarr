@@ -74,3 +74,31 @@ test("movie deletion removes the card", async ({ page, request }) => {
   await page.goto("/journal");
   await expect(page.getByRole("row", { name: /Tenet/ })).toContainText("Effectuée");
 });
+
+test("protect then unprotect a series from its detail", async ({ page, request }) => {
+  await login(page, username, newPassword);
+  await request.post(`${mockURL}/_reset`);
+  await page.goto("/series");
+  await page.locator(".media-card", { hasText: "Breaking Bad" }).click();
+  const modal = page.locator("#modal");
+  await modal.getByRole("button", { name: "Protéger", exact: true }).click();
+  await expect(page.locator(".toast")).toContainText("« Breaking Bad » est protégé (tag keep)");
+  // The detail is reloaded: protected state, deletion disabled.
+  await expect(modal.getByRole("button", { name: "Ne plus protéger" })).toBeVisible();
+  await expect(modal.getByRole("button", { name: "Supprimer la série" })).toBeDisabled();
+
+  let calls = await arrCalls(request);
+  expect(calls.map((c) => `${c.method} ${c.path}`)).toEqual(["PUT /api/v3/series/1"]);
+  const sent = JSON.parse(calls[0].body);
+  expect(sent.tags).toEqual([1]);
+  expect(sent.title).toBe("Breaking Bad"); // whole object sent back
+
+  // The mock keeps its fixtures: Sonarr still reports no tag, so removing
+  // the protection finds nothing there and the local state is realigned.
+  await modal.getByRole("button", { name: "Ne plus protéger" }).click();
+  await expect(page.locator(".toast").last()).toContainText("n'est pas protégé");
+  await expect(modal.getByRole("button", { name: "Protéger", exact: true })).toBeVisible();
+
+  await page.goto("/journal");
+  await expect(page.getByRole("row", { name: /Breaking Bad/ }).first()).toContainText("Protégé");
+});
