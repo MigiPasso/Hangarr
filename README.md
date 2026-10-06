@@ -3,9 +3,6 @@
 Application Go + HTMX auto-hébergée qui croise Tautulli, Plex, Sonarr et Radarr pour savoir ce qui est
 regardé, par qui, ce qui ne l'est jamais, et faire le ménage proprement. Spécification complète : [SPEC.md](SPEC.md).
 
-> État : phases 1 à 6 livrées. Reste à faire : publication automatique de l'image sur GHCR (workflow Forgejo Actions
-> sur tag) ; en attendant, voir « Publier une version ».
-
 ## Fonctionnalités
 
 - **Tableau de bord** : volumes, espace récupérable, temps de visionnage, dernières lectures.
