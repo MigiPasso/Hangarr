@@ -23,6 +23,11 @@ test("series grid shows posters and watch states", async ({ page }) => {
 
   await expect(page.locator(".media-card", { hasText: "The Expanse" }).locator(".badge")).toHaveText("Abandonné 3/6");
   await expect(page.locator(".media-card", { hasText: "Severance" }).getByRole("img", { name: "Protégé" })).toBeVisible();
+
+  // Known by Plex only: the poster comes from Plex.
+  const home = page.locator(".media-card", { hasText: "Home Videos" }).locator("img");
+  await expect(home).toHaveAttribute("src", "/img/plex/205/poster");
+  await expect.poll(() => home.evaluate((img: HTMLImageElement) => img.complete && img.naturalWidth)).toBeGreaterThan(0);
 });
 
 test("search, filters, history and perspective", async ({ page }) => {
@@ -44,7 +49,7 @@ test("search, filters, history and perspective", async ({ page }) => {
   await expect(cards(page)).toHaveText(["Arcane", "Severance"]);
 
   await page.goto("/series");
-  await page.getByLabel("Point de vue").selectOption({ label: "Alice" });
+  await page.getByLabel("Qui ?").selectOption({ label: "Alice" });
   await expect(page.locator(".summary")).toContainText("point de vue de Alice");
   await expect(page.locator(".media-card", { hasText: "Shōgun" }).locator(".badge")).toHaveText("Jamais vu");
 

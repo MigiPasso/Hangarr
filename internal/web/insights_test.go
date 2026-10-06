@@ -165,3 +165,57 @@ func TestCleanupSortableHeaders(t *testing.T) {
 		t.Error("clicking the current column must reverse the direction")
 	}
 }
+
+func TestCleanupFilters(t *testing.T) {
+	e := newLibEnv(t, 0)
+	// Tenet was never watched; Interstellar was.
+	r := e.do(e.c, "GET", "/cleanup?state=never", nil, nil)
+	if !strings.Contains(r.body, ">Tenet<") || strings.Contains(r.body, ">Interstellar<") {
+		t.Error("state filter")
+	}
+	if !strings.Contains(r.body, `name="state" value="never" checked`) || !strings.Contains(r.body, "correspondant aux filtres") {
+		t.Error("the form must show the active filter")
+	}
+	if strings.Contains(r.body, "Saisons jamais vues") {
+		t.Error("never-watched seasons have no state: hidden while filtering by state")
+	}
+	// Sort links keep the filters.
+	if !strings.Contains(r.body, `href="/cleanup?dir=asc&amp;sort=title&amp;state=never">Titre`) {
+		t.Error("sort links must keep the filters")
+	}
+	r = e.do(e.c, "GET", "/cleanup?plays_min=1", nil, nil)
+	if strings.Contains(r.body, ">Tenet<") || !strings.Contains(r.body, ">Interstellar<") || !strings.Contains(r.body, `name="plays_min" min="0" step="1" value="1"`) {
+		t.Error("plays filter")
+	}
+	r = e.do(e.c, "GET", "/cleanup?plays_max=0", nil, nil)
+	if !strings.Contains(r.body, ">Tenet<") || strings.Contains(r.body, ">Interstellar<") {
+		t.Error("plays_max=0 keeps never-played items only")
+	}
+	r = e.do(e.c, "GET", "/cleanup?size_min=99999", nil, nil)
+	if !strings.Contains(r.body, "Aucun candidat ne correspond à ces filtres.") {
+		t.Error("empty result with filters")
+	}
+	// Invalid values are ignored.
+	if r := e.do(e.c, "GET", "/cleanup?state=bogus&plays_max=-3&size_min=x", nil, nil); r.status != http.StatusOK ||
+		!strings.Contains(r.body, ">Tenet<") || !strings.Contains(r.body, ">Interstellar<") {
+		t.Error("invalid filters must be ignored")
+	}
+}
+
+func TestCleanupInactivityChoice(t *testing.T) {
+	e := newLibEnv(t, 0)
+	// Rule: 180 days. Only longer delays are offered; shorter ones are ignored.
+	r := e.do(e.c, "GET", "/cleanup", nil, nil)
+	if !strings.Contains(r.body, ">180 jours ou plus</option>") || !strings.Contains(r.body, `<option value="365">1 an</option>`) ||
+		strings.Contains(r.body, `<option value="180">`) {
+		t.Errorf("choices:\n%s", r.body)
+	}
+	if r := e.do(e.c, "GET", "/cleanup?inactive=180", nil, nil); !strings.Contains(r.body, ">Interstellar<") || strings.Contains(r.body, "correspondant aux filtres") {
+		t.Error("a delay not longer than the rule is ignored")
+	}
+	// Interstellar was last watched ~200 days ago: gone with 1 year.
+	r = e.do(e.c, "GET", "/cleanup?inactive=365", nil, nil)
+	if strings.Contains(r.body, ">Interstellar<") || !strings.Contains(r.body, `<option value="365" selected>`) {
+		t.Error("1 year")
+	}
+}

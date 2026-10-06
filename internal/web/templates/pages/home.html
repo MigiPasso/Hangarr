@@ -30,7 +30,7 @@
     <ul class="recent">
       {{range $d.Recent}}
       <li>
-        {{if .ArrID}}<img src="/img/{{.Kind}}/{{.ArrID}}/poster" alt="" width="36" height="54" loading="lazy" decoding="async">{{else}}<span class="thumb-fallback"></span>{{end}}
+        {{with imgURL .Kind .ArrID .PlexKey "poster"}}<img src="{{.}}" alt="" width="36" height="54" loading="lazy" decoding="async">{{else}}<span class="thumb-fallback"></span>{{end}}
         <div>
           {{if .MediaID}}<a href="{{mediaPath .Kind}}/{{.MediaID}}" hx-get="{{mediaPath .Kind}}/{{.MediaID}}" hx-target="#modal-body">{{.Title}}</a>{{else}}{{.Title}}{{end}}
           {{with .Episode}}<span class="muted small"> · {{.}}</span>{{end}}

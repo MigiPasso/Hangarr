@@ -54,8 +54,46 @@ func TestDetailPage(t *testing.T) {
 		t.Error("protected series: delete buttons must be disabled")
 	}
 	vac := e.do(e.c, "GET", "/movies/"+e.mediaID("movie", "Vacances 2019"), nil, nil)
-	if strings.Contains(vac.body, "/delete") {
-		t.Error("plex_only item must not offer deletion")
+	if !strings.Contains(vac.body, "/delete\"") || !strings.Contains(vac.body, "protégé dans Cleanarr uniquement") {
+		t.Error("plex_only item: deletion through Plex, protection in Cleanarr")
+	}
+}
+
+func TestDeletePlexOnlyFlow(t *testing.T) {
+	e := newLibEnvDry(t, 0, false)
+	vac := e.mediaID("movie", "Vacances 2019")
+	r := e.do(e.c, "GET", "/movies/"+vac+"/delete", nil, nil)
+	if r.status != http.StatusOK || !strings.Contains(r.body, "Plex le supprime, avec ses fichiers") ||
+		!strings.Contains(r.body, `<input type="hidden" name="delete_files" value="1">`) || strings.Contains(r.body, "import_exclusion") {
+		t.Fatalf("plex form: %d\n%s", r.status, r.body)
+	}
+	if r := e.do(e.c, "GET", "/series/"+e.mediaID("series", "Home Videos")+"/delete?season=1", nil, nil); r.status != http.StatusNotFound {
+		t.Errorf("no season deletion through Plex: %d", r.status)
+	}
+	tok := csrfFrom(t, r.body)
+	h := map[string]string{"HX-Request": "true", csrfHeader: tok}
+	e.mock.PlexDeletionDenied = true
+	r = e.do(e.c, "POST", "/movies/"+vac+"/delete", url.Values{"delete_files": {"1"}}, h)
+	if !strings.Contains(r.body, "Plex a refusé la suppression") {
+		t.Errorf("denied: %s", r.body)
+	}
+	e.mock.PlexDeletionDenied = false
+	r = e.do(e.c, "POST", "/movies/"+vac+"/delete", url.Values{"delete_files": {"1"}}, h)
+	if !strings.Contains(r.header.Get("HX-Trigger"), `"dryRun":false`) {
+		t.Fatalf("delete: %d %s", r.status, r.body)
+	}
+	var paths []string
+	for _, c := range e.mock.Calls() {
+		paths = append(paths, c.Service+" "+c.Method+" "+c.Path)
+	}
+	if strings.Join(paths, ",") != "plex DELETE /library/metadata/105,plex DELETE /library/metadata/105" {
+		t.Errorf("calls: %v", paths)
+	}
+	if r := e.do(e.c, "GET", "/movies/"+vac, nil, nil); r.status != http.StatusNotFound {
+		t.Errorf("deleted movie still shown: %d", r.status)
+	}
+	if j := e.do(e.c, "GET", "/journal", nil, nil); !strings.Contains(j.body, "Supprimé via Plex") {
+		t.Error("journal label")
 	}
 }
 
@@ -186,10 +224,26 @@ func TestProtectButton(t *testing.T) {
 	if !strings.Contains(sev.body, ">Ne plus protéger</button>") {
 		t.Error("protected series must offer « Ne plus protéger »")
 	}
-	if vac := e.do(e.c, "GET", "/movies/"+e.mediaID("movie", "Vacances 2019"), nil, nil); strings.Contains(vac.body, "/protect") {
-		t.Error("plex_only item cannot be protected")
-	}
 	tok := csrfFrom(t, page.body)
+	// Plex-only: protected in Cleanarr only, nothing sent; deletion is then refused.
+	vac := e.mediaID("movie", "Vacances 2019")
+	lp := e.do(e.c, "POST", "/movies/"+vac+"/protect", url.Values{"protect": {"1"}}, map[string]string{"HX-Request": "true", csrfHeader: tok})
+	if trig := lp.header.Get("HX-Trigger"); !strings.Contains(trig, "cleanarr:changed") || !strings.Contains(trig, "Cleanarr") {
+		t.Errorf("local protect: %d %s", lp.status, trig)
+	}
+	vp := e.do(e.c, "GET", "/movies/"+vac, nil, nil)
+	if !strings.Contains(vp.body, ">Ne plus protéger</button>") || !strings.Contains(vp.body, `disabled title="Protégé dans Cleanarr"`) {
+		t.Error("locally protected item: unprotect button, deletion disabled")
+	}
+	if d := e.do(e.c, "GET", "/movies/"+vac+"/delete", nil, nil); !strings.Contains(d.body, "Protégé dans Cleanarr : la suppression sera refusée.") {
+		t.Error("delete form must warn")
+	}
+	if lib := e.do(e.c, "GET", "/movies?view=table", nil, nil); !strings.Contains(lib.body, `<svg class="lock"`) {
+		t.Error("library must show the lock")
+	}
+	if len(e.mock.Calls()) != 0 {
+		t.Errorf("local protection must not call upstream: %+v", e.mock.Calls())
+	}
 	if r := e.do(e.c, "POST", "/series/"+bb+"/protect", url.Values{"protect": {"1"}}, nil); r.status != http.StatusForbidden {
 		t.Errorf("without csrf: %d", r.status)
 	}

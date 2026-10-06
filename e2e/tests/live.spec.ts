@@ -75,6 +75,47 @@ test("movie deletion removes the card", async ({ page, request }) => {
   await expect(page.getByRole("row", { name: /Tenet/ })).toContainText("Effectuée");
 });
 
+test("a movie known by Plex only is deleted through Plex", async ({ page, request }) => {
+  await login(page, username, newPassword);
+  await request.post(`${mockURL}/_reset`);
+  await page.goto("/movies");
+  await page.locator(".media-card", { hasText: "Vacances 2019" }).click();
+  await page.locator("#modal").getByRole("button", { name: "Supprimer le film" }).click();
+  const confirm = page.locator("#confirm");
+  await expect(confirm).toContainText("Plex le supprime, avec ses fichiers sur le disque");
+  await expect(confirm.getByRole("checkbox")).toHaveCount(0);
+  await confirm.getByRole("button", { name: "Supprimer définitivement" }).click();
+  await expect(page.locator(".toast")).toContainText("« Vacances 2019 » a été supprimé");
+  await expect(page.locator(".media-card", { hasText: "Vacances 2019" })).toHaveCount(0);
+
+  const calls: Call[] = await (await request.get(`${mockURL}/_calls`)).json();
+  expect(calls.map((c) => `${c.service} ${c.method} ${c.path}`)).toEqual(["plex DELETE /library/metadata/105"]);
+  await page.goto("/journal");
+  await expect(page.getByRole("row", { name: /Vacances 2019/ })).toContainText("Supprimé via Plex");
+});
+
+test("a series known by Plex only is protected in Cleanarr only", async ({ page, request }) => {
+  await login(page, username, newPassword);
+  await request.post(`${mockURL}/_reset`);
+  await page.goto("/series");
+  await page.locator(".media-card", { hasText: "Home Videos" }).click();
+  const modal = page.locator("#modal");
+  await modal.getByRole("button", { name: "Protéger", exact: true }).click();
+  await expect(page.locator(".toast")).toContainText("« Home Videos » est protégé dans Cleanarr");
+  await expect(modal.getByRole("button", { name: "Ne plus protéger" })).toBeVisible();
+  await expect(modal.getByRole("button", { name: "Supprimer la série" })).toBeDisabled();
+
+  // Kept across page loads, with the lock on the card.
+  await page.goto("/series");
+  await expect(page.locator(".media-card", { hasText: "Home Videos" }).locator(".lock")).toBeVisible();
+  await page.locator(".media-card", { hasText: "Home Videos" }).click();
+  await modal.getByRole("button", { name: "Ne plus protéger" }).click();
+  await expect(modal.getByRole("button", { name: "Supprimer la série" })).toBeEnabled();
+  // Nothing was sent to Plex, Sonarr or Radarr.
+  const calls: Call[] = await (await request.get(`${mockURL}/_calls`)).json();
+  expect(calls).toEqual([]);
+});
+
 test("protect then unprotect a series from its detail", async ({ page, request }) => {
   await login(page, username, newPassword);
   await request.post(`${mockURL}/_reset`);

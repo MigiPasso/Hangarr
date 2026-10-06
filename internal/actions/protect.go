@@ -40,6 +40,7 @@ type ProtectResult struct {
 	Tag       string // tag added; for a removal, the protection tags removed
 	Unchanged bool   // the item was already in the requested state
 	DryRun    bool
+	Local     bool // protected in Cleanarr only (plex_only item, Plex untouched)
 }
 
 // SetProtected adds the first PROTECTED_TAGS tag to the item in Sonarr/Radarr
@@ -55,7 +56,10 @@ func (s *Service) SetProtected(ctx context.Context, req ProtectRequest) (*Protec
 		return nil, err
 	}
 	if m.ArrID == 0 {
-		return nil, ErrNotManaged
+		if m.PlexRatingKey == "" {
+			return nil, ErrNotManaged
+		}
+		return s.setLocalProtection(ctx, m, req)
 	}
 	if len(s.ProtectedTags) == 0 || strings.TrimSpace(s.ProtectedTags[0]) == "" {
 		return nil, ErrNoProtectedTag
@@ -91,6 +95,36 @@ func (s *Service) SetProtected(ctx context.Context, req ProtectRequest) (*Protec
 		if err := s.Store.SetMediaTags(context.WithoutCancel(ctx), m.ID, labels); err != nil {
 			s.Log.Warn("local tags not updated", "media_id", m.ID, "err", err)
 		}
+	}
+	return res, nil
+}
+
+// setLocalProtection protects an item that only Plex knows, in Cleanarr
+// only: nothing is sent to Plex, so dry-run does not apply. Changes are
+// journaled.
+func (s *Service) setLocalProtection(ctx context.Context, m *store.Media, req ProtectRequest) (*ProtectResult, error) {
+	res := &ProtectResult{Title: m.Title, Kind: m.Kind, Protect: req.Protect, Local: true}
+	if m.ProtectedLocal == req.Protect {
+		res.Unchanged = true
+		return res, nil
+	}
+	err := s.Store.SetLocalProtection(ctx, m.ID, req.Protect)
+	action := UnprotectAction
+	if req.Protect {
+		action = ProtectAction
+	}
+	entry := store.Action{At: s.now().Unix(), Action: action, MediaKind: m.Kind, Title: m.Title,
+		Success: err == nil, Username: req.Username}
+	if err != nil {
+		entry.Error = err.Error()
+	}
+	if lerr := s.Store.AddAction(context.WithoutCancel(ctx), entry); lerr != nil {
+		s.Log.Error("action not journaled", "err", lerr)
+	}
+	s.Log.Info("protection", "action", action, "title", m.Title, "local", true, "success", err == nil, "err", err,
+		"user", req.Username)
+	if err != nil {
+		return nil, err
 	}
 	return res, nil
 }

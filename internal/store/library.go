@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"strconv"
 	"strings"
 	"time"
 
@@ -15,36 +16,38 @@ import (
 // filter". Every value reaches SQL as a bound parameter; only whitelisted
 // fragments are concatenated.
 type LibraryFilter struct {
-	Kind       string   // movie | series (required)
-	Query      string   // free text, accent/case-insensitive
-	States     []string // never | in_progress | completed | abandoned
-	LastViewed string   // never | 30 | 90 | 180 | 365 ("not watched for more than N days", never included)
-	Added      string   // lt30 | gt180 | gt365
-	Genres     []string // any of
-	YearMin    int
-	YearMax    int
-	RatingMin  float64
-	Tags       []string // any of
-	Profile    string
-	Network    string // network (series) or studio (movies)
-	Status     string // continuing | ended (series)
-	SizeMinGB  float64
-	SeenBy     []int64 // watched (at least one session) by every listed user
-	UnseenBy   []int64 // never watched by any listed user
-	Nobody     bool    // no session at all
-	ViewersMin int
-	Match      []string // matched | arr_only | plex_only
-	User       int64    // perspective: states, progress and last view of this user
-	Sort       string   // title | last | added | size | plays | rating | inactive
-	Desc       bool
-	Offset     int
-	Limit      int
+	Kind   string   // movie | series (required)
+	Query  string   // free text, accent/case-insensitive
+	States []string // never | in_progress | completed | abandoned
+	// InactiveDays: not watched for N days or more; never-watched items count
+	// from the date they were added (same rule as the cleanup page).
+	InactiveDays int
+	Added        string   // lt30 | gt180 | gt365
+	Genres       []string // any of
+	YearMin      int
+	YearMax      int
+	RatingMin    float64
+	Tags         []string // any of
+	Profile      string
+	Network      string // network (series) or studio (movies)
+	Status       string // continuing | ended (series)
+	SizeMinGB    float64
+	SizeMaxGB    float64
+	Match        []string // matched | arr_only | plex_only
+	// User: "who?": states, progress, plays and last view become this
+	// user's (0: everyone).
+	User   int64
+	Sort   string // title | last | added | size | plays | rating | inactive
+	Desc   bool
+	Offset int
+	Limit  int
 }
 
 // LibraryItem is one card / table row.
 type LibraryItem struct {
 	ID                 int64
 	ArrID              int64 // 0 for plex_only
+	PlexRatingKey      string
 	Kind               string
 	Title              string
 	Year               int
@@ -62,6 +65,7 @@ type LibraryItem struct {
 	Tags               []string
 	MatchState         string
 	Status             string
+	ProtectedLocal     bool // protected in Cleanarr only (plex_only items)
 }
 
 // SortKeys maps sort names to their ORDER BY expression (whitelist).
@@ -170,12 +174,8 @@ func libraryWhere(b *sqlBuilder, f LibraryFilter, now time.Time) {
 	if len(f.States) > 0 {
 		b.add(` AND v.eff_state IN (`+placeholders(len(f.States))+`)`, anyStrings(f.States)...)
 	}
-	switch f.LastViewed {
-	case "never":
-		b.add(` AND v.eff_last IS NULL`)
-	case "30", "90", "180", "365":
-		days := map[string]int64{"30": 30, "90": 90, "180": 180, "365": 365}[f.LastViewed]
-		b.add(` AND (v.eff_last IS NULL OR v.eff_last < ?)`, now.Unix()-days*day)
+	if f.InactiveDays > 0 {
+		b.add(` AND COALESCE(v.eff_last, v.added_at, 0) < ?`, now.Unix()-int64(f.InactiveDays)*day)
 	}
 	switch f.Added {
 	case "lt30":
@@ -214,17 +214,8 @@ func libraryWhere(b *sqlBuilder, f LibraryFilter, now time.Time) {
 	if f.SizeMinGB > 0 {
 		b.add(` AND v.size_bytes >= ?`, int64(f.SizeMinGB*1e9))
 	}
-	for _, u := range f.SeenBy {
-		b.add(` AND EXISTS (SELECT 1 FROM watch_events w WHERE w.media_id = v.id AND w.user_id = ?)`, u)
-	}
-	for _, u := range f.UnseenBy {
-		b.add(` AND NOT EXISTS (SELECT 1 FROM watch_events w WHERE w.media_id = v.id AND w.user_id = ?)`, u)
-	}
-	if f.Nobody {
-		b.add(` AND NOT EXISTS (SELECT 1 FROM watch_events w WHERE w.media_id = v.id)`)
-	}
-	if f.ViewersMin > 0 {
-		b.add(` AND v.distinct_viewers >= ?`, f.ViewersMin)
+	if f.SizeMaxGB > 0 {
+		b.add(` AND v.size_bytes <= ?`, int64(f.SizeMaxGB*1e9))
 	}
 	if len(f.Match) > 0 {
 		b.add(` AND v.match_state IN (`+placeholders(len(f.Match))+`)`, anyStrings(f.Match)...)
@@ -235,10 +226,10 @@ func libraryWhere(b *sqlBuilder, f LibraryFilter, now time.Time) {
 func LibraryQuery(f LibraryFilter, now time.Time, abandonDays int) (string, []any) {
 	b := &sqlBuilder{}
 	libraryView(b, f, now, abandonDays)
-	b.add(` SELECT v.id, COALESCE(v.arr_id, 0), v.kind, v.title, COALESCE(v.year, 0), v.eff_state, v.eff_plays,
+	b.add(` SELECT v.id, COALESCE(v.arr_id, 0), COALESCE(v.plex_rating_key, ''), v.kind, v.title, COALESCE(v.year, 0), v.eff_state, v.eff_plays,
 		v.distinct_viewers, v.eff_watched, COALESCE(v.downloaded_episodes, 0), COALESCE(v.total_episodes, 0),
 		v.eff_last, COALESCE(NULLIF(a.friendly_name, ''), a.username, ''), v.size_bytes, v.added_at,
-		COALESCE(v.rating, 0), v.tags, v.match_state, COALESCE(v.status, '')
+		COALESCE(v.rating, 0), v.tags, v.match_state, COALESCE(v.status, ''), v.protected_local
 		FROM v LEFT JOIN plex_accounts a ON a.account_id = v.eff_last_by`)
 	libraryWhere(b, f, now)
 	col, ok := sortKeys[f.Sort]
@@ -271,9 +262,9 @@ func (s *Store) Library(ctx context.Context, f LibraryFilter, now time.Time, aba
 		var it LibraryItem
 		var last, added sql.NullInt64
 		var tags string
-		if err := rows.Scan(&it.ID, &it.ArrID, &it.Kind, &it.Title, &it.Year, &it.State, &it.Plays, &it.Viewers,
+		if err := rows.Scan(&it.ID, &it.ArrID, &it.PlexRatingKey, &it.Kind, &it.Title, &it.Year, &it.State, &it.Plays, &it.Viewers,
 			&it.WatchedEpisodes, &it.DownloadedEpisodes, &it.TotalEpisodes, &last, &it.LastViewedBy, &it.SizeBytes,
-			&added, &it.Rating, &tags, &it.MatchState, &it.Status); err != nil {
+			&added, &it.Rating, &tags, &it.MatchState, &it.Status, &it.ProtectedLocal); err != nil {
 			return nil, err
 		}
 		it.LastViewedAt, it.AddedAt = ptrInt(last), ptrInt(added)
@@ -383,6 +374,14 @@ func (s *Store) LastSyncAt(ctx context.Context) (*int64, error) {
 // ImageInfo returns the title and remote image URL of a Sonarr/Radarr item;
 // ok is false when no such item exists.
 func (s *Store) ImageInfo(ctx context.Context, kind string, arrID int64, variant string) (title, remote string, ok bool, err error) {
+	if kind == "plex" { // arrID is a Plex rating key
+		err = s.db.QueryRowContext(ctx, `SELECT title FROM media WHERE plex_rating_key = ? LIMIT 1`,
+			strconv.FormatInt(arrID, 10)).Scan(&title)
+		if errors.Is(err, sql.ErrNoRows) {
+			return "", "", false, nil
+		}
+		return title, "", err == nil, err
+	}
 	col := "poster_remote_url"
 	if variant == "fanart" {
 		col = "fanart_remote_url"

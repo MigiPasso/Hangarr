@@ -13,10 +13,10 @@
       </summary>
 
       {{with $d.Facets}}{{if .Users}}
-      <div class="title-row"><label for="pov-user" class="field-label">{{t "Point of view"}}</label>{{template "info" (t "States, progress and last view become those of this user.")}}</div>
+      <div class="title-row"><label for="pov-user" class="field-label">{{t "Who?"}}</label>{{template "info" (t "States, progress and last view become those of this user.")}}</div>
       <label class="field">
         <select id="pov-user" name="user">
-          <option value="">{{t "All users"}}</option>
+          <option value="">{{t "Everyone"}}</option>
           {{range .Users}}<option value="{{.ID}}"{{if eq .ID $d.Filter.User}} selected{{end}}>{{.Name}}</option>{{end}}
         </select>
       </label>
@@ -29,13 +29,14 @@
         {{end}}
       </fieldset>
 
-      <label class="field">{{t "Last watched"}}
-        <select name="last">
+      <div class="title-row"><label for="f-inactive" class="field-label">{{t "Not watched for"}}</label>{{template "info" (t "Never watched: counted from the date added, like on the Cleanup page.")}}</div>
+      <label class="field">
+        <select id="f-inactive" name="inactive">
           <option value="">{{t "Any"}}</option>
-          <option value="never"{{if eq $d.Filter.LastViewed "never"}} selected{{end}}>{{t "Never watched"}}</option>
-          {{range list "30" "90" "180" "365"}}
-          <option value="{{.}}"{{if eq $d.Filter.LastViewed .}} selected{{end}}>{{t "Not watched for %s+ days" .}}</option>
-          {{end}}
+          <option value="30"{{if eq $d.Filter.InactiveDays 30}} selected{{end}}>{{t "1 month"}}</option>
+          <option value="90"{{if eq $d.Filter.InactiveDays 90}} selected{{end}}>{{t "3 months"}}</option>
+          <option value="180"{{if eq $d.Filter.InactiveDays 180}} selected{{end}}>{{t "6 months"}}</option>
+          <option value="365"{{if eq $d.Filter.InactiveDays 365}} selected{{end}}>{{t "1 year"}}</option>
         </select>
       </label>
 
@@ -48,6 +49,14 @@
         </select>
       </label>
 
+      <fieldset>
+        <legend>{{t "Size (GB)"}}</legend>
+        <div class="field-row">
+          <label class="field">{{t "Min."}}<input type="number" name="size_min" min="0" step="any" value="{{if $d.Filter.SizeMinGB}}{{$d.Filter.SizeMinGB}}{{end}}"></label>
+          <label class="field">{{t "Max."}}<input type="number" name="size_max" min="0" step="any" value="{{if $d.Filter.SizeMaxGB}}{{$d.Filter.SizeMaxGB}}{{end}}"></label>
+        </div>
+      </fieldset>
+
       {{if eq $d.Kind "series"}}
       <label class="field">{{t "Status"}}
         <select name="status">
@@ -59,45 +68,20 @@
       {{end}}
 
       {{with $d.Facets}}
-      <details{{if or $d.Filter.SeenBy $d.Filter.UnseenBy $d.Filter.Nobody $d.Filter.ViewersMin}} open{{end}}>
-        <summary>{{t "Viewers|many"}}</summary>
-        {{if .Users}}
-        <fieldset><legend>{{t "Watched by"}}</legend>
-          {{range .Users}}<label class="check"><input type="checkbox" name="seen_by" value="{{.ID}}"{{if hasID $d.Filter.SeenBy .ID}} checked{{end}}> {{.Name}}</label>{{end}}
-        </fieldset>
-        <fieldset><legend>{{t "Never watched by"}}</legend>
-          {{range .Users}}<label class="check"><input type="checkbox" name="unseen_by" value="{{.ID}}"{{if hasID $d.Filter.UnseenBy .ID}} checked{{end}}> {{.Name}}</label>{{end}}
+      <details class="more-filters"{{if $d.More}} open{{end}}>
+        <summary>{{t "More filters"}}</summary>
+        {{if .Genres}}
+        <fieldset><legend>{{t "Genres"}}</legend>
+          <div class="check-list">
+            {{range .Genres}}<label class="check"><input type="checkbox" name="genre" value="{{.}}"{{if has $d.Filter.Genres .}} checked{{end}}> {{.}}</label>{{end}}
+          </div>
         </fieldset>
         {{end}}
-        <label class="check"><input type="checkbox" name="nobody" value="1"{{if $d.Filter.Nobody}} checked{{end}}> {{t "Watched by nobody"}}</label>
-        <label class="field">{{t "Distinct viewers (min.)"}}
-          <input type="number" name="viewers_min" min="0" step="1" value="{{if $d.Filter.ViewersMin}}{{$d.Filter.ViewersMin}}{{end}}">
-        </label>
-      </details>
-
-      {{if .Genres}}
-      <details{{if $d.Filter.Genres}} open{{end}}>
-        <summary>{{t "Genres"}}</summary>
-        <div class="check-list">
-          {{range .Genres}}<label class="check"><input type="checkbox" name="genre" value="{{.}}"{{if has $d.Filter.Genres .}} checked{{end}}> {{.}}</label>{{end}}
-        </div>
-      </details>
-      {{end}}
-
-      <details{{if or $d.Filter.YearMin $d.Filter.YearMax $d.Filter.RatingMin $d.Filter.SizeMinGB}} open{{end}}>
-        <summary>{{t "Year, rating, size"}}</summary>
         <div class="field-row">
           <label class="field">{{t "Year min."}}<input type="number" name="year_min" min="1900" max="2100" value="{{if $d.Filter.YearMin}}{{$d.Filter.YearMin}}{{end}}"></label>
           <label class="field">{{t "Year max."}}<input type="number" name="year_max" min="1900" max="2100" value="{{if $d.Filter.YearMax}}{{$d.Filter.YearMax}}{{end}}"></label>
         </div>
-        <div class="field-row">
-          <label class="field">{{t "Rating min."}}<input type="number" name="rating_min" min="0" max="10" step="0.1" value="{{if $d.Filter.RatingMin}}{{$d.Filter.RatingMin}}{{end}}"></label>
-          <label class="field">{{t "Size min. (GB)"}}<input type="number" name="size_min" min="0" step="1" value="{{if $d.Filter.SizeMinGB}}{{$d.Filter.SizeMinGB}}{{end}}"></label>
-        </div>
-      </details>
-
-      <details{{if or $d.Filter.Tags $d.Filter.Profile $d.Filter.Network $d.Filter.Match}} open{{end}}>
-        <summary>{{if eq $d.Kind "series"}}Sonarr{{else}}Radarr{{end}}</summary>
+        <label class="field">{{t "Rating min."}}<input type="number" name="rating_min" min="0" max="10" step="0.1" value="{{if $d.Filter.RatingMin}}{{$d.Filter.RatingMin}}{{end}}"></label>
         {{if .Tags}}
         <fieldset><legend>{{t "Tags"}}</legend>
           {{range .Tags}}<label class="check"><input type="checkbox" name="tag" value="{{.}}"{{if has $d.Filter.Tags .}} checked{{end}}> {{.}}</label>{{end}}
@@ -115,8 +99,8 @@
             {{range .Networks}}<option{{if eq $d.Filter.Network .}} selected{{end}}>{{.}}</option>{{end}}
           </select>
         </label>
-        <fieldset><legend>{{t "Plex match"}}</legend>
-          {{range pairs "matched" "Matched" "arr_only" "Not in Plex" "plex_only" "Not in Sonarr/Radarr"}}
+        <fieldset><legend>{{t "Present in"}}</legend>
+          {{range pairs "matched" "Plex and Sonarr/Radarr" "arr_only" "Sonarr/Radarr only" "plex_only" "Plex only"}}
           <label class="check"><input type="checkbox" name="match" value="{{.V}}"{{if has $d.Filter.Match .V}} checked{{end}}> {{t .L}}</label>
           {{end}}
         </fieldset>

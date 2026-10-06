@@ -44,6 +44,7 @@ type Media struct {
 	LastViewedAt       *int64
 	LastViewedBy       string
 	WatchState         string
+	ProtectedLocal     bool // protected in Cleanarr only (plex_only items)
 }
 
 // MediaByID returns a media row; ErrNotFound if it does not exist.
@@ -59,13 +60,13 @@ func (s *Store) MediaByID(ctx context.Context, id int64) (*Media, error) {
 		COALESCE(m.total_episodes, 0), COALESCE(m.downloaded_episodes, 0), COALESCE(m.watched_episodes, 0),
 		COALESCE(m.runtime_minutes, 0), m.match_state, COALESCE(m.match_method, ''), m.play_count,
 		m.completed_play_count, m.watch_seconds, m.distinct_viewers, m.last_viewed_at,
-		COALESCE(NULLIF(a.friendly_name, ''), a.username, ''), m.watch_state
+		COALESCE(NULLIF(a.friendly_name, ''), a.username, ''), m.watch_state, m.protected_local
 		FROM media m LEFT JOIN plex_accounts a ON a.account_id = m.last_viewed_by WHERE m.id = ?`, id).Scan(
 		&m.ID, &m.Kind, &m.ArrID, &m.PlexRatingKey, &m.Title, &m.TitleSlug, &m.Year, &m.Overview, &m.TvdbID,
 		&m.TmdbID, &m.ImdbID, &m.Status, &genres, &m.NetworkOrStudio, &m.Rating, &m.SizeBytes, &added, &tags,
 		&m.QualityProfile, &m.Monitored, &m.Path, &m.HasFile, &m.TotalEpisodes, &m.DownloadedEpisodes,
 		&m.WatchedEpisodes, &m.RuntimeMinutes, &m.MatchState, &m.MatchMethod, &m.Plays, &m.CompletedPlays,
-		&m.WatchSeconds, &m.Viewers, &last, &m.LastViewedBy, &m.WatchState)
+		&m.WatchSeconds, &m.Viewers, &last, &m.LastViewedBy, &m.WatchState, &m.ProtectedLocal)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -200,6 +201,12 @@ func (s *Store) UserWatches(ctx context.Context, mediaID int64) ([]EpisodeWatch,
 // History rows keep their data with media_id set to NULL.
 func (s *Store) DeleteMedia(ctx context.Context, id int64) error {
 	_, err := s.db.ExecContext(ctx, `DELETE FROM media WHERE id = ?`, id)
+	return err
+}
+
+// SetLocalProtection protects (or not) an item in Cleanarr only.
+func (s *Store) SetLocalProtection(ctx context.Context, id int64, protected bool) error {
+	_, err := s.db.ExecContext(ctx, `UPDATE media SET protected_local = ? WHERE id = ?`, protected, id)
 	return err
 }
 

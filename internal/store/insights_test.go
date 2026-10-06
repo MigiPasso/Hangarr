@@ -115,7 +115,7 @@ func TestGenresCompletionWho(t *testing.T) {
 func TestCleanupLists(t *testing.T) {
 	st := synced(t)
 	ctx := context.Background()
-	items, total, err := st.CleanupCandidates(ctx, scope(), "", "", false, 100)
+	items, total, err := st.CleanupCandidates(ctx, scope(), store.CleanupFilter{}, "", false, 100)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -130,7 +130,7 @@ func TestCleanupLists(t *testing.T) {
 	// A longer delay drops The Expanse (left 140 days ago).
 	strict := scope()
 	strict.Cutoff = now.Unix() - 150*dayS
-	if items, _, _ := st.CleanupCandidates(ctx, strict, "", "", false, 100); len(items) != 2 {
+	if items, _, _ := st.CleanupCandidates(ctx, strict, store.CleanupFilter{}, "", false, 100); len(items) != 2 {
 		t.Errorf("150 days: %d candidates, want 2", len(items))
 	}
 	for _, it := range items {
@@ -138,7 +138,7 @@ func TestCleanupLists(t *testing.T) {
 			t.Errorf("%s must be excluded", it.Title)
 		}
 	}
-	series, _, _ := st.CleanupCandidates(ctx, scope(), "series", "", false, 100)
+	series, _, _ := st.CleanupCandidates(ctx, scope(), store.CleanupFilter{Kind: "series"}, "", false, 100)
 	for _, it := range series {
 		if it.Kind != "series" {
 			t.Errorf("kind filter: %+v", it)
@@ -185,7 +185,7 @@ func TestCleanupCandidatesSort(t *testing.T) {
 	ctx := context.Background()
 	titles := func(sort string, desc bool) string {
 		t.Helper()
-		items, _, err := st.CleanupCandidates(ctx, scope(), "", sort, desc, 100)
+		items, _, err := st.CleanupCandidates(ctx, scope(), store.CleanupFilter{}, sort, desc, 100)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -212,5 +212,50 @@ func TestCleanupCandidatesSort(t *testing.T) {
 		if got := titles(c.sort, c.desc); got != c.want {
 			t.Errorf("sort=%q desc=%v: %s, want %s", c.sort, c.desc, got, c.want)
 		}
+	}
+}
+
+func TestCleanupCandidatesFilter(t *testing.T) {
+	st := synced(t)
+	ctx := context.Background()
+	all, _, err := st.CleanupCandidates(ctx, scope(), store.CleanupFilter{}, "", false, 100)
+	if err != nil || len(all) < 3 {
+		t.Fatalf("candidates: %+v %v", all, err)
+	}
+	zero, one := 0, 1
+	for name, c := range map[string]struct {
+		f    store.CleanupFilter
+		keep func(store.CleanupItem) bool
+	}{
+		"never":        {store.CleanupFilter{States: []string{"never"}}, func(it store.CleanupItem) bool { return it.State == "never" }},
+		"never+compl.": {store.CleanupFilter{States: []string{"never", "completed"}}, func(it store.CleanupItem) bool { return it.State == "never" || it.State == "completed" }},
+		"no plays":     {store.CleanupFilter{PlaysMax: &zero}, func(it store.CleanupItem) bool { return it.Plays == 0 }},
+		"played":       {store.CleanupFilter{PlaysMin: 1}, func(it store.CleanupItem) bool { return it.Plays >= 1 }},
+		"at most one":  {store.CleanupFilter{PlaysMax: &one}, func(it store.CleanupItem) bool { return it.Plays <= 1 }},
+		"10 GB+":       {store.CleanupFilter{SizeMinGB: 10}, func(it store.CleanupItem) bool { return it.SizeBytes >= 10e9 }},
+		"under 10 GB":  {store.CleanupFilter{SizeMaxGB: 10}, func(it store.CleanupItem) bool { return it.SizeBytes <= 10e9 }},
+	} {
+		items, total, err := st.CleanupCandidates(ctx, scope(), c.f, "", false, 100)
+		if err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		var want []string
+		var wantTotal int64
+		for _, it := range all {
+			if c.keep(it) {
+				want = append(want, it.Title)
+				wantTotal += it.SizeBytes
+			}
+		}
+		var got []string
+		for _, it := range items {
+			got = append(got, it.Title)
+		}
+		if strings.Join(got, ",") != strings.Join(want, ",") || total != wantTotal {
+			t.Errorf("%s: got %v (%d), want %v (%d)", name, got, total, want, wantTotal)
+		}
+	}
+	if items, _, _ := st.CleanupCandidates(ctx, scope(), store.CleanupFilter{States: []string{"never"}}, "", false, 100); len(items) == 0 || len(items) == len(all) {
+		t.Errorf("the scenario must have never-watched and watched candidates: %d of %d", len(items), len(all))
 	}
 }

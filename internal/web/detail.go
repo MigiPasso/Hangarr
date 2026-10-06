@@ -254,8 +254,12 @@ func (s *Server) detail(kind string) http.HandlerFunc {
 		}
 		ctx := r.Context()
 		d := detailData{M: m, Path: kindPath(kind), Links: s.links(ctx, m),
-			Protected: isProtected(m.Tags, s.Config.ProtectedTags), Deletable: m.ArrID > 0}
-		if len(s.Config.ProtectedTags) > 0 && m.ArrID > 0 && s.Actions != nil {
+			Protected: isProtected(m.Tags, s.Config.ProtectedTags) || m.ProtectedLocal, Deletable: plexDeletable(m) || m.ArrID > 0}
+		switch {
+		case s.Actions == nil:
+		case plexDeletable(m):
+			d.CanProtect = true // in Cleanarr only
+		case len(s.Config.ProtectedTags) > 0 && m.ArrID > 0:
 			d.CanProtect, d.ProtectTag = true, s.Config.ProtectedTags[0]
 		}
 		if sess := sessionFrom(r); sess != nil {
@@ -302,9 +306,14 @@ func (s *Server) detail(kind string) http.HandlerFunc {
 
 // --- deletion -----------------------------------------------------------------
 
+// plexDeletable: only Plex still knows the item, so it is deleted through
+// Plex (no season deletion there).
+func plexDeletable(m *store.Media) bool { return m.ArrID == 0 && m.PlexRatingKey != "" }
+
 type deleteData struct {
 	M               *store.Media
 	Path            string
+	Plex            bool // deleted through Plex: files always deleted, size may be unknown
 	Season          *int
 	SizeBytes       int64
 	DryRun          bool
@@ -316,9 +325,9 @@ type deleteData struct {
 }
 
 func (s *Server) deleteForm(r *http.Request, m *store.Media, season *int) (deleteData, error) {
-	d := deleteData{M: m, Path: kindPath(m.Kind), Season: season, SizeBytes: m.SizeBytes, DryRun: s.Config.DryRun,
+	d := deleteData{M: m, Path: kindPath(m.Kind), Plex: m.ArrID == 0, Season: season, SizeBytes: m.SizeBytes, DryRun: s.Config.DryRun,
 		ConfirmByTyping: s.Config.ConfirmByTyping && m.Kind == "series" && season == nil,
-		Protected:       isProtected(m.Tags, s.Config.ProtectedTags), DeleteFiles: true}
+		Protected:       isProtected(m.Tags, s.Config.ProtectedTags) || m.ProtectedLocal, DeleteFiles: true}
 	if season != nil {
 		seasons, err := s.Store.Seasons(r.Context(), m.ID)
 		if err != nil {
@@ -360,11 +369,12 @@ func (s *Server) deletePage(kind string) http.HandlerFunc {
 		if !ok {
 			return
 		}
-		if m.ArrID == 0 {
+		season := seasonParam(r.URL.Query().Get("season"))
+		if m.ArrID == 0 && (!plexDeletable(m) || season != nil) {
 			s.notFound(w, r)
 			return
 		}
-		d, err := s.deleteForm(r, m, seasonParam(r.URL.Query().Get("season")))
+		d, err := s.deleteForm(r, m, season)
 		if err != nil {
 			s.serverError(w, r, err)
 			return
@@ -381,11 +391,13 @@ var actionErrors = []struct {
 	{actions.ErrNotFound, "Item not found."},
 	{actions.ErrNotDeletable, "Not managed by Sonarr/Radarr: cannot be deleted."},
 	{actions.ErrProtected, "Protected by a tag."},
+	{actions.ErrProtectedLocal, "Protected in Cleanarr."},
 	{actions.ErrConfirmMismatch, "The typed title does not match."},
 	{actions.ErrNoSuchSeason, "Season not found."},
 	{actions.ErrNotManaged, "Not managed by Sonarr/Radarr: cannot be protected."},
 	{actions.ErrNoProtectedTag, "No protection tag configured (PROTECTED_TAGS)."},
 	{actions.ErrUnconfigured, "Service not configured."},
+	{actions.ErrPlexDeletionDenied, "Plex refused the deletion: allow it on the Plex server (Settings › Library › Allow media deletion)."},
 	{actions.ErrUnmonitorAfterDelete, "Files deleted, but the season could not be unmonitored: Sonarr may download it again."},
 }
 
@@ -560,6 +572,10 @@ func (s *Server) protectSubmit(kind string) http.HandlerFunc {
 			msg, level = l.T("“%s” is already protected.", res.Title), "info"
 		case res.Unchanged:
 			msg, level = l.T("“%s” is not protected.", res.Title), "info"
+		case res.Local && protect:
+			msg, level = l.T("“%s” is protected in Cleanarr: it can no longer be deleted. Plex is not changed.", res.Title), "success"
+		case res.Local:
+			msg, level = l.T("“%s” is no longer protected.", res.Title), "success"
 		case res.DryRun && protect:
 			msg, level = l.T("Simulation: “%s” would have received the %s tag. Nothing changed.", res.Title, res.Tag), "info"
 		case res.DryRun:

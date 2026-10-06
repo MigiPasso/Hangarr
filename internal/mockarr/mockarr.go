@@ -39,6 +39,9 @@ type Mock struct {
 	APIKey   string
 	// ShiftSeconds is added to history timestamps (keeps dev data recent).
 	ShiftSeconds int64
+	// PlexDeletionDenied makes Plex refuse deletions (403), like a server
+	// without "Allow media deletion".
+	PlexDeletionDenied bool
 
 	mu    sync.Mutex
 	calls []Call
@@ -226,6 +229,38 @@ func (m *Mock) Plex() http.Handler {
 		w.WriteHeader(http.StatusOK)
 	})
 	mux.HandleFunc("PUT /library/sections/{key}/emptyTrash", func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+	// Posters: the item's thumb/art, or the photo transcoder (resized).
+	plexImage := func(w http.ResponseWriter, key, variant string) {
+		id, err := strconv.ParseInt(key, 10, 64)
+		if err != nil || (variant != "thumb" && variant != "art") {
+			http.NotFound(w, nil)
+			return
+		}
+		cover := map[string]string{"thumb": "poster", "art": "fanart"}[variant]
+		w.Header().Set("Content-Type", "image/png")
+		_ = png.Encode(w, coverImage("plex", id, cover))
+	}
+	mux.HandleFunc("GET /library/metadata/{key}/{variant}", func(w http.ResponseWriter, r *http.Request) {
+		m.hit("plex:image")
+		plexImage(w, r.PathValue("key"), r.PathValue("variant"))
+	})
+	mux.HandleFunc("GET /photo/:/transcode", func(w http.ResponseWriter, r *http.Request) {
+		m.hit("plex:transcode")
+		rest, ok := strings.CutPrefix(r.URL.Query().Get("url"), "/library/metadata/")
+		key, variant, _ := strings.Cut(rest, "/")
+		if !ok {
+			http.NotFound(w, r)
+			return
+		}
+		plexImage(w, key, variant)
+	})
+	mux.HandleFunc("DELETE /library/metadata/{key}", func(w http.ResponseWriter, _ *http.Request) {
+		if m.PlexDeletionDenied {
+			http.Error(w, "Forbidden", http.StatusForbidden)
+			return
+		}
 		w.WriteHeader(http.StatusOK)
 	})
 	mux.HandleFunc("GET /accounts", func(w http.ResponseWriter, _ *http.Request) {

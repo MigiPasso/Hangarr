@@ -262,8 +262,12 @@ func TestDeleteMovieAndErrors(t *testing.T) {
 	if len(calls) != 1 || calls[0].Path != "/api/v3/movie/3" || calls[0].Query != "addImportExclusion=false&deleteFiles=false" {
 		t.Fatalf("calls: %+v", calls)
 	}
+	// plex_only items go through Plex (TestDeletePlexOnly), but not without a rating key.
+	if _, err := e.st.DB().Exec(`UPDATE media SET plex_rating_key = NULL WHERE title = 'Vacances 2019'`); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := e.svc.Delete(context.Background(), Request{MediaID: e.mediaID("movie", "Vacances 2019")}); !errors.Is(err, ErrNotDeletable) {
-		t.Errorf("plex_only: %v", err)
+		t.Errorf("no arr id nor rating key: %v", err)
 	}
 	if _, err := e.svc.Delete(context.Background(), Request{MediaID: e.mediaID("series", "Arcane"), Season: intp(7)}); !errors.Is(err, ErrNoSuchSeason) {
 		t.Errorf("missing season: %v", err)
@@ -286,5 +290,81 @@ func TestUnmonitorSeasonKeepsUnknownFields(t *testing.T) {
 	}
 	if _, ok, _ := sonarr.UnmonitorSeason(raw, 9); ok {
 		t.Error("unknown season reported as found")
+	}
+}
+
+func (e *env) plexCalls() []mockarr.Call {
+	var out []mockarr.Call
+	for _, c := range e.mock.Calls() {
+		if c.Service == "plex" && c.Method == http.MethodDelete {
+			out = append(out, c)
+		}
+	}
+	return out
+}
+
+func TestDeletePlexOnly(t *testing.T) {
+	e := newEnv(t, false)
+	ctx := context.Background()
+	movie := e.mediaID("movie", "Vacances 2019")
+	res, err := e.svc.Delete(ctx, Request{MediaID: movie, Username: "admin"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Action != DeletePlex || res.DryRun {
+		t.Errorf("result: %+v", res)
+	}
+	if calls := e.plexCalls(); len(calls) != 1 || calls[0].Path != "/library/metadata/105" {
+		t.Fatalf("plex calls: %+v", calls)
+	}
+	if len(e.destructive()) != 0 {
+		t.Error("Sonarr/Radarr must not be called")
+	}
+	if _, err := e.st.MediaByID(ctx, movie); !errors.Is(err, store.ErrNotFound) {
+		t.Errorf("local row must be removed: %v", err)
+	}
+	if a := e.lastAction(); !a.Success || a.Action != DeletePlex || !a.DeleteFiles || a.ImportExclusion || a.Username != "admin" {
+		t.Errorf("journal: %+v", a)
+	}
+
+	// A whole series still needs its title; no season deletion through Plex.
+	show := e.mediaID("series", "Home Videos")
+	if _, err := e.svc.Delete(ctx, Request{MediaID: show}); !errors.Is(err, ErrConfirmMismatch) {
+		t.Errorf("series without title: %v", err)
+	}
+	if _, err := e.svc.Delete(ctx, Request{MediaID: show, Season: intp(1)}); !errors.Is(err, ErrNotDeletable) {
+		t.Errorf("season through Plex: %v", err)
+	}
+	// Plex refuses when media deletion is not allowed: explained and journaled.
+	e.mock.PlexDeletionDenied = true
+	if _, err := e.svc.Delete(ctx, Request{MediaID: show, ConfirmTitle: "home videos"}); !errors.Is(err, ErrPlexDeletionDenied) {
+		t.Errorf("denied: %v", err)
+	}
+	if a := e.lastAction(); a.Success || a.Action != DeletePlex || a.Error == "" {
+		t.Errorf("journal of the refusal: %+v", a)
+	}
+	if _, err := e.st.MediaByID(ctx, show); err != nil {
+		t.Errorf("refused deletion must keep the row: %v", err)
+	}
+	e.mock.PlexDeletionDenied = false
+	if _, err := e.svc.Delete(ctx, Request{MediaID: show, ConfirmTitle: "home videos"}); err != nil {
+		t.Fatal(err)
+	}
+	if calls := e.plexCalls(); len(calls) != 3 || calls[2].Path != "/library/metadata/205" {
+		t.Errorf("plex calls: %+v", calls)
+	}
+}
+
+func TestDeletePlexOnlyDryRun(t *testing.T) {
+	e := newEnv(t, true)
+	res, err := e.svc.Delete(context.Background(), Request{MediaID: e.mediaID("movie", "Vacances 2019")})
+	if err != nil || !res.DryRun {
+		t.Fatalf("%+v %v", res, err)
+	}
+	if calls := e.plexCalls(); len(calls) != 0 {
+		t.Errorf("dry-run must not call Plex: %+v", calls)
+	}
+	if a := e.lastAction(); !a.DryRun || !a.Success || a.Action != DeletePlex {
+		t.Errorf("journal: %+v", a)
 	}
 }

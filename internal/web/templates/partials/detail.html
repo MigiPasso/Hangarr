@@ -1,9 +1,9 @@
 {{define "detail_body"}}{{$d := .Data}}{{$m := $d.M}}
 <article class="detail state-{{$m.WatchState}}" data-media-id="{{$m.ID}}">
-  {{if $m.ArrID}}<div class="detail-hero"><img src="/img/{{$m.Kind}}/{{$m.ArrID}}/fanart" alt="" decoding="async"></div>{{end}}
+  {{with imgURL $m.Kind $m.ArrID $m.PlexRatingKey "fanart"}}<div class="detail-hero"><img src="{{.}}" alt="" decoding="async"></div>{{end}}
   <div class="detail-head">
     <div class="detail-poster">
-      {{if $m.ArrID}}<img src="/img/{{$m.Kind}}/{{$m.ArrID}}/poster" alt="" width="200" height="300" decoding="async">
+      {{with imgURL $m.Kind $m.ArrID $m.PlexRatingKey "poster"}}<img src="{{.}}" alt="" width="200" height="300" decoding="async">
       {{else}}<div class="poster-fallback">{{$m.Title}}</div>{{end}}
     </div>
     <div class="detail-info">
@@ -39,11 +39,11 @@
           <button type="submit">{{t "Protect"}}</button>
           {{end}}
         </form>
-        {{template "info" (t "Adds or removes the “%s” tag in Sonarr/Radarr. Protected items are never proposed nor deleted." $d.ProtectTag)}}
+        {{if $m.ArrID}}{{template "info" (t "Adds or removes the “%s” tag in Sonarr/Radarr. Protected items are never proposed nor deleted." $d.ProtectTag)}}{{else}}{{template "info" (t "Not in Sonarr/Radarr: protected in Cleanarr only, Plex is not changed. Protected items cannot be deleted.")}}{{end}}
         {{end}}
         {{if $d.Deletable}}
         <button type="button" class="danger" hx-get="{{$d.Path}}/{{$m.ID}}/delete" hx-target="#confirm-body"
-                {{if $d.Protected}}disabled title="{{t "Protected by a tag"}}"{{end}}>{{if eq $m.Kind "series"}}{{t "Delete series"}}{{else}}{{t "Delete movie"}}{{end}}</button>
+                {{if $d.Protected}}disabled title="{{if $m.ArrID}}{{t "Protected by a tag"}}{{else}}{{t "Protected in Cleanarr"}}{{end}}"{{end}}>{{if eq $m.Kind "series"}}{{t "Delete series"}}{{else}}{{t "Delete movie"}}{{end}}</button>
         {{end}}
       </p>
     </div>
