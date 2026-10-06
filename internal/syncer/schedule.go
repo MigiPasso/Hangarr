@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"time"
 )
 
@@ -25,27 +26,64 @@ func ParseClockTime(s string) (ClockTime, error) {
 	return c, nil
 }
 
-// NextDaily returns the next occurrence of at strictly after now, in loc.
-// time.Date normalizes DST gaps (02:30 on a spring-forward day runs at 03:30).
-func NextDaily(now time.Time, at ClockTime, loc *time.Location) time.Time {
-	n := now.In(loc)
-	next := time.Date(n.Year(), n.Month(), n.Day(), at.Hour, at.Minute, 0, 0, loc)
-	if !next.After(n) {
-		next = time.Date(n.Year(), n.Month(), n.Day()+1, at.Hour, at.Minute, 0, 0, loc)
+// EveryHours are the allowed sync intervals, in hours: divisors of 24, so
+// the sync times are the same every day. 24 is once a day.
+var EveryHours = []int{24, 12, 8, 6, 4, 3, 2, 1}
+
+// ValidEvery reports whether h is an allowed interval.
+func ValidEvery(h int) bool { return slices.Contains(EveryHours, h) }
+
+// Schedule is when syncs run: at At, then every EveryHours hours, each day.
+type Schedule struct {
+	At         ClockTime
+	EveryHours int // 24: once a day
+}
+
+func (sc Schedule) every() int {
+	if ValidEvery(sc.EveryHours) {
+		return sc.EveryHours
 	}
-	return next
+	return 24
+}
+
+// Times returns the sync times of a day, in order (04:00 every 6 h → 04:00,
+// 10:00, 16:00, 22:00).
+func (sc Schedule) Times() []ClockTime {
+	every := sc.every()
+	out := make([]ClockTime, 0, 24/every)
+	for k := range 24 / every {
+		out = append(out, ClockTime{Hour: (sc.At.Hour + k*every) % 24, Minute: sc.At.Minute})
+	}
+	slices.SortFunc(out, func(a, b ClockTime) int { return a.Hour - b.Hour })
+	return out
+}
+
+// Next returns the next sync time strictly after now, in loc. time.Date
+// normalizes DST gaps (02:30 on a spring-forward day runs at 03:30).
+func (sc Schedule) Next(now time.Time, loc *time.Location) time.Time {
+	n := now.In(loc)
+	times := sc.Times()
+	for d := 0; ; d++ {
+		for _, at := range times {
+			if t := time.Date(n.Year(), n.Month(), n.Day()+d, at.Hour, at.Minute, 0, 0, loc); t.After(n) {
+				return t
+			}
+		}
+	}
 }
 
 // CatchUpDue reports whether a sync should run at startup: never synced, or
-// the last sync is more than a day old (the app was down at the scheduled time).
-func CatchUpDue(last *int64, now time.Time) bool {
-	return last == nil || now.Sub(time.Unix(*last, 0)) > 24*time.Hour
+// the last sync is older than the interval (the app was down at a scheduled
+// time).
+func CatchUpDue(last *int64, now time.Time, sc Schedule) bool {
+	return last == nil || now.Sub(time.Unix(*last, 0)) > time.Duration(sc.every())*time.Hour
 }
 
-// SetDailyTime changes the daily sync time; a running Daily loop reschedules.
-func (s *Syncer) SetDailyTime(at ClockTime) {
+// SetSchedule changes the sync schedule; a running Loop reschedules.
+func (s *Syncer) SetSchedule(sc Schedule) {
+	sc.EveryHours = sc.every()
 	s.mu.Lock()
-	s.daily = at
+	s.schedule = sc
 	s.mu.Unlock()
 	select {
 	case s.wakeCh() <- struct{}{}:
@@ -53,16 +91,18 @@ func (s *Syncer) SetDailyTime(at ClockTime) {
 	}
 }
 
-// DailyTime returns the configured daily sync time.
-func (s *Syncer) DailyTime() ClockTime {
+// Schedule returns the sync schedule.
+func (s *Syncer) Schedule() Schedule {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.daily
+	sc := s.schedule
+	sc.EveryHours = sc.every()
+	return sc
 }
 
 // NextRun returns when the next scheduled sync will start.
 func (s *Syncer) NextRun() time.Time {
-	return NextDaily(s.now(), s.DailyTime(), s.location())
+	return s.Schedule().Next(s.now(), s.location())
 }
 
 func (s *Syncer) location() *time.Location {
@@ -81,12 +121,12 @@ func (s *Syncer) wakeCh() chan struct{} {
 	return s.wake
 }
 
-// Daily runs a catch-up sync at startup when due, then one sync per day at
-// DailyTime, until ctx ends. Changing the time reschedules immediately.
-func (s *Syncer) Daily(ctx context.Context) {
+// Loop runs a catch-up sync at startup when due, then syncs on the
+// schedule, until ctx ends. Changing the schedule reschedules immediately.
+func (s *Syncer) Loop(ctx context.Context) {
 	if last, err := s.Store.LastSyncAt(ctx); err != nil {
 		s.Log.Error("reading last sync", "err", err)
-	} else if CatchUpDue(last, s.now()) {
+	} else if CatchUpDue(last, s.now(), s.Schedule()) {
 		s.runLogged(ctx)
 	}
 	wake := s.wakeCh()

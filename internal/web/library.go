@@ -23,8 +23,8 @@ type SyncRunner interface {
 	Status() syncer.Status
 	Start(ctx context.Context) bool
 	RequestHistorySync(ctx context.Context) bool
-	DailyTime() syncer.ClockTime
-	SetDailyTime(at syncer.ClockTime)
+	Schedule() syncer.Schedule
+	SetSchedule(sc syncer.Schedule)
 	NextRun() time.Time
 }
 

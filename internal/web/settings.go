@@ -15,6 +15,9 @@ import (
 type settingsData struct {
 	Hour    string // "04"
 	Minute  string // "00"
+	Every   int    // hours between syncs (24: once a day)
+	Choices []int  // allowed intervals
+	Times   string // "04:00, 10:00, 16:00, 22:00" (several syncs a day)
 	NextRun string
 	Error   string
 	Saved   bool
@@ -27,10 +30,18 @@ type settingsPage struct {
 }
 
 func (s *Server) settingsData(l i18n.Localizer, errMsg string, saved bool) settingsData {
-	d := settingsData{Error: errMsg, Saved: saved}
+	d := settingsData{Error: errMsg, Saved: saved, Choices: syncer.EveryHours}
 	if s.Sync != nil {
-		at := s.Sync.DailyTime()
-		d.Hour, d.Minute = fmt.Sprintf("%02d", at.Hour), fmt.Sprintf("%02d", at.Minute)
+		sc := s.Sync.Schedule()
+		at := sc.At
+		d.Hour, d.Minute, d.Every = fmt.Sprintf("%02d", at.Hour), fmt.Sprintf("%02d", at.Minute), sc.EveryHours
+		if sc.EveryHours < 24 {
+			var times []string
+			for _, t := range sc.Times() {
+				times = append(times, t.String())
+			}
+			d.Times = strings.Join(times, ", ")
+		}
 		d.NextRun = l.DateTime(s.Sync.NextRun()) // already in the schedule time zone
 	}
 	return d
@@ -58,12 +69,26 @@ func (s *Server) settingsSubmit(w http.ResponseWriter, r *http.Request) {
 		s.renderSettings(w, r, http.StatusUnprocessableEntity, "Invalid time: hour 0 to 23, minute 0 to 59.", false)
 		return
 	}
-	if err := s.Store.SetSetting(r.Context(), store.SettingSyncTime, at.String(), time.Now()); err != nil {
+	every := 24 // field absent (older form): once a day
+	if v := r.PostFormValue("sync_every"); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil || !syncer.ValidEvery(n) {
+			s.renderSettings(w, r, http.StatusUnprocessableEntity, "Invalid frequency.", false)
+			return
+		}
+		every = n
+	}
+	now := time.Now()
+	if err := s.Store.SetSetting(r.Context(), store.SettingSyncTime, at.String(), now); err != nil {
 		s.serverError(w, r, err)
 		return
 	}
-	s.Sync.SetDailyTime(at)
-	s.Log.Info("daily sync time changed", "at", at.String(), "by", sessionFrom(r).Username)
+	if err := s.Store.SetSetting(r.Context(), store.SettingSyncEvery, strconv.Itoa(every), now); err != nil {
+		s.serverError(w, r, err)
+		return
+	}
+	s.Sync.SetSchedule(syncer.Schedule{At: at, EveryHours: every})
+	s.Log.Info("sync schedule changed", "at", at.String(), "every_hours", every, "by", sessionFrom(r).Username)
 	s.renderSettings(w, r, http.StatusOK, "", true)
 }
 

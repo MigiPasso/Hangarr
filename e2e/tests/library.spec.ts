@@ -90,6 +90,16 @@ test("daily sync time can be changed", async ({ page }) => {
   await page.reload();
   await expect(page.getByLabel("Heure", { exact: true })).toHaveValue("06");
   await expect(page.getByLabel("Minute", { exact: true })).toHaveValue("45");
+
+  // Several syncs a day: from the chosen time, every N hours.
+  await page.getByLabel("Fréquence").selectOption({ label: "Toutes les 6 heures" });
+  await page.locator("#settings-form").getByRole("button", { name: "Enregistrer" }).click();
+  await expect(page.getByText("Chaque jour à 00:45, 06:45, 12:45, 18:45")).toBeVisible();
+  await page.reload();
+  await expect(page.getByLabel("Fréquence")).toHaveValue("6");
+  await page.getByLabel("Fréquence").selectOption({ label: "Une fois par jour" });
+  await page.locator("#settings-form").getByRole("button", { name: "Enregistrer" }).click();
+  await expect(page.getByText(/Chaque jour à/)).toHaveCount(0);
 });
 
 test("theme button switches light / dark and remembers it", async ({ page }) => {
