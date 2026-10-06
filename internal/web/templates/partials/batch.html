@@ -1,4 +1,4 @@
-{{define "select_box"}}{{if and .ArrID (not (protected .Tags))}}<label class="select-box" title="{{t "Select"}}"><input type="checkbox" name="ids" value="{{.ID}}" form="batch-form" data-size="{{.SizeBytes}}" aria-label="{{t "Select %s" .Title}}"></label>{{end}}{{end}}
+{{define "select_box"}}{{if and .ArrID (not (or .ProtectedLocal (protected .Tags)))}}<label class="select-box" title="{{t "Select"}}"><input type="checkbox" name="ids" value="{{.ID}}" form="batch-form" data-size="{{.SizeBytes}}" aria-label="{{t "Select %s" .Title}}"></label>{{end}}{{end}}
 
 {{define "batch_bar"}}
 <form id="batch-form" class="batch-bar" method="post" action="/batch/delete" hx-post="/batch/delete" hx-target="#confirm-body" hidden>

@@ -1,17 +1,67 @@
 {{define "content"}}{{$d := .Data}}
-<div class="section-head">
-  <div class="title-row"><h1>{{t "Cleanup"}}</h1>{{template "info" (t "Nobody watched these for %d days or more (never watched: since added). Largest first. Protected items (%s) are never proposed. Set the delay in Settings." $d.Days $d.Protected)}}</div>
-  <nav class="tabs tabs-small" aria-label="{{t "Type"}}">
-    <a href="/cleanup"{{if eq $d.Kind ""}} aria-current="page"{{end}}>{{t "All|kinds"}}</a>
-    <a href="/cleanup?kind=series"{{if eq $d.Kind "series"}} aria-current="page"{{end}}>{{t "Series"}}</a>
-    <a href="/cleanup?kind=movie"{{if eq $d.Kind "movie"}} aria-current="page"{{end}}>{{t "Movies"}}</a>
-  </nav>
-</div>
+<div class="title-row"><h1>{{t "Cleanup"}}</h1>{{template "info" (t "Nobody watched these for %d days or more (never watched: since added). Largest first. Protected items (%s) are never proposed. Set the delay in Settings." $d.Days $d.Protected)}}</div>
 
+<div class="cleanup">
+  <form id="cleanup-filters" class="library-form" method="get" action="/cleanup"
+        hx-get="/cleanup" hx-target="#cleanup-results" hx-select="#cleanup-results" hx-swap="outerHTML"
+        hx-push-url="true" hx-sync="this:replace"
+        hx-trigger="change, input changed delay:400ms from:input[type=number], submit">
+    <input type="hidden" name="sort" value="{{$d.Sort}}">
+    <input type="hidden" name="dir" value="{{$d.Dir}}">
+    <aside class="filters" aria-label="{{t "Filters"}}">
+     <details class="filters-panel" open>
+      <summary class="filters-head">
+        <h2>{{t "Filters"}}</h2>
+        {{if or $d.Active $d.Kind}}<a class="small" href="/cleanup">{{t "Reset"}}</a>{{end}}
+      </summary>
+
+      <fieldset>
+        <legend>{{t "Type"}}</legend>
+        {{range pairs "" "All|kinds" "series" "Series" "movie" "Movies"}}
+        <label class="check"><input type="radio" name="kind" value="{{.V}}"{{if eq $d.Kind .V}} checked{{end}}> {{t .L}}</label>
+        {{end}}
+      </fieldset>
+
+      <div class="title-row"><label for="f-inactive" class="field-label">{{t "Not watched for"}}</label>{{template "info" (t "Never watched: counted from the date added. The shortest delay is set in Settings.")}}</div>
+      <label class="field">
+        <select id="f-inactive" name="inactive">
+          <option value="">{{tn $d.Days "%d day or more" "%d days or more"}}</option>
+          {{range $d.Longer}}<option value="{{.}}"{{if eq $d.Filter.InactiveDays .}} selected{{end}}>{{if eq . 180}}{{t "6 months"}}{{else if eq . 365}}{{t "1 year"}}{{else}}{{t "2 years"}}{{end}}</option>{{end}}
+        </select>
+      </label>
+
+      <fieldset>
+        <legend>{{t "Watch state"}}</legend>
+        {{range pairs "never" "Never watched" "in_progress" "In progress" "completed" "Completed" "abandoned" "Abandoned"}}
+        <label class="check"><input type="checkbox" name="state" value="{{.V}}"{{if has $d.Filter.States .V}} checked{{end}}> {{t .L}}</label>
+        {{end}}
+      </fieldset>
+
+      <fieldset>
+        <legend>{{t "Plays"}}</legend>
+        <div class="field-row">
+          <label class="field">{{t "Min."}}<input type="number" name="plays_min" min="0" step="1" value="{{$d.Filter.PlaysMin}}"></label>
+          <label class="field">{{t "Max."}}<input type="number" name="plays_max" min="0" step="1" value="{{$d.Filter.PlaysMax}}"></label>
+        </div>
+      </fieldset>
+
+      <fieldset>
+        <legend>{{t "Size (GB)"}}</legend>
+        <div class="field-row">
+          <label class="field">{{t "Min."}}<input type="number" name="size_min" min="0" step="any" value="{{$d.Filter.SizeMin}}"></label>
+          <label class="field">{{t "Max."}}<input type="number" name="size_max" min="0" step="any" value="{{$d.Filter.SizeMax}}"></label>
+        </div>
+      </fieldset>
+      <noscript><button type="submit" class="primary">{{t "Filter"}}</button></noscript>
+     </details>
+    </aside>
+  </form>
+
+<div id="cleanup-results" class="results" aria-live="polite">
 <div class="tiles">
   <div class="tile"><span class="tile-label">{{t "Recoverable"}}</span><span class="tile-value">{{bytes $d.Recoverable}}</span>
-    <span class="tile-hint">{{t "unwatched for %d+ days" $d.Days}}</span></div>
-  {{if ne $d.Kind "movie"}}<div class="tile"><span class="tile-label">{{t "Never-watched seasons"}}</span><span class="tile-value">{{bytes $d.SeasonsBytes}}</span>
+    <span class="tile-hint">{{if $d.Active}}{{t "matching the filters"}}{{else}}{{t "unwatched for %d+ days" $d.Days}}{{end}}</span></div>
+  {{if $d.Seasons}}<div class="tile"><span class="tile-label">{{t "Never-watched seasons"}}</span><span class="tile-value">{{bytes $d.SeasonsBytes}}</span>
     <span class="tile-hint">{{t "in series watched otherwise"}}</span></div>{{end}}
 </div>
 
@@ -39,6 +89,7 @@
       </tbody>
     </table>
   </div>
+  {{else if $d.Active}}<p class="muted">{{t "No candidate matches these filters."}}</p>
   {{else}}<p class="muted">{{t "No candidate: everything was watched in the last %d days or is protected." $d.Days}}</p>{{end}}
 </section>
 
@@ -64,5 +115,7 @@
   </div>
 </section>
 {{end}}
+</div>
+</div>
 {{template "batch_bar" .}}
 {{end}}

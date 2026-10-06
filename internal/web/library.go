@@ -30,10 +30,11 @@ type SyncRunner interface {
 
 var (
 	watchStates = []string{"never", "in_progress", "completed", "abandoned"}
-	lastOptions = []string{"never", "30", "90", "180", "365"}
-	addOptions  = []string{"lt30", "gt180", "gt365"}
-	matchStates = []string{"matched", "arr_only", "plex_only"}
-	statuses    = []string{"continuing", "ended"}
+	// inactiveOptions are the "not watched for" choices, in days.
+	inactiveOptions = []int{30, 90, 180, 365}
+	addOptions      = []string{"lt30", "gt180", "gt365"}
+	matchStates     = []string{"matched", "arr_only", "plex_only"}
+	statuses        = []string{"continuing", "ended"}
 )
 
 func pick(v string, allowed []string) string {
@@ -93,25 +94,24 @@ func atof(v string) float64 {
 // dropped, so URLs are shareable and safe to replay.
 func parseLibraryFilter(q url.Values, kind string) (store.LibraryFilter, int) {
 	f := store.LibraryFilter{
-		Kind:       kind,
-		Query:      strings.TrimSpace(q.Get("q")),
-		States:     pickAll(q["state"], watchStates),
-		LastViewed: pick(q.Get("last"), lastOptions),
-		Added:      pick(q.Get("added"), addOptions),
-		Genres:     nonEmpty(q["genre"]),
-		YearMin:    atoi(q.Get("year_min")),
-		YearMax:    atoi(q.Get("year_max")),
-		RatingMin:  atof(q.Get("rating_min")),
-		Tags:       nonEmpty(q["tag"]),
-		Profile:    strings.TrimSpace(q.Get("profile")),
-		Network:    strings.TrimSpace(q.Get("network")),
-		SizeMinGB:  atof(q.Get("size_min")),
-		SeenBy:     ids(q["seen_by"]),
-		UnseenBy:   ids(q["unseen_by"]),
-		Nobody:     q.Get("nobody") == "1",
-		ViewersMin: atoi(q.Get("viewers_min")),
-		Match:      pickAll(q["match"], matchStates),
-		Sort:       q.Get("sort"),
+		Kind:      kind,
+		Query:     strings.TrimSpace(q.Get("q")),
+		States:    pickAll(q["state"], watchStates),
+		Added:     pick(q.Get("added"), addOptions),
+		Genres:    nonEmpty(q["genre"]),
+		YearMin:   atoi(q.Get("year_min")),
+		YearMax:   atoi(q.Get("year_max")),
+		RatingMin: atof(q.Get("rating_min")),
+		Tags:      nonEmpty(q["tag"]),
+		Profile:   strings.TrimSpace(q.Get("profile")),
+		Network:   strings.TrimSpace(q.Get("network")),
+		SizeMinGB: atof(q.Get("size_min")),
+		SizeMaxGB: atof(q.Get("size_max")),
+		Match:     pickAll(q["match"], matchStates),
+		Sort:      q.Get("sort"),
+	}
+	if n := atoi(q.Get("inactive")); slices.Contains(inactiveOptions, n) {
+		f.InactiveDays = n
 	}
 	if len(f.Query) > 200 {
 		f.Query = f.Query[:200]
@@ -157,7 +157,7 @@ func filterValues(f store.LibraryFilter) url.Values {
 	}
 	set("q", f.Query)
 	v["state"] = f.States
-	set("last", f.LastViewed)
+	num("inactive", f.InactiveDays)
 	set("added", f.Added)
 	v["genre"] = f.Genres
 	num("year_min", f.YearMin)
@@ -168,16 +168,7 @@ func filterValues(f store.LibraryFilter) url.Values {
 	set("network", f.Network)
 	set("status", f.Status)
 	flt("size_min", f.SizeMinGB)
-	for _, u := range f.SeenBy {
-		v.Add("seen_by", strconv.FormatInt(u, 10))
-	}
-	for _, u := range f.UnseenBy {
-		v.Add("unseen_by", strconv.FormatInt(u, 10))
-	}
-	if f.Nobody {
-		v.Set("nobody", "1")
-	}
-	num("viewers_min", f.ViewersMin)
+	flt("size_max", f.SizeMaxGB)
 	v["match"] = f.Match
 	if f.User > 0 {
 		v.Set("user", strconv.FormatInt(f.User, 10))
@@ -214,6 +205,8 @@ type libraryData struct {
 	ViewURLs  map[string]string
 	UserName  string
 	Active    bool // at least one filter set
+	More      bool // a filter of the « More filters » block is set (opens it)
+	Inactive  []int
 }
 
 func (s *Server) pageSize() int {
@@ -271,6 +264,9 @@ func (s *Server) library(kind, path, title string) http.HandlerFunc {
 		active.Del("sort")
 		active.Del("dir")
 		data.Active = len(active) > 0
+		data.More = len(f.Genres) > 0 || f.YearMin > 0 || f.YearMax > 0 || f.RatingMin > 0 || len(f.Tags) > 0 ||
+			f.Profile != "" || f.Network != "" || len(f.Match) > 0
+		data.Inactive = inactiveOptions
 		data.ViewURLs = map[string]string{}
 		for _, v := range []string{"grid", "table"} {
 			u := filterValues(f)
@@ -304,7 +300,7 @@ func (s *Server) library(kind, path, title string) http.HandlerFunc {
 func (s *Server) image(w http.ResponseWriter, r *http.Request) {
 	kind, variant := r.PathValue("kind"), r.PathValue("variant")
 	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
-	if s.Images == nil || err != nil || id <= 0 || (kind != "series" && kind != "movie") ||
+	if s.Images == nil || err != nil || id <= 0 || (kind != "series" && kind != "movie" && kind != "plex") ||
 		(variant != "poster" && variant != "fanart") {
 		http.NotFound(w, r)
 		return

@@ -1,7 +1,7 @@
 // Package actions performs deletions through Sonarr/Radarr (SPEC §7.4) with
 // server-side safeguards: dry-run, protection tags checked on live *arr
 // data, typed confirmation for whole series, and a journal entry for every
-// attempt.
+// attempt. Items that only Plex still knows are deleted through Plex.
 package actions
 
 import (
@@ -25,6 +25,7 @@ const (
 	DeleteSeries = "delete_series"
 	DeleteSeason = "delete_season"
 	DeleteMovie  = "delete_movie"
+	DeletePlex   = "delete_plex" // movie or series known by Plex only
 )
 
 // Errors explained to the user (the web layer translates them).
@@ -33,11 +34,15 @@ var (
 	ErrUnconfigured    = errors.New("service not configured")
 	ErrNotDeletable    = errors.New("not managed by Sonarr/Radarr: cannot be deleted")
 	ErrProtected       = errors.New("protected by a tag")
+	ErrProtectedLocal  = errors.New("protected in Cleanarr")
 	ErrConfirmMismatch = errors.New("the typed title does not match")
 	ErrNoSuchSeason    = errors.New("season not found")
 	// ErrUnmonitorAfterDelete: the season files were deleted but the season
 	// could not be unmonitored (Sonarr may download it again).
 	ErrUnmonitorAfterDelete = errors.New("files deleted but the season was not unmonitored")
+	// ErrPlexDeletionDenied: the Plex server does not allow media deletion
+	// (Settings > Library > Allow media deletion).
+	ErrPlexDeletionDenied = errors.New("deletion refused by Plex: media deletion is not allowed on the server")
 )
 
 // Refresher updates local data after a deletion (implemented by the syncer).
@@ -154,7 +159,10 @@ func (s *Service) Delete(ctx context.Context, req Request) (*Result, error) {
 		return nil, err
 	}
 	if m.ArrID == 0 {
-		return nil, ErrNotDeletable
+		if m.PlexRatingKey == "" || req.Season != nil {
+			return nil, ErrNotDeletable
+		}
+		return s.deleteFromPlex(ctx, up, m, req)
 	}
 	res := &Result{Kind: m.Kind, MediaID: m.ID, Title: m.Title, SizeFreed: m.SizeBytes, DryRun: s.DryRun}
 	switch {
@@ -187,6 +195,18 @@ func (s *Service) Delete(ctx context.Context, req Request) (*Result, error) {
 	}
 
 	err = s.execute(ctx, up, m, req, res)
+	s.journal(ctx, m, req, res, err)
+	if err != nil {
+		return nil, err
+	}
+	if !s.DryRun {
+		s.afterDelete(context.WithoutCancel(ctx), up, m, req, res)
+	}
+	return res, nil
+}
+
+// journal records a deletion attempt in action_log and in the logs.
+func (s *Service) journal(ctx context.Context, m *store.Media, req Request, res *Result, err error) {
 	entry := store.Action{
 		At: s.now().Unix(), Action: res.Action, MediaKind: m.Kind, ArrID: m.ArrID, Title: m.Title,
 		SeasonNumber: req.Season, SizeFreedBytes: res.SizeFreed, DeleteFiles: req.DeleteFiles,
@@ -201,11 +221,47 @@ func (s *Service) Delete(ctx context.Context, req Request) (*Result, error) {
 	}
 	s.Log.Info("deletion", "action", res.Action, "title", m.Title, "season", req.Season, "dry_run", s.DryRun,
 		"delete_files", req.DeleteFiles, "success", err == nil, "err", err, "user", req.Username)
+}
+
+// deleteFromPlex deletes an item that only Plex still knows (removed from
+// Sonarr/Radarr, or never managed): Plex deletes it with its files. No
+// Sonarr/Radarr tag applies, but the item may be protected in Cleanarr.
+// Whole series still need the typed title.
+func (s *Service) deleteFromPlex(ctx context.Context, up *upstream.Clients, m *store.Media, req Request) (*Result, error) {
+	if m.Kind == "series" && s.ConfirmByTyping && !req.Confirmed &&
+		!strings.EqualFold(strings.TrimSpace(req.ConfirmTitle), strings.TrimSpace(m.Title)) {
+		return nil, ErrConfirmMismatch
+	}
+	req.DeleteFiles, req.ImportExclusion = true, false // Plex always deletes the files
+	res := &Result{Action: DeletePlex, Kind: m.Kind, MediaID: m.ID, Title: m.Title, SizeFreed: m.SizeBytes, DryRun: s.DryRun}
+	var err error
+	switch {
+	case m.ProtectedLocal:
+		err = ErrProtectedLocal
+	case up.Plex == nil:
+		err = fmt.Errorf("%w: Plex", ErrUnconfigured)
+	case !s.DryRun:
+		err = up.Plex.DeleteItem(ctx, m.PlexRatingKey)
+		var se *httpx.StatusError
+		if errors.As(err, &se) && (se.Status == http.StatusUnauthorized || se.Status == http.StatusForbidden) {
+			err = ErrPlexDeletionDenied
+		} else if isNotFound(err) {
+			err = fmt.Errorf("%w in Plex", ErrNotFound)
+		}
+	}
+	s.journal(ctx, m, req, res, err)
 	if err != nil {
 		return nil, err
 	}
 	if !s.DryRun {
-		s.afterDelete(context.WithoutCancel(ctx), up, m, req, res)
+		ctx = context.WithoutCancel(ctx)
+		err := s.Store.DeleteMedia(ctx, m.ID)
+		if err == nil {
+			err = s.Refresher.Recompute(ctx)
+		}
+		if err != nil {
+			s.Log.Warn("local refresh after deletion failed", "media_id", m.ID, "err", err)
+		}
 	}
 	return res, nil
 }

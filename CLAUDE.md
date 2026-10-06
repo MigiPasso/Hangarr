@@ -109,6 +109,11 @@ Pas de framework web, pas de build Node pour l'app, pas de CDN.
 - Saison 0 (spéciaux) exclue de la progression et de `watch_state`. Série dont la **dernière saison avec fichiers est
   finie** = `completed` (saisons précédentes possiblement vues ailleurs, décision utilisateur) : `scoring.WatchState` et
   SQL de `libraryView`.
+- Filtres de la Bibliothèque **simplifiés** (décision utilisateur, « un filtre = une question ») : Qui ? (`user`, tout
+  devient le point de vue de ce spectateur), État, Pas regardé depuis (`inactive` 30/90/180/365, jamais vu = depuis
+  l'ajout, même règle que Nettoyage), Ajouté, Taille min/max, Statut ; le reste dans « Plus de filtres » (genres, année,
+  note, tags, profil, réseau/studio, présence Plex/*arr). Supprimés : Vu par / Jamais vu par / Vu par personne /
+  spectateurs distincts min. Nettoyage : « Pas regardé depuis » ne propose que des délais plus longs que la règle.
 - Bibliothèque : une requête SQL paramétrée par lot (`store.LibraryQuery`, CTE `v` avec colonnes `eff_*` ; point de vue
   utilisateur calculé à la volée, mêmes règles que `scoring`). Recherche sur `title_norm` (sans accents ni article).
   Recherche déclenchée par `input` (et non `keyup` comme dans la spec) pour couvrir collage, autocomplétion, bouton ✕.
@@ -117,6 +122,12 @@ Pas de framework web, pas de build Node pour l'app, pas de CDN.
 - Suppressions : `internal/actions` (tag de protection relu en live sur Sonarr/Radarr, dry-run, titre à saisir pour une
   série, journal `action_log` pour toute tentative). Saison : fichiers (`DELETE episodefile/bulk`) PUIS `PUT` de l'objet
   série **brut** avec `monitored=false` (`sonarr.UnmonitorSeason`). Resync ciblée ensuite (`syncer.RefreshSeries`).
+- Suppression via Plex (`actions.deleteFromPlex`, action `delete_plex`) : élément connu de Plex seul (plus dans
+  Sonarr/Radarr, `plex_rating_key` présent) → `DELETE /library/metadata/{ratingKey}` (Plex supprime les fichiers ; refus
+  401/403 = « Autoriser la suppression des médias » désactivé côté Plex, expliqué). Fiche seulement (pas en lot, pas de
+  saison), dry-run et titre à saisir pour une série respectés. Protection de ces éléments **dans Cleanarr seulement**
+  (décision utilisateur) : colonne `media.protected_local` (migration 0006, jamais écrite par la sync), rien envoyé à
+  Plex, appliquée même en dry-run, journalisée ; `protectedClause` et les templates (`.ProtectedLocal`) en tiennent compte.
 - Fiche détail : progression exacte via `GET /api/v3/episode?seriesId=` (appel live, 5 s max, repli approximatif).
   Liens : `SONARR_PUBLIC_URL`, `RADARR_PUBLIC_URL`, `PLEX_PUBLIC_URL` (optionnels ; Plex par défaut via app.plex.tv).
 - Phase 5 : Dashboard (sans lectures en cours), Stats (/stats, /stats/users/{id}), Nettoyage (/cleanup). Graphiques SVG
@@ -125,6 +136,8 @@ Pas de framework web, pas de build Node pour l'app, pas de CDN.
   (décision utilisateur, remplace SPEC §7.5) : candidat = géré par Sonarr/Radarr, avec fichiers, non protégé, et personne
   ne l'a regardé depuis N jours (jamais vu : depuis `added_at`), N réglable dans Réglages (`cleanup_inactive_days`,
   défaut 180). Règle évaluée en SQL (`store.CleanupScope`), liste triée par taille avec la raison en clair.
+  Filtres latéraux sur Nettoyage (type, états, lectures min/max, taille min/max en Go, `store.CleanupFilter`), conservés
+  par les liens de tri ; saisons jamais vues masquées si un filtre d'état ou de lectures est actif.
   `GRACE_DAYS` supprimé (couvert par la règle) ; colonne `cleanup_score` laissée à NULL (migration déjà livrée).
   Heure de sync : deux `<select>` heure (00-23) / minute (00-59, toutes les valeurs), saisie au clavier native ; pas de
   `datalist` (deux clics pour ouvrir, rejeté par l'utilisateur).
@@ -147,7 +160,9 @@ Pas de framework web, pas de build Node pour l'app, pas de CDN.
   partage le verrou de la sync complète). `LastSyncAt` ne compte que les sources de catalogue. Secret généré dans
   Configuration (affiché une seule fois).
 - `internal/images` : proxy MediaCover (`poster-500.jpg`) → cache disque `DATA_DIR/cache/img`, ETag, sémaphore (4),
-  singleflight, repli `remoteUrl` https, placeholder SVG. Pas de JS supplémentaire côté client.
+  singleflight, repli `remoteUrl` https, placeholder SVG. Pas de JS supplémentaire côté client. Éléments Plex seul :
+  `/img/plex/{ratingKey}/{poster|fanart}` (clé vérifiée en base), `/photo/:/transcode` (500×750 / 1280×720) puis
+  `/library/metadata/{key}/thumb|art` ; template `imgURL` choisit *arr ou Plex.
 - Sélection en lot (bibliothèque grille/tableau + Nettoyage) : cases `name=ids form=batch-form` (absentes si protégé ou
   Plex seul), barre collante `partials/batch.html`, `POST /batch/delete` (1er POST = confirmation, `step=run` = exécution ;
   série dans le lot + `CONFIRM_BY_TYPING` → saisir le nombre d'éléments), `POST /batch/protect` (sans confirmation).

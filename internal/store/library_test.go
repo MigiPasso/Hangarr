@@ -91,9 +91,9 @@ func TestLibraryFilters(t *testing.T) {
 		{"wildcards are escaped", series(store.LibraryFilter{Query: "100%"}), []string{}},
 		{"states", series(store.LibraryFilter{States: []string{"in_progress", "abandoned"}}),
 			[]string{"The Expanse", "Shōgun"}},
-		{"not watched for 90 days (never included)", series(store.LibraryFilter{LastViewed: "90"}),
+		{"not watched for 90 days (never watched: since added)", series(store.LibraryFilter{InactiveDays: 90}),
 			[]string{"Arcane", "The Expanse", "Severance"}},
-		{"never watched", movies(store.LibraryFilter{LastViewed: "never"}),
+		{"never watched", movies(store.LibraryFilter{States: []string{"never"}}),
 			[]string{"Avatar: Fire and Ash", "Tenet", "Vacances 2019"}},
 		{"added more than a year ago", movies(store.LibraryFilter{Added: "gt365"}),
 			[]string{"Inception", "Interstellar", "Tenet", "Vacances 2019"}},
@@ -101,16 +101,14 @@ func TestLibraryFilters(t *testing.T) {
 		{"tag", series(store.LibraryFilter{Tags: []string{"keep"}}), []string{"Severance"}},
 		{"status", series(store.LibraryFilter{Status: "continuing"}), []string{"Severance", "Shōgun"}},
 		{"size", series(store.LibraryFilter{SizeMinGB: 5}), []string{"Breaking Bad", "The Expanse"}},
+		{"size max", series(store.LibraryFilter{SizeMaxGB: 5}), []string{"Arcane", "Home Videos", "Severance", "Shōgun"}},
 		{"year range", movies(store.LibraryFilter{YearMin: 2014, YearMax: 2020}), []string{"Interstellar", "Tenet", "Vacances 2019"}},
 		{"rating", movies(store.LibraryFilter{RatingMin: 8.5}), []string{"Inception", "Interstellar"}},
 		{"profile", movies(store.LibraryFilter{Profile: "Ultra-HD"}), []string{"Avatar: Fire and Ash", "Dune"}},
 		{"studio", movies(store.LibraryFilter{Network: "Syncopy"}), []string{"Tenet"}},
-		{"seen by bob", series(store.LibraryFilter{SeenBy: []int64{1002}}), []string{"Breaking Bad", "Home Videos", "Shōgun"}},
-		{"seen by alice and bob", series(store.LibraryFilter{SeenBy: []int64{1001, 1002}}), []string{"Breaking Bad"}},
-		{"never seen by alice", movies(store.LibraryFilter{UnseenBy: []int64{1001}}),
+		{"nobody watched", series(store.LibraryFilter{States: []string{"never"}}), []string{"Arcane", "Severance"}},
+		{"alice never watched", movies(store.LibraryFilter{User: 1001, States: []string{"never"}}),
 			[]string{"Avatar: Fire and Ash", "Tenet", "Vacances 2019"}},
-		{"seen by nobody", series(store.LibraryFilter{Nobody: true}), []string{"Arcane", "Severance"}},
-		{"min viewers", movies(store.LibraryFilter{ViewersMin: 2}), []string{"Inception"}},
 		{"match state", movies(store.LibraryFilter{Match: []string{"arr_only", "plex_only"}}),
 			[]string{"Avatar: Fire and Ash", "Vacances 2019"}},
 		{"sort by size desc", movies(store.LibraryFilter{Sort: "size", Desc: true}),
@@ -193,7 +191,7 @@ func TestLibrarySummaryAndFacets(t *testing.T) {
 	if err != nil || n != 6 || size != 19_400_000_000 {
 		t.Fatalf("summary: n=%d size=%d err=%v", n, size, err)
 	}
-	n, _, _ = st.LibrarySummary(context.Background(), store.LibraryFilter{Kind: "movie", Nobody: true}, now, 90)
+	n, _, _ = st.LibrarySummary(context.Background(), store.LibraryFilter{Kind: "movie", States: []string{"never"}}, now, 90)
 	if n != 3 {
 		t.Errorf("filtered summary: %d", n)
 	}

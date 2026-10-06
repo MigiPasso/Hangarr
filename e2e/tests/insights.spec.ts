@@ -44,6 +44,28 @@ test("cleanup lists candidates and never-watched seasons", async ({ page }) => {
   await expect(page.locator("#confirm")).toContainText("Simulation (DRY_RUN)");
 });
 
+test("cleanup filters: state, plays and size in the sidebar", async ({ page }) => {
+  await page.getByRole("link", { name: "Nettoyage" }).click();
+  const table = page.locator(".cleanup-table");
+  const filters = page.getByRole("complementary", { name: "Filtres" });
+  await filters.getByRole("checkbox", { name: "Jamais vu" }).check();
+  await expect(page).toHaveURL(/state=never/);
+  await expect(table).toContainText("Tenet");
+  await expect(table).not.toContainText("Interstellar");
+  await expect(page.getByRole("heading", { name: "Saisons jamais vues" })).toBeHidden();
+  // Sorting keeps the filters.
+  await table.getByRole("link", { name: "Titre" }).click();
+  await expect(page).toHaveURL(/sort=title/);
+  await expect(page).toHaveURL(/state=never/);
+  await filters.getByRole("link", { name: "Réinitialiser" }).click();
+  await expect(table).toContainText("Interstellar");
+  await filters.getByRole("group", { name: "Lectures" }).getByLabel("Min.").fill("1");
+  await expect(table).not.toContainText("Tenet");
+  await expect(table).toContainText("Interstellar");
+  await filters.getByRole("group", { name: "Taille (Go)" }).getByLabel("Min.").fill("99999");
+  await expect(page.getByText("Aucun candidat ne correspond à ces filtres.")).toBeVisible();
+});
+
 test("health page: live services, sync runs and data gaps", async ({ page }) => {
   await page.getByRole("link", { name: "Santé" }).click();
   const services = page.locator("#health-services");

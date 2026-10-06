@@ -259,15 +259,18 @@ func (r *Registry) Get() *Clients {
 	return Build(Values{}, config.HistoryAuto)
 }
 
-// ArrHTTP returns the HTTP client of Sonarr ("series") or Radarr ("movie"),
+// ImageHTTP returns the HTTP client serving images: Sonarr ("series"),
+// Radarr ("movie") or Plex ("plex"),
 // nil when the service is not configured (image proxy).
-func (r *Registry) ArrHTTP(kind string) *httpx.Client {
+func (r *Registry) ImageHTTP(kind string) *httpx.Client {
 	c := r.Get()
 	switch {
 	case kind == "movie" && c.Radarr != nil:
 		return c.Radarr.HTTP
 	case kind == "series" && c.Sonarr != nil:
 		return c.Sonarr.HTTP
+	case kind == "plex" && c.Plex != nil:
+		return c.Plex.HTTP
 	}
 	return nil
 }

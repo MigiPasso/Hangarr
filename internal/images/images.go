@@ -1,6 +1,6 @@
 // Package images proxies posters and fanarts from Sonarr/Radarr MediaCover
-// (SPEC §8) with a disk cache, so the browser never talks to the *arr apps
-// and API keys stay server side.
+// (SPEC §8), or from Plex for items it alone knows, with a disk cache, so
+// the browser never talks to the upstreams and API keys stay server side.
 package images
 
 import (
@@ -81,16 +81,37 @@ func (p *Proxy) now() time.Time {
 	return time.Now()
 }
 
-// upstreamFiles lists MediaCover file names to try, smallest suitable first.
-func upstreamFiles(variant string) []string {
-	if variant == "poster" {
-		return []string{"poster-500.jpg", "poster.jpg"}
+// upstreamRequests lists the requests to try, smallest suitable first:
+// MediaCover files for Sonarr/Radarr; for Plex ("plex" kind, id = rating
+// key), the photo transcoder (resized), then the original image.
+func upstreamRequests(kind string, id int64, variant string) []httpx.Request {
+	if kind == "plex" {
+		src := "/library/metadata/" + strconv.FormatInt(id, 10) + "/thumb"
+		width, height := "500", "750"
+		if variant == "fanart" {
+			src = "/library/metadata/" + strconv.FormatInt(id, 10) + "/art"
+			width, height = "1280", "720"
+		}
+		return []httpx.Request{
+			{Path: "/photo/:/transcode", Query: url.Values{"url": {src}, "width": {width}, "height": {height},
+				"minSize": {"1"}, "upscale": {"1"}}},
+			{Path: src},
+		}
 	}
-	return []string{"fanart.jpg"}
+	files := []string{"fanart.jpg"}
+	if variant == "poster" {
+		files = []string{"poster-500.jpg", "poster.jpg"}
+	}
+	out := make([]httpx.Request, 0, len(files))
+	for _, f := range files {
+		out = append(out, httpx.Request{Path: "/api/v3/mediacover/" + strconv.FormatInt(id, 10) + "/" + f})
+	}
+	return out
 }
 
-// ServeImage handles a request; kind is "series" or "movie", variant
-// "poster" or "fanart". Validation of the parameters is the caller's job.
+// ServeImage handles a request; kind is "series", "movie" or "plex" (arrID
+// is then the Plex rating key), variant "poster" or "fanart". Validation of
+// the parameters is the caller's job.
 func (p *Proxy) ServeImage(w http.ResponseWriter, r *http.Request, kind string, arrID int64, variant string) {
 	key := fmt.Sprintf("%s-%d-%s", kind, arrID, variant)
 	path := filepath.Join(p.Dir, key+".img")
@@ -165,8 +186,8 @@ func (p *Proxy) fetch(ctx context.Context, kind string, arrID int64, variant str
 	client := p.Client(kind)
 	lastErr := errNoImage
 	if client != nil {
-		for _, file := range upstreamFiles(variant) {
-			b, err := client.Do(ctx, httpx.Request{Path: "/api/v3/mediacover/" + strconv.FormatInt(arrID, 10) + "/" + file})
+		for _, req := range upstreamRequests(kind, arrID, variant) {
+			b, err := client.Do(ctx, req)
 			if err == nil && isImage(b) {
 				return p.write(path, b)
 			}

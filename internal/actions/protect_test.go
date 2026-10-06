@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 	"testing/fstest"
+
+	"cleanarr/internal/syncer"
 )
 
 func putTags(t *testing.T, body string) ([]int64, map[string]any) {
@@ -141,10 +143,7 @@ func TestProtectDryRunAndNoop(t *testing.T) {
 	if m, _ := e.st.MediaByID(ctx, bb); len(m.Tags) != 0 {
 		t.Errorf("local tags not realigned: %v", m.Tags)
 	}
-	// Plex-only items cannot be protected; no tag configured is an error.
-	if _, err := e.svc.SetProtected(ctx, ProtectRequest{MediaID: e.mediaID("movie", "Vacances 2019"), Protect: true}); !errors.Is(err, ErrNotManaged) {
-		t.Errorf("plex only: %v", err)
-	}
+	// No tag configured is an error (Plex-only items: TestLocalProtection).
 	e.svc.ProtectedTags = nil
 	if _, err := e.svc.SetProtected(ctx, ProtectRequest{MediaID: bb, Protect: true}); !errors.Is(err, ErrNoProtectedTag) {
 		t.Errorf("no tag: %v", err)
@@ -157,4 +156,46 @@ func replaceOnce(t *testing.T, s, old, repl string) string {
 		t.Fatalf("%q not found", old)
 	}
 	return strings.Replace(s, old, repl, 1)
+}
+
+func TestLocalProtection(t *testing.T) {
+	for _, dryRun := range []bool{false, true} {
+		e := newEnv(t, dryRun)
+		ctx := context.Background()
+		id := e.mediaID("movie", "Vacances 2019")
+		// In Cleanarr only, even in dry-run: nothing is sent anywhere.
+		res, err := e.svc.SetProtected(ctx, ProtectRequest{MediaID: id, Protect: true, Username: "admin"})
+		if err != nil || !res.Local || res.Unchanged || res.DryRun {
+			t.Fatalf("dry-run=%v protect: %+v %v", dryRun, res, err)
+		}
+		if calls := e.mock.Calls(); len(calls) != 0 {
+			t.Errorf("nothing must be sent: %+v", calls)
+		}
+		if a := e.lastAction(); a.Action != ProtectAction || !a.Success || a.DryRun || a.Username != "admin" {
+			t.Errorf("journal: %+v", a)
+		}
+		if res, _ := e.svc.SetProtected(ctx, ProtectRequest{MediaID: id, Protect: true}); !res.Unchanged {
+			t.Error("already protected")
+		}
+		// The sync keeps it, and a protected item cannot be deleted.
+		if _, err := e.svc.Refresher.(*syncer.Syncer).Run(ctx); err != nil {
+			t.Fatal(err)
+		}
+		if m, _ := e.st.MediaByID(ctx, id); !m.ProtectedLocal {
+			t.Fatal("protection lost by the sync")
+		}
+		if _, err := e.svc.Delete(ctx, Request{MediaID: id}); !errors.Is(err, ErrProtectedLocal) {
+			t.Errorf("delete protected: %v", err)
+		}
+		if a := e.lastAction(); a.Action != DeletePlex || a.Success {
+			t.Errorf("refusal journal: %+v", a)
+		}
+		if res, err := e.svc.SetProtected(ctx, ProtectRequest{MediaID: id, Protect: false}); err != nil || res.Unchanged {
+			t.Fatalf("unprotect: %+v %v", res, err)
+		}
+		if _, err := e.svc.Delete(ctx, Request{MediaID: id}); err != nil {
+			t.Errorf("delete after unprotect: %v", err)
+		}
+		e.mock.Reset()
+	}
 }

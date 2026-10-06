@@ -18,16 +18,18 @@ func userClause(alias string, user int64) (string, []any) {
 	return " AND " + alias + ".user_id = ?", []any{user}
 }
 
-// protectedClause excludes media carrying one of the protection tags.
+// protectedClause excludes media carrying one of the protection tags, or
+// protected in Cleanarr only.
 func protectedClause(alias string, tags []string) (string, []any) {
+	local := " AND NOT " + alias + ".protected_local"
 	if len(tags) == 0 {
-		return "", nil
+		return local, nil
 	}
 	args := make([]any, len(tags))
 	for i, t := range tags {
 		args[i] = strings.ToLower(strings.TrimSpace(t))
 	}
-	return " AND NOT EXISTS (SELECT 1 FROM json_each(" + alias + ".tags) j WHERE lower(j.value) IN (" +
+	return local + " AND NOT EXISTS (SELECT 1 FROM json_each(" + alias + ".tags) j WHERE lower(j.value) IN (" +
 		placeholders(len(tags)) + "))", args
 }
 
@@ -145,6 +147,7 @@ const playKeyW = `COALESCE('r' || w.reference_id, 'e' || w.id)`
 type RecentView struct {
 	MediaID   int64 // 0 when the media no longer exists
 	ArrID     int64
+	PlexKey   string // Plex rating key of the media (poster of plex_only items)
 	Kind      string
 	Title     string
 	Episode   string // "S01E02 · Title" for episodes
@@ -155,7 +158,7 @@ type RecentView struct {
 // RecentViews returns the last plays (resumed sessions grouped), newest first,
 // looking back 90 days from the latest session.
 func (s *Store) RecentViews(ctx context.Context, limit int) ([]RecentView, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT COALESCE(m.id, 0), COALESCE(m.arr_id, 0), COALESCE(m.kind, ''),
+	rows, err := s.db.QueryContext(ctx, `SELECT COALESCE(m.id, 0), COALESCE(m.arr_id, 0), COALESCE(m.plex_rating_key, ''), COALESCE(m.kind, ''),
 		COALESCE(m.title, NULLIF(w.grandparent_title, ''), w.title, ''), w.media_type, COALESCE(w.season_number, 0),
 		COALESCE(w.episode_number, 0), COALESCE(w.title, ''), COALESCE(NULLIF(a.friendly_name, ''), a.username, ''),
 		COALESCE(w.stopped_at, 0)
@@ -175,7 +178,7 @@ func (s *Store) RecentViews(ctx context.Context, limit int) ([]RecentView, error
 		var r RecentView
 		var mediaType, epTitle string
 		var season, episode int
-		if err := rows.Scan(&r.MediaID, &r.ArrID, &r.Kind, &r.Title, &mediaType, &season, &episode, &epTitle,
+		if err := rows.Scan(&r.MediaID, &r.ArrID, &r.PlexKey, &r.Kind, &r.Title, &mediaType, &season, &episode, &epTitle,
 			&r.UserName, &r.StoppedAt); err != nil {
 			return nil, err
 		}
@@ -542,14 +545,55 @@ var cleanupSorts = map[string]string{
 // ValidCleanupSort reports whether name is a cleanup sort key.
 func ValidCleanupSort(name string) bool { _, ok := cleanupSorts[name]; return ok }
 
-// CleanupCandidates lists candidates sorted by sort (a cleanupSorts key;
-// default: largest first), with the total size of every candidate.
-func (s *Store) CleanupCandidates(ctx context.Context, scope CleanupScope, kind, sort string, desc bool, limit int) ([]CleanupItem, int64, error) {
-	where, args := scope.where("m")
-	if kind != "" {
-		where += " AND m.kind = ?"
-		args = append(args, kind)
+// CleanupFilter narrows the cleanup candidates (zero value: all of them).
+type CleanupFilter struct {
+	Kind      string   // series | movie | "" (both)
+	States    []string // watch states; empty: any
+	PlaysMin  int
+	PlaysMax  *int // nil: no maximum (0 is meaningful)
+	SizeMinGB float64
+	SizeMaxGB float64 // 0: no maximum
+}
+
+func (f CleanupFilter) where(alias string) (string, []any) {
+	var b strings.Builder
+	var args []any
+	if f.Kind != "" {
+		b.WriteString(" AND " + alias + ".kind = ?")
+		args = append(args, f.Kind)
 	}
+	if len(f.States) > 0 {
+		b.WriteString(" AND " + alias + ".watch_state IN (?" + strings.Repeat(", ?", len(f.States)-1) + ")")
+		for _, st := range f.States {
+			args = append(args, st)
+		}
+	}
+	if f.PlaysMin > 0 {
+		b.WriteString(" AND " + alias + ".play_count >= ?")
+		args = append(args, f.PlaysMin)
+	}
+	if f.PlaysMax != nil {
+		b.WriteString(" AND " + alias + ".play_count <= ?")
+		args = append(args, *f.PlaysMax)
+	}
+	if f.SizeMinGB > 0 {
+		b.WriteString(" AND " + alias + ".size_bytes >= ?")
+		args = append(args, int64(f.SizeMinGB*1e9))
+	}
+	if f.SizeMaxGB > 0 {
+		b.WriteString(" AND " + alias + ".size_bytes <= ?")
+		args = append(args, int64(f.SizeMaxGB*1e9))
+	}
+	return b.String(), args
+}
+
+// CleanupCandidates lists the candidates matching f, sorted by sort (a
+// cleanupSorts key; default: largest first), with their total size.
+func (s *Store) CleanupCandidates(ctx context.Context, scope CleanupScope, f CleanupFilter, sort string, desc bool, limit int) ([]CleanupItem, int64, error) {
+	where, args := scope.where("m")
+	fw, fargs := f.where("m")
+	where += fw
+	args = append(args, fargs...)
 	order, ok := cleanupSorts[sort]
 	if !ok {
 		order, desc = cleanupSorts["size"], true
@@ -568,7 +612,7 @@ func (s *Store) CleanupCandidates(ctx context.Context, scope CleanupScope, kind,
 	rows, err := s.db.QueryContext(ctx, `SELECT m.id, m.arr_id, m.kind, m.title, COALESCE(m.year, 0), m.watch_state,
 		m.play_count, m.distinct_viewers, COALESCE(m.watched_episodes, 0), COALESCE(m.downloaded_episodes, 0),
 		m.last_viewed_at, COALESCE(NULLIF(a.friendly_name, ''), a.username, ''), m.size_bytes, m.added_at,
-		`+inactiveSince("m")+`, m.tags, COALESCE(m.status, '')
+		`+inactiveSince("m")+`, m.tags, COALESCE(m.status, ''), m.protected_local
 		FROM media m LEFT JOIN plex_accounts a ON a.account_id = m.last_viewed_by
 		WHERE `+where+` ORDER BY `+order+`, m.size_bytes DESC, m.id LIMIT ?`, append(args, limit)...)
 	if err != nil {
@@ -582,7 +626,7 @@ func (s *Store) CleanupCandidates(ctx context.Context, scope CleanupScope, kind,
 		var tags string
 		if err := rows.Scan(&c.ID, &c.ArrID, &c.Kind, &c.Title, &c.Year, &c.State, &c.Plays, &c.Viewers,
 			&c.WatchedEpisodes, &c.DownloadedEpisodes, &last, &c.LastViewedBy, &c.SizeBytes, &added, &c.InactiveSince, &tags,
-			&c.Status); err != nil {
+			&c.Status, &c.ProtectedLocal); err != nil {
 			return nil, 0, err
 		}
 		c.LastViewedAt, c.AddedAt = ptrInt(last), ptrInt(added)

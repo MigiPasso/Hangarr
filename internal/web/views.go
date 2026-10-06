@@ -121,6 +121,7 @@ func (v *views) funcs(l i18n.Localizer, loc *time.Location, protectedTags []stri
 		"join":       strings.Join,
 		"pairs":      pairs,
 		"mediaPath":  kindPath,
+		"imgURL":     imgURL,
 		"hours":      l.Hours,
 		"share":      l.PctShort,
 		"pctOf": func(a, b int64) string {
@@ -340,6 +341,18 @@ func stateLabel(l i18n.Localizer, it store.LibraryItem) string {
 	default:
 		return l.T("Never watched")
 	}
+}
+
+// imgURL is the proxied image of an item: Sonarr/Radarr when it manages the
+// item, else Plex (plex_only items); "" when there is none.
+func imgURL(kind string, arrID int64, plexKey, variant string) string {
+	if arrID > 0 {
+		return fmt.Sprintf("/img/%s/%d/%s", kind, arrID, variant)
+	}
+	if n, err := strconv.ParseInt(plexKey, 10, 64); err == nil && n > 0 {
+		return fmt.Sprintf("/img/plex/%d/%s", n, variant)
+	}
+	return ""
 }
 
 // isProtected reports whether tags contain a PROTECTED_TAGS entry (case-insensitive).

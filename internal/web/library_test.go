@@ -56,7 +56,7 @@ func newLibEnvDry(t *testing.T, pageSize int, dryRun bool) *libEnv {
 			title, remote, ok, err := d.Store.ImageInfo(ctx, kind, id, variant)
 			return images.Info{Title: title, RemoteURL: remote}, ok, err
 		}
-		d.Images = images.New(t.TempDir(), sy.Upstreams.ArrHTTP, lookup, log)
+		d.Images = images.New(t.TempDir(), sy.Upstreams.ImageHTTP, lookup, log)
 		d.Sync = sy
 		d.PageSize = pageSize
 		d.Upstreams = sy.Upstreams
@@ -170,17 +170,20 @@ func TestLibraryViewAndPerspective(t *testing.T) {
 }
 
 func TestParseFilterRoundTrip(t *testing.T) {
-	q, _ := url.ParseQuery("q=dune&state=never&state=bogus&last=90&genre=Drama&year_min=2000&rating_min=7,5" +
-		"&seen_by=1001&seen_by=x&unseen_by=1002&nobody=1&match=arr_only&user=1001&sort=size&size_min=10&page=3&status=ended")
+	q, _ := url.ParseQuery("q=dune&state=never&state=bogus&inactive=90&genre=Drama&year_min=2000&rating_min=7,5" +
+		"&match=arr_only&user=1001&sort=size&size_min=10&size_max=50&page=3&status=ended")
 	f, page := parseLibraryFilter(q, "series")
-	if page != 3 || f.Query != "dune" || !slices.Equal(f.States, []string{"never"}) || f.LastViewed != "90" ||
-		f.RatingMin != 7.5 || !slices.Equal(f.SeenBy, []int64{1001}) || !f.Nobody || f.User != 1001 ||
+	if page != 3 || f.Query != "dune" || !slices.Equal(f.States, []string{"never"}) || f.InactiveDays != 90 ||
+		f.RatingMin != 7.5 || f.User != 1001 || f.SizeMaxGB != 50 ||
 		f.Sort != "size" || !f.Desc || f.Status != "ended" || f.SizeMinGB != 10 {
 		t.Fatalf("parsed: %+v", f)
 	}
 	again, _ := parseLibraryFilter(filterValues(f), "series")
 	if filterValues(again).Encode() != filterValues(f).Encode() {
 		t.Errorf("round trip: %s vs %s", filterValues(again).Encode(), filterValues(f).Encode())
+	}
+	if f, _ := parseLibraryFilter(url.Values{"inactive": {"42"}}, "movie"); f.InactiveDays != 0 {
+		t.Errorf("unknown inactivity choice must be ignored: %+v", f)
 	}
 	if f, _ := parseLibraryFilter(url.Values{"sort": {"evil"}}, "movie"); f.Sort != "title" || f.Desc {
 		t.Errorf("bad sort: %+v", f)
@@ -296,5 +299,31 @@ func TestSettingsSyncTime(t *testing.T) {
 	}
 	if v, _ := e.srv.Store.Setting(context.Background(), "sync_time", ""); v != "06:07" {
 		t.Errorf("stored %q", v)
+	}
+}
+
+func TestPlexOnlyPosters(t *testing.T) {
+	e := newLibEnv(t, 0)
+	// Home Videos is known by Plex only (rating key 205): its card and detail
+	// use the Plex poster and art, proxied and cached.
+	if r := e.do(e.c, "GET", "/series", nil, nil); !strings.Contains(r.body, `src="/img/plex/205/poster"`) {
+		t.Error("plex_only card must use the Plex poster")
+	}
+	if r := e.do(e.c, "GET", "/series/"+e.mediaID("series", "Home Videos"), nil, nil); !strings.Contains(r.body, `src="/img/plex/205/fanart"`) ||
+		!strings.Contains(r.body, `src="/img/plex/205/poster"`) {
+		t.Error("plex_only detail must use the Plex images")
+	}
+	for range 2 {
+		r := e.do(e.c, "GET", "/img/plex/205/poster", nil, nil)
+		if r.status != http.StatusOK || r.header.Get("Content-Type") != "image/png" {
+			t.Fatalf("plex poster: %d %v", r.status, r.header)
+		}
+	}
+	if n := e.mock.Hits("plex:transcode"); n != 1 {
+		t.Errorf("transcoder hits: %d, want 1 (then cached)", n)
+	}
+	// Only rating keys of known media are proxied.
+	if r := e.do(e.c, "GET", "/img/plex/99999/poster", nil, nil); r.status != http.StatusNotFound {
+		t.Errorf("unknown rating key: %d", r.status)
 	}
 }

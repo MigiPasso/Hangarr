@@ -273,3 +273,11 @@ func (c *Client) EmptyTrash(ctx context.Context, key string) error {
 	_, err := c.HTTP.Do(ctx, httpx.Request{Method: http.MethodPut, Path: "/library/sections/" + url.PathEscape(key) + "/emptyTrash"})
 	return err
 }
+
+// DeleteItem deletes a movie or a show with its files from disk. Plex
+// refuses it (401/403) unless the server allows media deletion
+// (Settings > Library > Allow media deletion).
+func (c *Client) DeleteItem(ctx context.Context, ratingKey string) error {
+	_, err := c.HTTP.Do(ctx, httpx.Request{Method: http.MethodDelete, Path: "/library/metadata/" + url.PathEscape(ratingKey)})
+	return err
+}

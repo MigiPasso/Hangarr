@@ -165,7 +165,7 @@ func serve() error {
 		title, remote, ok, err := st.ImageInfo(ctx, kind, arrID, variant)
 		return images.Info{Title: title, RemoteURL: remote}, ok, err
 	}
-	proxy := images.New(filepath.Join(cfg.DataDir, "cache", "img"), services.Registry.ArrHTTP, lookup, log)
+	proxy := images.New(filepath.Join(cfg.DataDir, "cache", "img"), services.Registry.ImageHTTP, lookup, log)
 
 	deleter := &actions.Service{Store: st, Upstreams: services.Registry, Refresher: sy,
 		DryRun: cfg.DryRun, ProtectedTags: cfg.ProtectedTags, ConfirmByTyping: cfg.ConfirmByTyping,

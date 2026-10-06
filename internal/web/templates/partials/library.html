@@ -33,20 +33,20 @@
 {{end}}
 {{end}}
 
-{{define "lock"}}<svg class="lock" viewBox="0 0 16 16" width="14" height="14" role="img" aria-label="{{t "Protected"}}"><title>{{t "Protected (protection tag)"}}</title><path fill="currentColor" d="M4 7V5a4 4 0 1 1 8 0v2h.5A1.5 1.5 0 0 1 14 8.5v6a1.5 1.5 0 0 1-1.5 1.5h-9A1.5 1.5 0 0 1 2 14.5v-6A1.5 1.5 0 0 1 3.5 7H4zm2 0h4V5a2 2 0 1 0-4 0v2z"/></svg>{{end}}
+{{define "lock"}}<svg class="lock" viewBox="0 0 16 16" width="14" height="14" role="img" aria-label="{{t "Protected"}}"><title>{{t "Protected"}}</title><path fill="currentColor" d="M4 7V5a4 4 0 1 1 8 0v2h.5A1.5 1.5 0 0 1 14 8.5v6a1.5 1.5 0 0 1-1.5 1.5h-9A1.5 1.5 0 0 1 2 14.5v-6A1.5 1.5 0 0 1 3.5 7H4zm2 0h4V5a2 2 0 1 0-4 0v2z"/></svg>{{end}}
 
 {{define "library_card"}}
 <article id="media-{{.ID}}" class="media-card state-{{.State}}">
   {{template "select_box" .}}
   <a class="card-link" href="{{mediaPath .Kind}}/{{.ID}}" hx-get="{{mediaPath .Kind}}/{{.ID}}" hx-target="#modal-body" aria-label="{{.Title}}">
   <div class="poster">
-    {{if .ArrID}}
-      <img src="/img/{{.Kind}}/{{.ArrID}}/poster" alt="" loading="lazy" decoding="async" width="200" height="300">
+    {{with imgURL .Kind .ArrID .PlexRatingKey "poster"}}
+      <img src="{{.}}" alt="" loading="lazy" decoding="async" width="200" height="300">
     {{else}}
       <div class="poster-fallback">{{.Title}}</div>
     {{end}}
     <span class="badge state">{{stateLabel .}}</span>
-    {{if protected .Tags}}<span class="corner">{{template "lock"}}</span>{{end}}
+    {{if or .ProtectedLocal (protected .Tags)}}<span class="corner">{{template "lock"}}</span>{{end}}
   </div>
   <div class="media-meta">
     <h3 title="{{.Title}}">{{.Title}}</h3>
@@ -61,7 +61,7 @@
 {{define "library_row"}}
 <tr id="media-{{.ID}}" class="state-{{.State}}">
   <td class="select-cell">{{template "select_box" .}}</td>
-  <td>{{if protected .Tags}}{{template "lock"}} {{end}}<a href="{{mediaPath .Kind}}/{{.ID}}" hx-get="{{mediaPath .Kind}}/{{.ID}}" hx-target="#modal-body">{{.Title}}</a>{{if .Year}} <span class="muted">({{.Year}})</span>{{end}}</td>
+  <td>{{if or .ProtectedLocal (protected .Tags)}}{{template "lock"}} {{end}}<a href="{{mediaPath .Kind}}/{{.ID}}" hx-get="{{mediaPath .Kind}}/{{.ID}}" hx-target="#modal-body">{{.Title}}</a>{{if .Year}} <span class="muted">({{.Year}})</span>{{end}}</td>
   <td><span class="badge state">{{stateLabel .}}</span></td>
   <td>{{if .LastViewedAt}}{{relptr .LastViewedAt}}{{with .LastViewedBy}} · {{.}}{{end}}{{else}}<span class="muted">{{t "never"}}</span>{{end}}</td>
   <td class="num">{{bytes .SizeBytes}}</td>
