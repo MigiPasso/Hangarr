@@ -117,8 +117,10 @@ Pas de framework web, pas de build Node pour l'app, pas de CDN.
 - Bibliothèque : une requête SQL paramétrée par lot (`store.LibraryQuery`, CTE `v` avec colonnes `eff_*` ; point de vue
   utilisateur calculé à la volée, mêmes règles que `scoring`). Recherche sur `title_norm` (sans accents ni article).
   Recherche déclenchée par `input` (et non `keyup` comme dans la spec) pour couvrir collage, autocomplétion, bouton ✕.
-- Sync : **une fois par jour** à l'heure réglée dans l'UI (page Réglages, table `app_settings`, défaut `SYNC_TIME`=04:00,
-  fuseau `TZ`) + rattrapage au démarrage si la dernière sync a plus de 24 h. `SYNC_INTERVAL` de la spec est supprimé.
+- Sync : planning réglé dans l'UI (page Réglages, table `app_settings`) : heure (`sync_time`, défaut `SYNC_TIME`=04:00,
+  fuseau `TZ`) + fréquence (`sync_every_hours` ∈ 24/12/8/6/4/3/2/1, diviseurs de 24 → mêmes horaires chaque jour,
+  défaut 24 = une fois par jour) ; `syncer.Schedule`, boucle `Syncer.Loop`. Rattrapage au démarrage si la dernière sync
+  est plus vieille que l'intervalle. `SYNC_INTERVAL` de la spec est supprimé.
 - Suppressions : `internal/actions` (tag de protection relu en live sur Sonarr/Radarr, dry-run, titre à saisir pour une
   série, journal `action_log` pour toute tentative). Saison : fichiers (`DELETE episodefile/bulk`) PUIS `PUT` de l'objet
   série **brut** avec `monitored=false` (`sonarr.UnmonitorSeason`). Resync ciblée ensuite (`syncer.RefreshSeries`).

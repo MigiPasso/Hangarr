@@ -14,6 +14,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strconv"
 	"sync"
 	"syscall"
 	"time"
@@ -160,7 +161,15 @@ func serve() error {
 		log.Warn("invalid stored sync time, using SYNC_TIME", "value", syncTime)
 		at, _ = syncer.ParseClockTime(cfg.SyncTime)
 	}
-	sy.SetDailyTime(at)
+	every := 24
+	if v, err := st.Setting(ctx, store.SettingSyncEvery, "24"); err == nil {
+		if n, perr := strconv.Atoi(v); perr == nil && syncer.ValidEvery(n) {
+			every = n
+		} else {
+			log.Warn("invalid stored sync interval, syncing once a day", "value", v)
+		}
+	}
+	sy.SetSchedule(syncer.Schedule{At: at, EveryHours: every})
 	lookup := func(ctx context.Context, kind string, arrID int64, variant string) (images.Info, bool, error) {
 		title, remote, ok, err := st.ImageInfo(ctx, kind, arrID, variant)
 		return images.Info{Title: title, RemoteURL: remote}, ok, err
@@ -187,7 +196,7 @@ func serve() error {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		sy.Daily(ctx)
+		sy.Loop(ctx)
 	}()
 
 	err = srv.Run(ctx, cfg.ListenAddr)

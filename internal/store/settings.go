@@ -8,7 +8,10 @@ import (
 )
 
 // Setting keys.
-const SettingSyncTime = "sync_time" // "HH:MM", local time (TZ)
+const (
+	SettingSyncTime  = "sync_time"        // "HH:MM", local time (TZ): first sync of the day
+	SettingSyncEvery = "sync_every_hours" // hours between syncs (24: once a day)
+)
 
 // Setting returns a setting value, or def when unset.
 func (s *Store) Setting(ctx context.Context, key, def string) (string, error) {

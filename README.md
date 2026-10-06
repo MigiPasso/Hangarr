@@ -3,13 +3,37 @@
 Application Go + HTMX auto-hébergée qui croise Tautulli, Plex, Sonarr et Radarr pour savoir ce qui est
 regardé, par qui, ce qui ne l'est jamais, et faire le ménage proprement. Spécification complète : [SPEC.md](SPEC.md).
 
-> État : phases 1 à 5 livrées (authentification, synchronisation, bibliothèque, fiches et suppressions, tableau de
-> bord, statistiques, nettoyage) ; **phase 6 en cours** (configuration dans l'UI, santé, webhook, déploiement Docker).
+> État : phases 1 à 6 livrées. Reste à faire : publication automatique de l'image sur GHCR (workflow Forgejo Actions
+> sur tag) ; en attendant, voir « Publier une version ».
+
+## Fonctionnalités
+
+- **Tableau de bord** : volumes, espace récupérable, temps de visionnage, dernières lectures.
+- **Séries / Films** : grille d'affiches ou tableau, recherche, défilement infini. Filtres « une question = un
+  filtre » : *Qui ?* (tout le monde ou un spectateur : états et dernières vues deviennent les siens), *État*, *Pas
+  regardé depuis* (jamais vu : depuis l'ajout), *Ajouté*, *Taille*, *Statut* ; genres, année, note, tags, profil,
+  réseau/studio et présence Plex/Sonarr/Radarr sous « Plus de filtres ».
+- **Fiche** : progression par saison et par spectateur, historique, liens vers Sonarr, Radarr et Plex.
+- **Nettoyage** : ce que personne n'a regardé depuis N jours (réglable), trié par taille avec la raison, filtrable par
+  type, état, lectures, taille et ancienneté ; saisons jamais vues des séries regardées par ailleurs.
+- **Suppressions** par Sonarr/Radarr (série, saison, film ; fichiers puis démonitorage pour une saison), une par une ou
+  par lot. Un élément que **seul Plex connaît** (retiré de Sonarr/Radarr) est supprimé par Plex, fichiers compris :
+  activer *Paramètres › Bibliothèque › Autoriser la suppression des médias* sur le serveur Plex.
+- **Protection** : tag Sonarr/Radarr (premier de `PROTECTED_TAGS`) ; pour un élément Plex seul, protection gardée
+  dans Cleanarr uniquement (rien n'est envoyé à Plex). Un élément protégé n'est jamais proposé ni supprimé.
+- Garde-fous côté serveur : `DRY_RUN=true` par défaut (tout est simulé et journalisé), tag relu en direct, titre à
+  saisir pour une série entière, journal de toutes les tentatives.
+- **Stats** (par période et par spectateur), **Santé** (services vérifiés en direct, historique des synchronisations,
+  écarts de données), **Journal** (actions et sécurité).
+- **Synchronisation** planifiée dans Réglages : une fois par jour, ou toutes les 12, 8, 6, 4, 3, 2 ou 1 h à partir
+  d'une heure choisie, plus le bouton « Synchroniser » et le webhook Tautulli.
+- Interface en anglais ou en français, thèmes clair et sombre.
 
 ## Prérequis
 
-Uniquement **Docker** (Engine ≥ 24 recommandé) avec **Compose v2** (≥ 2.24). Aucun Go, Node, linter ou
-navigateur n'est nécessaire sur la machine : tout tourne dans des conteneurs.
+Uniquement **Docker** (Engine ≥ 24 recommandé, Docker Desktop ou Colima) avec **Compose v2** (≥ 2.24) et **Buildx**
+pour l'image multi-arch. Aucun Go, Node, linter ou navigateur n'est nécessaire sur la machine : tout tourne dans des
+conteneurs.
 
 ## Développement
 
@@ -59,6 +83,8 @@ première connexion. Mot de passe perdu : `make reset-admin` (ou `cleanarr admin
 - **Tautulli** : *Settings → Web Interface → API* (cocher *Enable API*), copier l'*API key*.
 - **Plex** : ouvrir un média dans Plex Web → *⋯ → Obtenir des infos → Afficher le XML* ; l'URL contient
   `X-Plex-Token=…`. Voir aussi la documentation officielle « Finding an authentication token / X-Plex-Token ».
+  Utiliser le token du propriétaire du serveur (nécessaire pour l'historique de tous les comptes et les suppressions
+  par Plex).
 
 ## Déploiement
 
@@ -95,8 +121,8 @@ Ouvrir `http://<hôte>:8080`, changer le mot de passe, puis configurer Sonarr, R
   ```
 - **Dossier de l'hôte au lieu d'un volume** (`-v /srv/cleanarr:/data`) : il doit appartenir à l'utilisateur du
   conteneur : `sudo chown -R 65532:65532 /srv/cleanarr`.
-- **Mise à jour** : `git pull && docker compose up -d --build` (plus tard, avec l'image publiée :
-  `CLEANARR_IMAGE=ghcr.io/<user>/cleanarr:latest`, puis `docker compose pull && docker compose up -d`). Les migrations
+- **Mise à jour** : `git pull && docker compose up -d --build`, ou avec l'image publiée :
+  `CLEANARR_IMAGE=ghcr.io/<user>/cleanarr:<version>`, puis `docker compose pull && docker compose up -d`. Les migrations
   de la base s'appliquent au démarrage.
 - **Sauvegarde**, à chaud : `docker compose exec cleanarr /cleanarr backup` écrit une copie cohérente dans
   `/data/backups/cleanarr-AAAAMMJJ-HHMMSS.db` (ou `… backup /data/backups/mon-fichier.db`). Les clés d'API enregistrées
@@ -118,9 +144,23 @@ imposé (celui de `kubectl -n` ou de l'application Argo CD) : ConfigMap, PVC, De
 4. configurer les services dans l'UI avec leurs adresses internes au cluster
    (`http://sonarr.<namespace>.svc.cluster.local:8989`…).
 
-**Image** : `make image PUSH=1 IMAGE=ghcr.io/<utilisateur>/cleanarr` construit amd64 + arm64 et pousse (après
-`docker login ghcr.io` avec un token `write:packages`). Un paquet GHCR est privé par défaut : le rendre public, ou créer
+Pour l'image, voir « Publier une version » ci-dessous. Un paquet GHCR est privé par défaut : le rendre public, ou créer
 un secret `docker-registry` et décommenter `imagePullSecrets`.
+
+## Publier une version
+
+Depuis `main` à jour, sur un arbre propre (sinon la version se termine par `-dirty`) :
+
+```sh
+git tag v0.1.7 && git push origin v0.1.7
+echo "ghp_…" | docker login ghcr.io -u <utilisateur> --password-stdin   # token classic, scope write:packages
+make image PUSH=1 IMAGE=ghcr.io/<utilisateur>/cleanarr                  # amd64 + arm64, tag = git describe
+docker buildx imagetools inspect ghcr.io/<utilisateur>/cleanarr:v0.1.7  # deux plateformes attendues
+```
+
+Seul le tag de version est poussé. Pour tenir aussi `:latest` à jour :
+`docker buildx imagetools create -t ghcr.io/<utilisateur>/cleanarr:latest ghcr.io/<utilisateur>/cleanarr:v0.1.7`.
+Détails et dépannage : [docs/deploiement.md](docs/deploiement.md#2-publier-limage-sur-ghcr).
 
 ## Langue
 
@@ -148,7 +188,7 @@ désactivée et un bandeau invite à configurer. La première synchronisation pa
 
 ## Webhook Tautulli (recommandé)
 
-Sans webhook, les statistiques suivent la synchronisation quotidienne. Avec, elles sont à jour environ 30 secondes après
+Sans webhook, les statistiques suivent la synchronisation planifiée. Avec, elles sont à jour environ 30 secondes après
 chaque fin de lecture : Tautulli prévient Cleanarr, qui relit seulement l'historique.
 
 1. Configuration → Tautulli → « Générer un secret » (affiché une seule fois), ou `TAUTULLI_WEBHOOK_SECRET` (32 caractères min.).
@@ -162,9 +202,14 @@ secret, la route répond 404.
 ## Configuration
 
 Toutes les variables sont décrites dans [SPEC.md §10](SPEC.md#10-configuration-variables-denvironnement).
-Écarts : pas de score de nettoyage ni de `GRACE_DAYS` : la page Nettoyage propose ce que personne n'a regardé depuis
-N jours (jamais vu : depuis l'ajout), N réglable dans Réglages (180 par défaut) ; `SYNC_INTERVAL` est remplacé par `SYNC_TIME` (heure de la synchronisation quotidienne, défaut `04:00`,
-modifiable ensuite dans la page Réglages) ; les variables `PROWLARR_*` n'existent pas.
+Écarts :
+
+- pas de score de nettoyage ni de `GRACE_DAYS` : la page Nettoyage propose ce que personne n'a regardé depuis N jours
+  (jamais vu : depuis l'ajout), N réglable dans Réglages (180 par défaut) ;
+- `SYNC_INTERVAL` est remplacé par `SYNC_TIME` (heure de la synchronisation, défaut `04:00`) ; l'heure et la fréquence
+  se règlent ensuite dans Réglages ;
+- pas de Prowlarr : les variables `PROWLARR_*` n'existent pas.
+
 Ajouts : `SONARR_PUBLIC_URL`, `RADARR_PUBLIC_URL` et `PLEX_PUBLIC_URL` (optionnels) donnent les adresses utilisées par les
 liens « Ouvrir dans Sonarr/Radarr/Plex » quand les URL d'API ne sont pas joignables depuis le navigateur (Service
 Kubernetes interne). Par défaut : les URL d'API, et app.plex.tv pour Plex.

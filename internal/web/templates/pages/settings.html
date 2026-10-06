@@ -1,7 +1,7 @@
 {{define "content"}}
 <h1>{{t "Settings"}}</h1>
 <section class="card narrow">
-  <div class="title-row"><h2>{{t "Synchronization"}}</h2>{{template "info" (t "Sonarr, Radarr, Plex and Tautulli are read once a day. “Sync now” in the top bar runs one immediately.")}}</div>
+  <div class="title-row"><h2>{{t "Synchronization"}}</h2>{{template "info" (t "Sonarr, Radarr, Plex and Tautulli are read on this schedule. “Sync now” in the top bar runs one immediately.")}}</div>
   {{template "settings_form" .}}
 </section>
 <section class="card narrow">
@@ -14,8 +14,12 @@
 <form id="settings-form" method="post" action="/settings" class="stack"
       hx-post="/settings" hx-target="this" hx-swap="outerHTML">
   <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+  <div class="title-row"><label for="sync_every">{{t "Frequency"}}</label>{{template "info" (t "Syncs start at the time below, then repeat every N hours. Each one reads every library again: a few a day is plenty, Tautulli's webhook already refreshes the history after each play.")}}</div>
+  <select id="sync_every" name="sync_every">
+    {{range $s.Choices}}<option value="{{.}}"{{if eq . $s.Every}} selected{{end}}>{{if eq . 24}}{{t "Once a day"}}{{else if eq . 1}}{{t "Every hour"}}{{else}}{{t "Every %d hours" .}}{{end}}</option>{{end}}
+  </select>
   <fieldset class="clock"{{if $s.Error}} aria-describedby="sync-time-error"{{end}}>
-    <legend>{{t "Daily sync time"}}</legend>
+    <legend>{{t "Sync time"}}</legend>
     <label for="sync_hour" class="visually-hidden">{{t "Hour"}}</label>
     <select id="sync_hour" name="sync_hour" required{{if $s.Error}} aria-invalid="true"{{end}}>
       {{range hoursOfDay}}{{$v := printf "%02d" .}}<option value="{{$v}}"{{if eq $v $s.Hour}} selected{{end}}>{{$v}}</option>{{end}}
@@ -27,6 +31,7 @@
     </select>
   </fieldset>
   {{with $s.Error}}<p id="sync-time-error" class="field-error">{{t .}}</p>{{end}}
+  {{with $s.Times}}<p class="small muted">{{t "Every day at %s" .}}</p>{{end}}
   {{with $s.NextRun}}<p class="small muted">{{t "Next sync: %s" .}}</p>{{end}}
   {{if $s.Saved}}<p class="small ok-text" role="status">{{t "Saved."}}</p>{{end}}
   <button type="submit" class="primary">{{t "Save"}}</button>

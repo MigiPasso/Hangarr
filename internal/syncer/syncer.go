@@ -58,7 +58,7 @@ type Syncer struct {
 	AbandonDays int
 	// HistoryPageSize overrides the Tautulli page size (tests).
 	HistoryPageSize int
-	// Location is the time zone of the daily schedule (TZ).
+	// Location is the time zone of the schedule (TZ).
 	Location *time.Location
 
 	// HistoryDebounce overrides DefaultHistoryDebounce (tests).
@@ -70,7 +70,7 @@ type Syncer struct {
 	progress       string // English message key (translated by the UI)
 	progressArgs   []any
 	last           *Result
-	daily          ClockTime
+	schedule       Schedule
 	wake           chan struct{}
 }
 

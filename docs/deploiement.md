@@ -240,7 +240,7 @@ Tautulli est la source de l'historique de lecture (vu / pas vu, par utilisateur)
 
 ## 7. Webhook Tautulli (recommandé)
 
-Sans webhook, les statistiques suivent la synchronisation quotidienne (heure réglable dans **Settings**). Avec, elles
+Sans webhook, les statistiques suivent la synchronisation planifiée (heure et fréquence réglables dans **Settings**). Avec, elles
 sont à jour environ 30 secondes après chaque fin de lecture.
 
 1. Cleanarr : **Services → Tautulli → Webhook → Generate a secret**. Copiez-le : il n'est affiché **qu'une fois**.

@@ -300,6 +300,26 @@ func TestSettingsSyncTime(t *testing.T) {
 	if v, _ := e.srv.Store.Setting(context.Background(), "sync_time", ""); v != "06:07" {
 		t.Errorf("stored %q", v)
 	}
+
+	// Several syncs a day.
+	if !strings.Contains(r.body, `<option value="24" selected>Une fois par jour</option>`) || strings.Contains(r.body, "Chaque jour à") {
+		t.Error("default: once a day")
+	}
+	r = e.do(e.c, "POST", "/settings", url.Values{"csrf_token": {tok}, "sync_hour": {"6"}, "sync_minute": {"7"}, "sync_every": {"8"}},
+		map[string]string{"HX-Request": "true"})
+	if r.status != http.StatusOK || !strings.Contains(r.body, `<option value="8" selected>Toutes les 8 heures</option>`) ||
+		!strings.Contains(r.body, "Chaque jour à 06:07, 14:07, 22:07") {
+		t.Fatalf("every 8 hours: %d %s", r.status, r.body)
+	}
+	if v, _ := e.srv.Store.Setting(context.Background(), "sync_every_hours", ""); v != "8" {
+		t.Errorf("stored interval %q", v)
+	}
+	for _, bad := range []string{"5", "0", "x", "48"} {
+		r := e.do(e.c, "POST", "/settings", url.Values{"csrf_token": {tok}, "sync_hour": {"6"}, "sync_minute": {"7"}, "sync_every": {bad}}, nil)
+		if r.status != http.StatusUnprocessableEntity || !strings.Contains(r.body, "Fréquence invalide.") {
+			t.Errorf("every=%s: %d", bad, r.status)
+		}
+	}
 }
 
 func TestPlexOnlyPosters(t *testing.T) {
