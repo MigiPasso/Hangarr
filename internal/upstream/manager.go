@@ -256,6 +256,52 @@ func validURL(v string) bool {
 	return err == nil && (u.Scheme == "http" || u.Scheme == "https") && u.Host != "" && u.User == nil
 }
 
+// keptCredentials refuses to send a kept credential (empty field: keep the
+// current value) to another server: when the API address of svc moves to
+// another origin (scheme, host or port), its credentials must be typed
+// again. Otherwise a session alone could point the service to a host it
+// controls and receive the API key or Plex token, which the interface never
+// shows. The webhook secret is not concerned (it is never sent out).
+func (m *Manager) keptCredentials(svc string, current Values, in Input) ValidationError {
+	apiURL := svc + ".url"
+	next := normalizeURL(in.Values[apiURL])
+	if m.Env[apiURL] != "" || next == "" || sameOrigin(next, current[apiURL]) {
+		return nil
+	}
+	verr := ValidationError{}
+	for _, f := range FieldsOf(svc) {
+		if f.Kind != KindSecret || f.Key == TautulliWebhook || current[f.Key] == "" ||
+			strings.TrimSpace(in.Values[f.Key]) != "" || in.Clear[f.Key] {
+			continue
+		}
+		if m.Env[f.Key] != "" {
+			verr[apiURL] = "The credential is set by the environment: change this address there too."
+			continue
+		}
+		verr[f.Key] = "The address changed: type the credential again."
+	}
+	return verr
+}
+
+// sameOrigin reports whether two URLs share scheme, host and port.
+func sameOrigin(a, b string) bool {
+	ua, errA := url.Parse(a)
+	ub, errB := url.Parse(b)
+	if errA != nil || errB != nil || b == "" {
+		return false
+	}
+	port := func(u *url.URL) string {
+		if p := u.Port(); p != "" {
+			return p
+		}
+		if strings.EqualFold(u.Scheme, "https") {
+			return "443"
+		}
+		return "80"
+	}
+	return strings.EqualFold(ua.Scheme, ub.Scheme) && strings.EqualFold(ua.Hostname(), ub.Hostname()) && port(ua) == port(ub)
+}
+
 // apply computes the effective values of svc after the input, starting from
 // saved, and the settings to write. Locked fields are ignored.
 func (m *Manager) apply(svc string, saved Values, broken map[string]bool, in Input) (set map[string]string, del, changed []string, err error) {
@@ -298,6 +344,11 @@ func (m *Manager) apply(svc string, saved Values, broken map[string]bool, in Inp
 				return nil, nil, nil, serr
 			}
 			set[key], changed = sealed, append(changed, f.Key)
+		}
+	}
+	for k, msg := range m.keptCredentials(svc, m.effective(saved), in) {
+		if _, ok := verr[k]; !ok {
+			verr[k] = msg
 		}
 	}
 	if len(verr) > 0 {
@@ -343,6 +394,9 @@ func (m *Manager) Test(ctx context.Context, svc string, in Input) (string, error
 		return "", err
 	}
 	v := m.effective(saved)
+	if verr := m.keptCredentials(svc, v, in); len(verr) > 0 {
+		return "", verr
+	}
 	for _, f := range FieldsOf(svc) {
 		if m.Env[f.Key] != "" {
 			continue

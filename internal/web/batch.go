@@ -122,7 +122,7 @@ func extendDeadline(w http.ResponseWriter) {
 // (step=run) and shows the per-item report.
 func (s *Server) batchDelete(w http.ResponseWriter, r *http.Request) {
 	if s.Actions == nil {
-		http.Error(w, "Suppression indisponible.", http.StatusServiceUnavailable)
+		http.Error(w, s.loc(r).T("Deletion unavailable."), http.StatusServiceUnavailable)
 		return
 	}
 	ids, err := selectedIDs(r)
@@ -194,7 +194,7 @@ func (s *Server) batchDelete(w http.ResponseWriter, r *http.Request) {
 // is destroyed) and shows the per-item report.
 func (s *Server) batchProtect(w http.ResponseWriter, r *http.Request) {
 	if s.Actions == nil {
-		http.Error(w, "Protection indisponible.", http.StatusServiceUnavailable)
+		http.Error(w, s.loc(r).T("Protection unavailable."), http.StatusServiceUnavailable)
 		return
 	}
 	ids, err := selectedIDs(r)

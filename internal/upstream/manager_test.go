@@ -311,3 +311,45 @@ func TestSetupKeyGeneratedThenMigrated(t *testing.T) {
 		t.Error("URL changed by the migration")
 	}
 }
+
+// A kept credential never follows the API address to another server.
+func TestKeptCredentialsStayWithTheirServer(t *testing.T) {
+	m := newManager(t, nil, newBox(t, "k"))
+	ctx := context.Background()
+	save(t, m, Sonarr, input(SonarrURL, "http://sonarr:8989", SonarrAPIKey, apiKey))
+	save(t, m, Plex, input(PlexURL, "https://plex.example:32400", PlexToken, apiKey))
+
+	var verr ValidationError
+	_, err := m.Save(ctx, Sonarr, input(SonarrURL, "http://evil.example:8989"), store.AuthEvent{}, time.Now())
+	if !errors.As(err, &verr) || verr[SonarrAPIKey] == "" {
+		t.Fatalf("new host with the kept key: %v", err)
+	}
+	if _, err := m.Test(ctx, Plex, input(PlexURL, "https://plex.example:8443")); !errors.As(err, &verr) || verr[PlexToken] == "" {
+		t.Fatalf("test on another port with the kept token: %v", err)
+	}
+	if _, err := m.Test(ctx, Sonarr, input(SonarrURL, "https://sonarr:8989")); !errors.As(err, &verr) {
+		t.Fatalf("another scheme: %v", err)
+	}
+	if c := m.Registry.Get(); c.Values[SonarrURL] != "http://sonarr:8989" {
+		t.Errorf("refused change applied: %q", c.Values[SonarrURL])
+	}
+	// Same origin (path, trailing slash, default port, case): the key stays.
+	save(t, m, Sonarr, input(SonarrURL, "http://SONARR:8989/sonarr/"))
+	save(t, m, Plex, input(PlexURL, "https://plex.example:32400/"))
+	if c := m.Registry.Get(); c.Values[SonarrURL] != "http://SONARR:8989/sonarr" || c.Values[SonarrAPIKey] != apiKey {
+		t.Errorf("same origin: %+v", c.Values)
+	}
+	// Typed again: accepted.
+	save(t, m, Sonarr, input(SonarrURL, "http://sonarr2:8989", SonarrAPIKey, apiKey))
+
+	// Credential from the environment: its address must come from there too
+	// (otherwise clearing then setting the address would redirect the key).
+	env := newManager(t, Values{RadarrAPIKey: apiKey}, newBox(t, "k"))
+	_, err = env.Save(ctx, Radarr, input(RadarrURL, "http://evil.example:7878"), store.AuthEvent{}, time.Now())
+	if !errors.As(err, &verr) || verr[RadarrURL] == "" {
+		t.Errorf("environment key, address from the interface: %v", err)
+	}
+	if !sameOrigin("https://a", "https://A:443/x") || sameOrigin("http://a", "") || sameOrigin("http://a", "http://a:81") {
+		t.Error("sameOrigin")
+	}
+}

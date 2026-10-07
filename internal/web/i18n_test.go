@@ -130,6 +130,10 @@ func TestFrenchCatalogComplete(t *testing.T) {
 		"The number typed does not match the number of items to delete.",
 		"Invalid time: hour 0 to 23, minute 0 to 59.",
 		"Expected an http(s) address, e.g. http://host:port.", "At least 32 characters.",
+		"The address changed: type the credential again.",
+		"The credential is set by the environment: change this address there too.",
+		"Invalid or missing CSRF token. Reload the page.", "Internal error.", "Unknown session.",
+		"Deletion unavailable.", "Protection unavailable.",
 		"Cannot save: no master key (HANGARR_MASTER_KEY).", "Delete selection", "Protect selection",
 		store.NoGenre, store.Unknown} {
 		add(k, "Go literals")

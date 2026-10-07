@@ -71,8 +71,9 @@ func Open(ctx context.Context, dataDir string) (*Store, error) {
 // the journal.
 func renameLegacyDB(dataDir string) error {
 	newPath, oldPath := filepath.Join(dataDir, DBFileName), filepath.Join(dataDir, legacyDBFileName)
-	if _, err := os.Stat(newPath); err == nil {
-		return nil
+	// Rename only when hangarr.db is certainly absent: never overwrite it.
+	if _, err := os.Stat(newPath); !errors.Is(err, os.ErrNotExist) {
+		return nil //nolint:nilerr // present (or unreadable): keep it, Open reports the error
 	}
 	if _, err := os.Stat(oldPath); err != nil {
 		return nil //nolint:nilerr // no legacy database: nothing to do

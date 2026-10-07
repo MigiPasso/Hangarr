@@ -117,7 +117,7 @@ func (s *Server) authed(h http.HandlerFunc, flags authFlags) http.Handler {
 			}
 			if !auth.TokensEqual(sess.CSRFToken, sent) {
 				s.Log.Warn("csrf token rejected", "path", r.URL.Path, "ip", s.clientMeta(r).IP)
-				http.Error(w, "Jeton CSRF invalide ou manquant. Rechargez la page.", http.StatusForbidden)
+				http.Error(w, s.loc(r).T("Invalid or missing CSRF token. Reload the page."), http.StatusForbidden)
 				return
 			}
 		}
@@ -197,7 +197,7 @@ func (s *Server) recoverer(next http.Handler) http.Handler {
 					panic(v)
 				}
 				s.Log.Error("panic in handler", "panic", v, "stack", string(debug.Stack()))
-				http.Error(w, "Erreur interne", http.StatusInternalServerError)
+				http.Error(w, s.loc(r).T("Internal error."), http.StatusInternalServerError)
 			}
 		}()
 		next.ServeHTTP(w, r)
@@ -209,5 +209,5 @@ func (s *Server) serverError(w http.ResponseWriter, r *http.Request, err error) 
 		return
 	}
 	s.Log.Error("request failed", "path", r.URL.Path, "err", err)
-	http.Error(w, "Erreur interne", http.StatusInternalServerError)
+	http.Error(w, s.loc(r).T("Internal error."), http.StatusInternalServerError)
 }
