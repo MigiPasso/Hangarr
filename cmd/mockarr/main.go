@@ -15,7 +15,7 @@ import (
 	"syscall"
 	"time"
 
-	"cleanarr/internal/mockarr"
+	"hangarr/internal/mockarr"
 )
 
 func main() {
@@ -29,6 +29,8 @@ func main() {
 		dir = "/testdata"
 	}
 	m := mockarr.New(os.DirFS(dir), key)
+	m.DevExtras, _ = strconv.ParseBool(os.Getenv("MOCK_DEV_EXTRAS"))
+	m.RealPosters, _ = strconv.ParseBool(os.Getenv("MOCK_REAL_POSTERS"))
 	if shift, _ := strconv.ParseBool(os.Getenv("MOCK_SHIFT_DATES")); shift {
 		m.ShiftToNow(time.Now())
 		log.Info("history dates shifted", "days", m.ShiftSeconds/86400)

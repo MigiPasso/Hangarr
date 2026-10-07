@@ -7,9 +7,9 @@ import (
 	"strings"
 	"time"
 
-	"cleanarr/internal/i18n"
-	"cleanarr/internal/store"
-	"cleanarr/internal/syncer"
+	"hangarr/internal/i18n"
+	"hangarr/internal/store"
+	"hangarr/internal/syncer"
 )
 
 type settingsData struct {

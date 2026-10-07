@@ -3,8 +3,8 @@ root = "."
 tmp_dir = "/tmp/air"
 
 [build]
-  cmd = "go build -o /go/bin/cleanarr ./cmd/cleanarr"
-  entrypoint = ["/go/bin/cleanarr", "serve"]
+  cmd = "go build -o /go/bin/hangarr ./cmd/hangarr"
+  entrypoint = ["/go/bin/hangarr", "serve"]
   include_ext = ["go", "html", "css", "js", "sql", "txt"]
   exclude_dir = ["e2e", "testdata", "deploy", "tmp", ".git"]
   exclude_regex = ["_test\\.go$"]

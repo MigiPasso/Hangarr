@@ -1,5 +1,5 @@
 // Command capture-fixtures records anonymized responses of the real
-// Sonarr, Radarr, Plex and Tautulli instances (configured like cleanarr,
+// Sonarr, Radarr, Plex and Tautulli instances (configured like hangarr,
 // through environment variables) into testdata/captured/, using the layout
 // served by mockarr. Run it with `make capture-fixtures`, then review the
 // files before committing them.
@@ -21,8 +21,8 @@ import (
 	"strings"
 	"time"
 
-	"cleanarr/internal/clients/httpx"
-	"cleanarr/internal/config"
+	"hangarr/internal/clients/httpx"
+	"hangarr/internal/config"
 )
 
 func main() {
@@ -62,6 +62,12 @@ func run(out string, limit int) error {
 	radarr := httpx.New("radarr", cfg.RadarrURL, arrAuth(cfg.RadarrAPIKey))
 	plex := httpx.New("plex", cfg.PlexURL, func(r *http.Request) { r.Header.Set("X-Plex-Token", cfg.PlexToken) })
 
+	now := time.Now().UTC()
+	window := url.Values{"start": {now.Format(time.RFC3339)}, "end": {now.AddDate(0, 0, 90).Format(time.RFC3339)}}
+	sonarrCal := url.Values{"includeSeries": {"true"}}
+	for k, v := range window {
+		sonarrCal[k] = v
+	}
 	steps := []struct {
 		file   string
 		client *httpx.Client
@@ -72,9 +78,11 @@ func run(out string, limit int) error {
 		{"sonarr/series.json", sonarr, "/api/v3/series", nil, true},
 		{"sonarr/tag.json", sonarr, "/api/v3/tag", nil, false},
 		{"sonarr/qualityprofile.json", sonarr, "/api/v3/qualityprofile", nil, false},
+		{"sonarr/calendar.json", sonarr, "/api/v3/calendar", sonarrCal, true},
 		{"radarr/movie.json", radarr, "/api/v3/movie", nil, true},
 		{"radarr/tag.json", radarr, "/api/v3/tag", nil, false},
 		{"radarr/qualityprofile.json", radarr, "/api/v3/qualityprofile", nil, false},
+		{"radarr/calendar.json", radarr, "/api/v3/calendar", window, true},
 		{"plex/sections.json", plex, "/library/sections", nil, false},
 		{"plex/accounts.json", plex, "/accounts", nil, false},
 		{"plex/history.json", plex, "/status/sessions/history/all", c.plexPage(url.Values{"sort": {"viewedAt:desc"}}), false},

@@ -67,11 +67,17 @@ test("cleanup filters: state, plays and size in the sidebar", async ({ page }) =
 });
 
 test("health page: live services, sync runs and data gaps", async ({ page }) => {
-  await page.getByRole("link", { name: "Santé" }).click();
+  // System opens its first page, Health.
+  await page.getByRole("link", { name: "Système" }).click();
+  await expect(page.getByRole("link", { name: "Santé" })).toHaveAttribute("aria-current", "page");
   const services = page.locator("#health-services");
   await expect(services.locator(".badge-ok")).toHaveCount(4);
   await expect(services).toContainText("Version 4.0.0.0-mock");
-  await expect(services).toContainText("Indexers unavailable due to failures");
+  await expect(services).not.toContainText("Indexers unavailable due to failures");
+  const trackers = page.locator("#health-trackers");
+  await expect(trackers.locator("tr", { hasText: "NZBgeek" }).first()).toContainText("En échec");
+  await expect(trackers.locator("tr", { hasText: "YTS" })).toContainText("Désactivé");
+  await expect(trackers).toContainText("Indexers unavailable due to failures");
   await expect(page.getByRole("cell", { name: "Tautulli (historique)" })).toBeVisible();
   const plexOnly = page.locator(".health-list", { hasText: "Dans Plex mais pas dans Sonarr/Radarr" });
   await expect(plexOnly.getByRole("link", { name: "Home Videos" })).toBeVisible();
@@ -98,4 +104,77 @@ test("batch selection on the cleanup page (dry-run)", async ({ page }) => {
   // Nothing was deleted: rows stay, the selection is cleared.
   await expect(page.locator(".cleanup-table")).toContainText("Interstellar");
   await expect(bar).toBeHidden();
+});
+
+test("upcoming lists monitored releases by date, by page", async ({ page }) => {
+  await page.getByRole("link", { name: "À venir" }).click();
+  await expect(page.getByRole("heading", { name: "À venir", level: 1 })).toBeVisible();
+  await expect(page.locator(".cal-day").first()).toContainText("Aujourd'hui");
+  await expect(page.locator(".cal-day li", { hasText: "Hello, Ms. Cobel" })).toContainText("S02E01");
+  await expect(page.locator(".cal-day li")).toHaveCount(25);
+  // Page size, then the next page; the period keeps the page size.
+  await expect(page.getByLabel("Par page")).toHaveValue("25");
+  await page.getByLabel("Par page").selectOption("10");
+  await expect(page).toHaveURL(/size=10/);
+  await expect(page.locator(".cal-day li")).toHaveCount(10);
+  await page.getByRole("link", { name: "Suivant" }).click();
+  await expect(page).toHaveURL(/size=10&page=2/);
+  await expect(page.locator(".calendar")).not.toContainText("Hello, Ms. Cobel");
+  await page.getByRole("link", { name: "1 an" }).click();
+  await expect(page).toHaveURL(/days=365&size=10$/);
+  await page.goto("/calendar?size=100");
+  await expect(page.locator(".cal-day li", { hasText: "Shōgun" })).toContainText("3 épisodes");
+  await expect(page.locator(".cal-day li", { hasText: "Avatar" })).toContainText("Au cinéma");
+  await page.locator(".cal-day").getByRole("link", { name: "Severance" }).first().click();
+  await expect(page.locator("#modal")).toBeVisible();
+});
+
+test("upcoming month view", async ({ page }) => {
+  await page.goto("/calendar");
+  await page.getByRole("link", { name: "Calendrier", exact: true }).click();
+  await expect(page).toHaveURL(/view=month/);
+  await expect(page.locator(".cal-month td[aria-current=date]")).toHaveCount(1);
+  await expect(page.locator(".cal-month thead th")).toHaveCount(7);
+  // Shōgun's episodes air in 20 days: this month or the next one.
+  const chip = page.locator(".cal-chip", { hasText: "S02E01–E03" });
+  if ((await chip.count()) === 0) {
+    await page.getByRole("link", { name: "Mois suivant" }).click();
+  }
+  await expect(chip).toContainText("Shōgun");
+  await page.getByRole("link", { name: "Liste" }).click();
+  await expect(page.locator(".cal-day").first()).toBeVisible();
+});
+
+test("upcoming grid view keeps the page size", async ({ page }) => {
+  await page.goto("/calendar?size=50");
+  await page.getByRole("group", { name: "Affichage" }).getByRole("link", { name: "Grille" }).click();
+  await expect(page).toHaveURL(/view=grid.*size=50/);
+  await expect(page.locator(".cal-card")).toHaveCount(50);
+  // One flow: a date tile before each day's cards.
+  await expect(page.locator(".cal-flow > .cal-date").first()).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Aujourd'hui" })).toBeVisible();
+  await expect(page.locator(".cal-card", { hasText: "Shōgun" }).locator(".badge")).toHaveText("S02E01–E03");
+  await page.getByLabel("Par page").selectOption("10");
+  await expect(page).toHaveURL(/view=grid/);
+  await expect(page.locator(".cal-card")).toHaveCount(10);
+});
+
+test("sidebar collapses to icons and slides in on small screens", async ({ page }) => {
+  const sidebar = page.locator("#sidebar");
+  await page.getByRole("button", { name: "Réduire le menu" }).click();
+  await expect(page.locator(".shell")).toHaveClass(/is-collapsed/);
+  await page.reload();
+  await expect(page.locator(".shell")).toHaveClass(/is-collapsed/);
+  // Labels stay accessible while collapsed.
+  await page.getByRole("link", { name: "À venir" }).click();
+  await expect(page).toHaveURL(/\/calendar/);
+  await page.getByRole("button", { name: "Réduire le menu" }).click();
+  await expect(page.locator(".shell")).not.toHaveClass(/is-collapsed/);
+
+  await page.setViewportSize({ width: 390, height: 800 });
+  await expect(sidebar).not.toBeInViewport();
+  await page.getByRole("button", { name: "Ouvrir le menu" }).click();
+  await expect(sidebar).toBeInViewport();
+  await page.keyboard.press("Escape");
+  await expect(sidebar).not.toBeInViewport();
 });

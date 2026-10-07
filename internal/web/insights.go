@@ -13,8 +13,8 @@ import (
 	"sync"
 	"time"
 
-	"cleanarr/internal/config"
-	"cleanarr/internal/store"
+	"hangarr/internal/config"
+	"hangarr/internal/store"
 )
 
 const day = 24 * time.Hour

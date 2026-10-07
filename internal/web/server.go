@@ -11,12 +11,12 @@ import (
 	"sync/atomic"
 	"time"
 
-	"cleanarr/internal/actions"
-	"cleanarr/internal/auth"
-	"cleanarr/internal/config"
-	"cleanarr/internal/images"
-	"cleanarr/internal/store"
-	"cleanarr/internal/upstream"
+	"hangarr/internal/actions"
+	"hangarr/internal/auth"
+	"hangarr/internal/config"
+	"hangarr/internal/images"
+	"hangarr/internal/store"
+	"hangarr/internal/upstream"
 )
 
 // ShutdownTimeout bounds how long in-flight requests may run after SIGTERM.
@@ -110,6 +110,7 @@ func (s *Server) Handler() http.Handler {
 	}
 	mux.Handle("POST /batch/delete", s.authed(s.batchDelete, 0))
 	mux.Handle("POST /batch/protect", s.authed(s.batchProtect, 0))
+	mux.Handle("GET /calendar", s.authed(s.calendar, 0))
 	mux.Handle("GET /journal", s.authed(s.journal, 0))
 	mux.Handle("GET /stats", s.authed(s.stats, 0))
 	mux.Handle("GET /stats/users/{id}", s.authed(s.userStats, 0))
@@ -120,6 +121,7 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("GET /sync/status", s.authed(s.syncStatusPartial, 0))
 	mux.Handle("GET /health", s.authed(s.health, 0))
 	mux.Handle("GET /health/services", s.authed(s.healthServices, 0))
+	mux.Handle("GET /health/trackers", s.authed(s.healthTrackers, 0))
 	mux.Handle("GET /config", s.authed(s.configPage, 0))
 	mux.Handle("POST /config/{service}", s.authed(s.configSubmit, 0))
 	mux.Handle("POST /config/{service}/test", s.authed(s.configTest, 0))

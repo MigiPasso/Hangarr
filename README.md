@@ -1,7 +1,8 @@
-# Cleanarr
+# Hangarr
 
-Application Go + HTMX auto-hébergée qui croise Tautulli, Plex, Sonarr et Radarr pour savoir ce qui est
-regardé, par qui, ce qui ne l'est jamais, et faire le ménage proprement. Spécification complète : [SPEC.md](SPEC.md).
+Tour de contrôle auto-hébergée (Go + HTMX) d'une stack *arr : elle croise Tautulli, Plex, Sonarr et Radarr pour
+savoir ce qui est regardé, par qui, ce qui ne l'est jamais, ce qui arrive bientôt, si tout va bien, et faire le ménage
+proprement. Comme un hangar, on y range un peu tout. Spécification complète : [SPEC.md](SPEC.md).
 
 ## Fonctionnalités
 
@@ -11,13 +12,17 @@ regardé, par qui, ce qui ne l'est jamais, et faire le ménage proprement. Spéc
   regardé depuis* (jamais vu : depuis l'ajout), *Ajouté*, *Taille*, *Statut* ; genres, année, note, tags, profil,
   réseau/studio et présence Plex/Sonarr/Radarr sous « Plus de filtres ».
 - **Fiche** : progression par saison et par spectateur, historique, liens vers Sonarr, Radarr et Plex.
+- **À venir** : calendrier des sorties de ce qui est monitoré (épisodes Sonarr, sorties cinéma / numérique / physique
+  Radarr), lu en direct, en liste ou en grille d'affiches paginées (30 jours, 3 mois ou 1 an ; 10, 25, 50 ou 100 par page), ou en calendrier
+  mensuel ; épisodes sortis le même jour regroupés, premières et finales
+  signalées.
 - **Nettoyage** : ce que personne n'a regardé depuis N jours (réglable), trié par taille avec la raison, filtrable par
   type, état, lectures, taille et ancienneté ; saisons jamais vues des séries regardées par ailleurs.
 - **Suppressions** par Sonarr/Radarr (série, saison, film ; fichiers puis démonitorage pour une saison), une par une ou
   par lot. Un élément que **seul Plex connaît** (retiré de Sonarr/Radarr) est supprimé par Plex, fichiers compris :
   activer *Paramètres › Bibliothèque › Autoriser la suppression des médias* sur le serveur Plex.
 - **Protection** : tag Sonarr/Radarr (premier de `PROTECTED_TAGS`) ; pour un élément Plex seul, protection gardée
-  dans Cleanarr uniquement (rien n'est envoyé à Plex). Un élément protégé n'est jamais proposé ni supprimé.
+  dans Hangarr uniquement (rien n'est envoyé à Plex). Un élément protégé n'est jamais proposé ni supprimé.
 - Garde-fous côté serveur : `DRY_RUN=true` par défaut (tout est simulé et journalisé), tag relu en direct, titre à
   saisir pour une série entière, journal de toutes les tentatives.
 - **Stats** (par période et par spectateur), **Santé** (services vérifiés en direct, historique des synchronisations,
@@ -37,17 +42,17 @@ conteneurs.
 | Cible `make` | Commande `docker compose` équivalente |
 |---|---|
 | `make dev` | `docker compose -f compose.dev.yml up --build app mock` |
-| `make dev-real` | `CLEANARR_ENV_FILE=.env docker compose -f compose.dev.yml --profile real up --build app-real` |
+| `make dev-real` | `HANGARR_ENV_FILE=.env docker compose -f compose.dev.yml --profile real up --build app-real` |
 | `make test` | `docker compose -f compose.dev.yml --profile tools run --rm test` (après `build test`) |
 | `make lint` | `docker compose -f compose.dev.yml --profile tools run --rm lint` (après `build lint`) |
 | `make e2e` | voir le `Makefile` : démarre `app-e2e` + `mock`, lit le mot de passe initial dans les logs, lance `e2e`, arrête tout |
 | `make deps` | `docker compose -f compose.dev.yml --profile tools run --rm gotools go mod tidy` |
-| `make image-load` | `docker build --target runtime -t cleanarr:local .` |
+| `make image-load` | `docker build --target runtime -t hangarr:local .` |
 | `make image` | `docker buildx build --platform linux/amd64,linux/arm64 --target runtime …` (`PUSH=1` pour pousser) |
-| `make reset-admin` | `docker compose -f compose.dev.yml exec app cleanarr admin reset-password` |
-| `make sync` | `docker compose -f compose.dev.yml exec app cleanarr sync --once` |
+| `make reset-admin` | `docker compose -f compose.dev.yml exec app hangarr admin reset-password` |
+| `make sync` | `docker compose -f compose.dev.yml exec app hangarr sync --once` |
 | `make deploy-check` | valide `compose.yml` puis le démarre tel quel contre le mock (projet séparé) et lance `deploy/check.sh` |
-| `make capture-fixtures` | `CLEANARR_ENV_FILE=.env docker compose -f compose.dev.yml --profile real run --rm capture` |
+| `make capture-fixtures` | `HANGARR_ENV_FILE=.env docker compose -f compose.dev.yml --profile real run --rm capture` |
 | `make clean` | `docker compose -f compose.dev.yml --profile real --profile tools --profile e2e down -v` |
 
 `make dev` lance l'application en hot reload sur http://localhost:8080 contre `mockarr`, de faux
@@ -64,14 +69,14 @@ dans les logs :
 
 ```
 ================================================================
- CLEANARR: INITIAL ADMIN ACCOUNT CREATED
+ HANGARR: INITIAL ADMIN ACCOUNT CREATED
  Username : admin
  Password : …
  ...
 ```
 
 En dev : `docker compose -f compose.dev.yml logs app | grep -A4 "INITIAL ADMIN"`. Le changement est obligatoire à la
-première connexion. Mot de passe perdu : `make reset-admin` (ou `cleanarr admin reset-password` via
+première connexion. Mot de passe perdu : `make reset-admin` (ou `hangarr admin reset-password` via
 `docker exec` / `kubectl exec`), qui affiche un nouveau mot de passe temporaire uniquement dans la sortie de la commande.
 
 ## Récupérer le token Plex et les clés d'API
@@ -82,6 +87,12 @@ première connexion. Mot de passe perdu : `make reset-admin` (ou `cleanarr admin
   `X-Plex-Token=…`. Voir aussi la documentation officielle « Finding an authentication token / X-Plex-Token ».
   Utiliser le token du propriétaire du serveur (nécessaire pour l'historique de tous les comptes et les suppressions
   par Plex).
+
+## Anciennement Cleanarr
+
+Hangarr s'appelait Cleanarr. Une installation existante se migre sans rien ressaisir (base renommée au démarrage,
+anciennes variables `CLEANARR_MASTER_KEY*` et en-tête `X-Cleanarr-Token` encore acceptés) : voir
+[docs/deploiement.md, « Migrer depuis Cleanarr »](docs/deploiement.md#11-migrer-depuis-cleanarr).
 
 ## Déploiement
 
@@ -96,7 +107,7 @@ fichiers en lecture seule, aucune capacité), un volume pour `/data`, redémarra
 ```sh
 cp .env.example .env            # facultatif : DRY_RUN, COOKIE_SECURE, TZ…
 docker compose up -d --build
-docker compose logs cleanarr | grep -A4 "INITIAL ADMIN"   # mot de passe initial, affiché une seule fois
+docker compose logs hangarr | grep -A4 "INITIAL ADMIN"   # mot de passe initial, affiché une seule fois
 ```
 
 Ouvrir `http://<hôte>:8080`, changer le mot de passe, puis configurer Sonarr, Radarr, Plex et Tautulli dans
@@ -107,37 +118,37 @@ Ouvrir `http://<hôte>:8080`, changer le mot de passe, puis configurer Sonarr, R
   l'adresse du proxy dans `TRUSTED_PROXIES`.
 - **Même réseau que la stack *arr*** : décommenter le bloc `networks` de `compose.yml` (nom du réseau : `docker network
   ls`). Sonarr se joint alors par `http://sonarr:8989`, et Tautulli appelle le webhook par
-  `http://cleanarr:8080/webhooks/tautulli`.
-- **Clé maître (recommandé)** : `docker run --rm cleanarr:local master-key > master.key`, puis décommenter les blocs
+  `http://hangarr:8080/webhooks/tautulli`.
+- **Clé maître (recommandé)** : `docker run --rm hangarr:local master-key > master.key`, puis décommenter les blocs
   `secrets` de `compose.yml`. Sans elle, la clé est générée dans le volume (voir « Configuration des services »).
 - **Équivalent `docker run`** :
   ```sh
-  docker run -d --name cleanarr --restart unless-stopped -p 8080:8080 --env-file .env \
-    -v cleanarr-data:/data --read-only --user 65532:65532 --cap-drop ALL \
-    --security-opt no-new-privileges:true cleanarr:local
+  docker run -d --name hangarr --restart unless-stopped -p 8080:8080 --env-file .env \
+    -v hangarr-data:/data --read-only --user 65532:65532 --cap-drop ALL \
+    --security-opt no-new-privileges:true hangarr:local
   ```
-- **Dossier de l'hôte au lieu d'un volume** (`-v /srv/cleanarr:/data`) : il doit appartenir à l'utilisateur du
-  conteneur : `sudo chown -R 65532:65532 /srv/cleanarr`.
+- **Dossier de l'hôte au lieu d'un volume** (`-v /srv/hangarr:/data`) : il doit appartenir à l'utilisateur du
+  conteneur : `sudo chown -R 65532:65532 /srv/hangarr`.
 - **Mise à jour** : `git pull && docker compose up -d --build`, ou avec l'image publiée :
-  `CLEANARR_IMAGE=ghcr.io/<user>/cleanarr:<version>`, puis `docker compose pull && docker compose up -d`. Les migrations
+  `HANGARR_IMAGE=ghcr.io/<user>/hangarr:<version>`, puis `docker compose pull && docker compose up -d`. Les migrations
   de la base s'appliquent au démarrage.
-- **Sauvegarde**, à chaud : `docker compose exec cleanarr /cleanarr backup` écrit une copie cohérente dans
-  `/data/backups/cleanarr-AAAAMMJJ-HHMMSS.db` (ou `… backup /data/backups/mon-fichier.db`). Les clés d'API enregistrées
-  y sont chiffrées : conserver aussi la clé maître (`master.key` du volume, ou `CLEANARR_MASTER_KEY`). Pour restaurer :
-  arrêter le conteneur, remplacer `/data/cleanarr.db` par la copie, redémarrer.
-- **Mot de passe admin perdu** : `docker compose exec cleanarr /cleanarr admin reset-password`.
+- **Sauvegarde**, à chaud : `docker compose exec hangarr /hangarr backup` écrit une copie cohérente dans
+  `/data/backups/hangarr-AAAAMMJJ-HHMMSS.db` (ou `… backup /data/backups/mon-fichier.db`). Les clés d'API enregistrées
+  y sont chiffrées : conserver aussi la clé maître (`master.key` du volume, ou `HANGARR_MASTER_KEY`). Pour restaurer :
+  arrêter le conteneur, remplacer `/data/hangarr.db` par la copie, redémarrer.
+- **Mot de passe admin perdu** : `docker compose exec hangarr /hangarr admin reset-password`.
 
 ## Kubernetes
 
-Manifests YAML simples dans [`deploy/kubernetes/cleanarr.yaml`](deploy/kubernetes/cleanarr.yaml), sans namespace
+Manifests YAML simples dans [`deploy/kubernetes/hangarr.yaml`](deploy/kubernetes/hangarr.yaml), sans namespace
 imposé (celui de `kubectl -n` ou de l'application Argo CD) : ConfigMap, PVC, Deployment (une réplique, stratégie `Recreate`, non-root, rootfs en lecture seule, sondes
 `/healthz` et `/readyz`) et Service. Les étapes sont en tête du fichier :
 
 1. publier l'image dans un registre que les nœuds peuvent joindre (voir ci-dessous) et renseigner `image:` ;
-2. créer le secret de la clé maître : `kubectl -n <ns> create secret generic cleanarr-master-key
+2. créer le secret de la clé maître : `kubectl -n <ns> create secret generic hangarr-master-key
    --from-literal=master-key="$(openssl rand -base64 32)"` ;
-3. `kubectl -n <ns> apply -f deploy/kubernetes/cleanarr.yaml` (ou Sync Argo CD), puis
-   `kubectl -n <ns> logs deploy/cleanarr | grep -A4 "INITIAL ADMIN"` pour le mot de passe initial ;
+3. `kubectl -n <ns> apply -f deploy/kubernetes/hangarr.yaml` (ou Sync Argo CD), puis
+   `kubectl -n <ns> logs deploy/hangarr | grep -A4 "INITIAL ADMIN"` pour le mot de passe initial ;
 4. configurer les services dans l'UI avec leurs adresses internes au cluster
    (`http://sonarr.<namespace>.svc.cluster.local:8989`…).
 
@@ -151,12 +162,12 @@ Depuis `main` à jour, sur un arbre propre (sinon la version se termine par `-di
 ```sh
 git tag v0.1.7 && git push origin v0.1.7
 echo "ghp_…" | docker login ghcr.io -u <utilisateur> --password-stdin   # token classic, scope write:packages
-make image PUSH=1 IMAGE=ghcr.io/<utilisateur>/cleanarr                  # amd64 + arm64, tag = git describe
-docker buildx imagetools inspect ghcr.io/<utilisateur>/cleanarr:v0.1.7  # deux plateformes attendues
+make image PUSH=1 IMAGE=ghcr.io/<utilisateur>/hangarr                  # amd64 + arm64, tag = git describe
+docker buildx imagetools inspect ghcr.io/<utilisateur>/hangarr:v0.1.7  # deux plateformes attendues
 ```
 
 Seul le tag de version est poussé. Pour tenir aussi `:latest` à jour :
-`docker buildx imagetools create -t ghcr.io/<utilisateur>/cleanarr:latest ghcr.io/<utilisateur>/cleanarr:v0.1.7`.
+`docker buildx imagetools create -t ghcr.io/<utilisateur>/hangarr:latest ghcr.io/<utilisateur>/hangarr:v0.1.7`.
 Détails et dépannage : [docs/deploiement.md](docs/deploiement.md#2-publier-limage-sur-ghcr).
 
 ## Langue
@@ -171,7 +182,7 @@ bouton « Tester la connexion »). Sans configuration, l'application démarre qu
 désactivée et un bandeau invite à configurer. La première synchronisation part dès que la configuration est complète.
 
 - **Clé maître** : les clés et tokens sont chiffrés en base (AES-256-GCM).
-  - *Recommandé* : fournir une clé de 32 octets par `CLEANARR_MASTER_KEY` ou `CLEANARR_MASTER_KEY_FILE` (secret Docker
+  - *Recommandé* : fournir une clé de 32 octets par `HANGARR_MASTER_KEY` ou `HANGARR_MASTER_KEY_FILE` (secret Docker
     ou Kubernetes), conservée hors du volume de données. Pour en générer une : `docker run --rm <image> master-key`.
   - *Par défaut* : sans clé fournie, une clé est générée au premier démarrage dans `/data/master.key`. Ça marche sans
     rien préparer, mais une sauvegarde ou une copie du volume expose alors les secrets ; la page Configuration le signale.
@@ -186,12 +197,12 @@ désactivée et un bandeau invite à configurer. La première synchronisation pa
 ## Webhook Tautulli (recommandé)
 
 Sans webhook, les statistiques suivent la synchronisation planifiée. Avec, elles sont à jour environ 30 secondes après
-chaque fin de lecture : Tautulli prévient Cleanarr, qui relit seulement l'historique.
+chaque fin de lecture : Tautulli prévient Hangarr, qui relit seulement l'historique.
 
 1. Configuration → Tautulli → « Générer un secret » (affiché une seule fois), ou `TAUTULLI_WEBHOOK_SECRET` (32 caractères min.).
-2. Tautulli → Settings → Notification Agents → Webhook : URL `http://<cleanarr>:8080/webhooks/tautulli`, méthode `POST`,
+2. Tautulli → Settings → Notification Agents → Webhook : URL `http://<hangarr>:8080/webhooks/tautulli`, méthode `POST`,
    déclencheurs « Playback Stop » et « Watched », et dans l'onglet Data, *JSON Headers* :
-   `{"X-Cleanarr-Token": "<secret>"}` pour ces deux déclencheurs.
+   `{"X-Hangarr-Token": "<secret>"}` pour ces deux déclencheurs.
 
 Le contenu envoyé par Tautulli est ignoré (l'appel ne fait que déclencher la lecture de l'historique par l'API) ; sans
 secret, la route répond 404.

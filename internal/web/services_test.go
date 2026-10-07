@@ -9,8 +9,8 @@ import (
 	"strings"
 	"testing"
 
-	"cleanarr/internal/secretbox"
-	"cleanarr/internal/upstream"
+	"hangarr/internal/secretbox"
+	"hangarr/internal/upstream"
 )
 
 const testAPIKey = "0123456789abcdef0123456789abcdef"
@@ -134,7 +134,7 @@ func TestTautulliWebhook(t *testing.T) {
 	post := func(token string) resp {
 		h := map[string]string{"Content-Type": "application/json"}
 		if token != "" {
-			h["X-Cleanarr-Token"] = token
+			h["X-Hangarr-Token"] = token
 		}
 		return e.do(c, "POST", "/webhooks/tautulli", url.Values{"payload": {"ignored"}}, h)
 	}
@@ -160,6 +160,16 @@ func TestTautulliWebhook(t *testing.T) {
 	if r := post(secret); r.status != http.StatusAccepted || !strings.Contains(r.body, "accepted") {
 		t.Errorf("valid token: %d %s", r.status, r.body)
 	}
+	// Header of Cleanarr (former name): still accepted, checked the same way.
+	legacy := func(token string) resp {
+		return e.do(c, "POST", "/webhooks/tautulli", nil, map[string]string{"X-Cleanarr-Token": token})
+	}
+	if r := legacy(secret); r.status != http.StatusAccepted {
+		t.Errorf("legacy header: %d", r.status)
+	}
+	if r := legacy(secret + "x"); r.status != http.StatusUnauthorized {
+		t.Errorf("legacy header, wrong token: %d", r.status)
+	}
 	if r := e.do(c, "GET", "/webhooks/tautulli", nil, nil); r.status == http.StatusAccepted {
 		t.Error("GET must not trigger anything")
 	}
@@ -181,7 +191,7 @@ func TestWebhookSecretGeneration(t *testing.T) {
 	csrf := csrfFrom(t, page.body)
 	h.do(c, "POST", "/config/tautulli", url.Values{"csrf_token": {csrf}, "tautulli.url": {"http://tautulli:8181"}}, nil)
 	r := h.do(c, "POST", "/config/tautulli/webhook-secret", url.Values{"csrf_token": {csrf}}, map[string]string{"HX-Request": "true"})
-	m := regexp.MustCompile(`"X-Cleanarr-Token": "([A-Za-z0-9_-]{43})"`).FindStringSubmatch(r.body)
+	m := regexp.MustCompile(`"X-Hangarr-Token": "([A-Za-z0-9_-]{43})"`).FindStringSubmatch(r.body)
 	if m == nil {
 		t.Fatalf("secret not shown:\n%s", r.body)
 	}

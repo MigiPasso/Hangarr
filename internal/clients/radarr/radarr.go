@@ -8,9 +8,10 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"time"
 
-	"cleanarr/internal/clients/httpx"
-	"cleanarr/internal/clients/sonarr"
+	"hangarr/internal/clients/httpx"
+	"hangarr/internal/clients/sonarr"
 )
 
 // Ratings accepts both shapes seen in Radarr: the current per-source map
@@ -167,4 +168,31 @@ func (c *Client) DiskSpace(ctx context.Context) ([]sonarr.DiskSpace, error) {
 // Health lists the instance's health alerts.
 func (c *Client) Health(ctx context.Context) ([]sonarr.HealthCheck, error) {
 	return sonarr.Health(ctx, c.HTTP)
+}
+
+// CalendarMovie is an entry of GET /api/v3/calendar: a movie with one of its
+// release dates in the requested range.
+type CalendarMovie struct {
+	Movie
+	InCinemas       httpx.Time `json:"inCinemas"`
+	DigitalRelease  httpx.Time `json:"digitalRelease"`
+	PhysicalRelease httpx.Time `json:"physicalRelease"`
+}
+
+// Calendar lists the monitored movies with a release in [start, end).
+func (c *Client) Calendar(ctx context.Context, start, end time.Time) ([]CalendarMovie, error) {
+	var out []CalendarMovie
+	q := url.Values{"start": {start.UTC().Format(time.RFC3339)}, "end": {end.UTC().Format(time.RFC3339)},
+		"unmonitored": {"false"}}
+	return out, c.HTTP.JSON(ctx, httpx.Request{Path: "/api/v3/calendar", Query: q}, &out)
+}
+
+// Indexers lists the instance's indexers.
+func (c *Client) Indexers(ctx context.Context) ([]sonarr.Indexer, error) {
+	return sonarr.Indexers(ctx, c.HTTP)
+}
+
+// IndexerStatuses lists the instance's failing indexers.
+func (c *Client) IndexerStatuses(ctx context.Context) ([]sonarr.IndexerStatus, error) {
+	return sonarr.IndexerStatuses(ctx, c.HTTP)
 }

@@ -1,23 +1,35 @@
 {{define "layout"}}<!doctype html>
-<html lang="{{lang}}"{{with .Theme}} data-theme="{{.}}"{{end}}>
+<html lang="{{lang}}" class="no-js"{{with .Theme}} data-theme="{{.}}"{{end}}>
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="htmx-config" content='{"includeIndicatorStyles":false,"allowEval":false,"allowScriptTags":false}'>
   <meta name="referrer" content="same-origin">
-  <title>{{.Title}} · Cleanarr</title>
+  <title>{{.Title}} · Hangarr</title>
   <link rel="stylesheet" href="{{asset "app.css"}}">
   <script src="{{asset "htmx.min.js"}}" defer></script>
   <script src="{{asset "app.js"}}" defer></script>
 </head>
 <body{{if .Session}} hx-headers='{{.HXHeaders}}'{{end}}>
   {{if .DryRun}}<div class="dry-run-banner" role="status">{{t "Simulation mode (DRY_RUN): nothing will actually be deleted."}}</div>{{end}}
-  {{if .Session}}{{template "nav" .}}{{end}}
-  {{if and .Session (not .Session.MustChangePassword)}}{{template "config_banner" .}}{{end}}
-  <main class="{{if .Session}}container{{else}}centered{{end}}">
+  {{if .Session}}
+  <div class="shell{{if .SidebarCollapsed}} is-collapsed{{end}}">
+    {{template "sidebar" .}}
+    <div class="shell-main">
+      {{template "topbar" .}}
+      {{if not .Session.MustChangePassword}}{{template "config_banner" .}}{{end}}
+      <main class="container">
+        {{template "content" .}}
+      </main>
+      <footer class="footer">Hangarr {{.Version}}</footer>
+    </div>
+  </div>
+  {{else}}
+  <main class="centered">
     {{template "content" .}}
   </main>
-  <footer class="footer">Cleanarr {{.Version}}{{if not .Session}}{{template "lang_switch" .}}{{template "theme_toggle"}}{{end}}</footer>
+  <footer class="footer">Hangarr {{.Version}}{{template "lang_switch" .}}{{template "theme_toggle"}}</footer>
+  {{end}}
   {{if .Session}}
   <dialog id="modal" class="modal" aria-label="{{t "Details"}}">
     <button type="button" class="modal-close" data-close aria-label="{{t "Close"}}">×</button>

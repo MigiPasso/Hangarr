@@ -132,15 +132,30 @@ func TestHealthPage(t *testing.T) {
 			t.Errorf("missing %q", want)
 		}
 	}
+	if !strings.Contains(r.body, `hx-get="/health/trackers" hx-trigger="load"`) {
+		t.Error("trackers must load separately")
+	}
 	r = e.do(e.c, "GET", "/health/services", nil, map[string]string{"HX-Request": "true"})
 	if strings.Contains(r.body, "<html") || strings.Count(r.body, "badge-ok") != 4 ||
-		!strings.Contains(r.body, "Version 4.0.0.0-mock") || !strings.Contains(r.body, "Indexers unavailable due to failures") {
-		t.Errorf("services fragment:\n%s", r.body)
+		!strings.Contains(r.body, "Version 4.0.0.0-mock") || strings.Contains(r.body, "Indexers unavailable due to failures") {
+		t.Errorf("services fragment (indexer alerts go with the trackers):\n%s", r.body)
+	}
+	// Trackers: failing first, disabled ones flagged, indexer alerts here.
+	r = e.do(e.c, "GET", "/health/trackers", nil, map[string]string{"HX-Request": "true"})
+	for _, want := range []string{`id="health-trackers"`, "3 indexeurs", "En échec",
+		"Désactivé", "Indexers unavailable due to failures", "<td>Nyaa</td>", "Torrent", "Usenet"} {
+		if !strings.Contains(r.body, want) {
+			t.Errorf("trackers: missing %q", want)
+		}
+	}
+	if strings.Contains(r.body, "<html") || strings.Index(r.body, "NZBgeek") > strings.Index(r.body, "DrunkenSlug") {
+		t.Errorf("trackers fragment, failing first:\n%s", r.body)
 	}
 	// Without JavaScript: the whole page with the services checked.
 	r = e.do(e.c, "GET", "/health/services", nil, nil)
-	if !strings.Contains(r.body, "<html") || strings.Contains(r.body, `hx-trigger="load"`) || !strings.Contains(r.body, "badge-ok") {
-		t.Error("no-JS page must include the checked services")
+	if !strings.Contains(r.body, "<html") || strings.Contains(r.body, `hx-trigger="load"`) || !strings.Contains(r.body, "badge-ok") ||
+		!strings.Contains(r.body, "<td>NZBgeek</td>") {
+		t.Error("no-JS page must include the checked services and trackers")
 	}
 }
 

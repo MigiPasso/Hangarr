@@ -1,4 +1,4 @@
-module cleanarr
+module hangarr
 
 go 1.27
 

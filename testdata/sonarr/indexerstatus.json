@@ -1,0 +1,9 @@
+[
+  {
+    "id": 1,
+    "indexerId": 1,
+    "initialFailure": "2026-09-30T18:00:00Z",
+    "mostRecentFailure": "2026-09-30T23:30:00Z",
+    "disabledTill": "2026-10-03T00:00:00Z"
+  }
+]

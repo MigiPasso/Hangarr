@@ -1,0 +1,35 @@
+[
+  {
+    "id": 1,
+    "name": "NZBgeek",
+    "implementation": "Newznab",
+    "protocol": "usenet",
+    "enableRss": true,
+    "enableAutomaticSearch": true,
+    "enableInteractiveSearch": true,
+    "priority": 25,
+    "tags": []
+  },
+  {
+    "id": 2,
+    "name": "DrunkenSlug",
+    "implementation": "Newznab",
+    "protocol": "usenet",
+    "enableRss": true,
+    "enableAutomaticSearch": true,
+    "enableInteractiveSearch": true,
+    "priority": 20,
+    "tags": []
+  },
+  {
+    "id": 3,
+    "name": "Nyaa",
+    "implementation": "Torznab",
+    "protocol": "torrent",
+    "enableRss": true,
+    "enableAutomaticSearch": true,
+    "enableInteractiveSearch": true,
+    "priority": 30,
+    "tags": []
+  }
+]

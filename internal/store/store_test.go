@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"errors"
+	"os"
 	"path/filepath"
 	"sync"
 	"testing"
@@ -141,5 +142,29 @@ func TestBackupTo(t *testing.T) {
 	defer func() { _ = copyStore.Close() }()
 	if v, _ := copyStore.Setting(ctx, "sync_time", ""); v != "05:30" {
 		t.Errorf("backup content: %q", v)
+	}
+}
+
+func TestLegacyDatabaseRenamed(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	old, err := OpenPath(ctx, filepath.Join(dir, legacyDBFileName))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := old.SetSetting(ctx, "probe", "kept", time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	_ = old.Close()
+	st, err := Open(ctx, dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = st.Close() }()
+	if v, _ := st.Setting(ctx, "probe", ""); v != "kept" {
+		t.Errorf("data lost in the rename: %q", v)
+	}
+	if _, err := os.Stat(filepath.Join(dir, legacyDBFileName)); !os.IsNotExist(err) {
+		t.Errorf("legacy file still there: %v", err)
 	}
 }

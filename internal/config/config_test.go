@@ -130,7 +130,7 @@ func TestHistorySource(t *testing.T) {
 
 func TestMasterKey(t *testing.T) {
 	m := upstreams()
-	m["CLEANARR_MASTER_KEY_FILE"] = "/run/secrets/master"
+	m["HANGARR_MASTER_KEY_FILE"] = "/run/secrets/master"
 	key := strings.Repeat("ab", 32)
 	c, err := Load(env(m), files(map[string]string{"/run/secrets/master": key + "\n"}))
 	if err != nil {
@@ -140,10 +140,36 @@ func TestMasterKey(t *testing.T) {
 		t.Errorf("master key: %d bytes", len(c.MasterKey))
 	}
 	m = upstreams()
-	m["CLEANARR_MASTER_KEY"] = "too-short"
+	m["HANGARR_MASTER_KEY"] = "too-short"
 	_, err = Load(env(m), files(nil))
 	if err == nil || strings.Contains(err.Error(), "too-short") {
 		t.Errorf("invalid master key must fail without echoing it: %v", err)
+	}
+}
+
+// CLEANARR_MASTER_KEY(_FILE), from before the rename, still works.
+func TestLegacyMasterKey(t *testing.T) {
+	key := strings.Repeat("cd", 32)
+	m := upstreams()
+	m["CLEANARR_MASTER_KEY_FILE"] = "/run/secrets/old"
+	c, err := Load(env(m), files(map[string]string{"/run/secrets/old": key}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(c.MasterKey) != 32 || len(c.Deprecations) != 1 || !strings.Contains(c.Deprecations[0], "rename it HANGARR_MASTER_KEY") {
+		t.Errorf("legacy key: %d bytes, %q", len(c.MasterKey), c.Deprecations)
+	}
+	m["HANGARR_MASTER_KEY"] = strings.Repeat("ef", 32)
+	if c, err = Load(env(m), files(map[string]string{"/run/secrets/old": key})); err != nil {
+		t.Fatal(err)
+	}
+	if c.MasterKey[0] != 0xef || len(c.Deprecations) != 1 || !strings.Contains(c.Deprecations[0], "ignored") {
+		t.Errorf("new name wins: %x %q", c.MasterKey[0], c.Deprecations)
+	}
+	m = upstreams()
+	m["CLEANARR_MASTER_KEY"] = "too-short"
+	if _, err := Load(env(m), files(nil)); err == nil || !strings.Contains(err.Error(), "CLEANARR_MASTER_KEY") {
+		t.Errorf("invalid legacy key names the variable: %v", err)
 	}
 }
 

@@ -16,8 +16,8 @@ import (
 	"strings"
 	"time"
 
-	"cleanarr/internal/i18n"
-	"cleanarr/internal/store"
+	"hangarr/internal/i18n"
+	"hangarr/internal/store"
 )
 
 //go:embed templates
@@ -28,7 +28,7 @@ var staticFS embed.FS
 
 // pages lists every page template under templates/pages.
 var pages = []string{"login", "password", "account", "home", "notfound", "library", "settings", "detail", "delete", "journal",
-	"stats", "userstats", "cleanup", "config", "health", "batch"}
+	"stats", "userstats", "cleanup", "config", "health", "batch", "calendar"}
 
 type views struct {
 	pages  map[i18n.Lang]map[string]*template.Template
@@ -185,6 +185,7 @@ func (v *views) funcs(l i18n.Localizer, loc *time.Location, protectedTags []stri
 			}
 			return v
 		},
+		"calendarURL": calendarListURL,
 		"deref": func(p *int) int {
 			if p == nil {
 				return 0
@@ -218,14 +219,24 @@ type pageData struct {
 	// Theme is "light" or "dark" when chosen with the theme button, "" to
 	// follow the system.
 	Theme string
+	// SidebarCollapsed keeps the menu reduced to its icons (button, cookie).
+	SidebarCollapsed bool
 	// Lang is the interface language; Path the current path (language links).
 	Lang i18n.Lang
 	Path string
 	Data any
 }
 
+// sidebarCookie remembers the collapsed menu (set by app.js).
+const sidebarCookie = "hangarr_sidebar"
+
+func sidebarCollapsed(r *http.Request) bool {
+	c, err := r.Cookie(sidebarCookie)
+	return err == nil && c.Value == "collapsed"
+}
+
 // themeCookie remembers the theme chosen with the button (set by app.js).
-const themeCookie = "cleanarr_theme"
+const themeCookie = "hangarr_theme"
 
 func themeFrom(r *http.Request) string {
 	if c, err := r.Cookie(themeCookie); err == nil && (c.Value == "light" || c.Value == "dark") {
@@ -250,7 +261,7 @@ func (s *Server) page(r *http.Request, title, active string, data any) pageData 
 func (s *Server) pageRaw(r *http.Request, title, active string, data any) pageData {
 	l := s.loc(r)
 	pd := pageData{Title: title, Active: active, DryRun: s.Config.DryRun, Version: s.Version, Data: data,
-		Theme: themeFrom(r), Lang: l.Lang, Path: r.URL.Path}
+		Theme: themeFrom(r), SidebarCollapsed: sidebarCollapsed(r), Lang: l.Lang, Path: r.URL.Path}
 	if sess := sessionFrom(r); sess != nil {
 		pd.Session = sess
 		pd.CSRFToken = sess.CSRFToken

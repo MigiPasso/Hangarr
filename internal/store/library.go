@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"cleanarr/internal/matching"
+	"hangarr/internal/matching"
 )
 
 // LibraryFilter holds the library filters (SPEC §7.2). Zero values mean "no
@@ -65,7 +65,7 @@ type LibraryItem struct {
 	Tags               []string
 	MatchState         string
 	Status             string
-	ProtectedLocal     bool // protected in Cleanarr only (plex_only items)
+	ProtectedLocal     bool // protected in Hangarr only (plex_only items)
 }
 
 // SortKeys maps sort names to their ORDER BY expression (whitelist).

@@ -1,15 +1,15 @@
-# Cleanarr on Kubernetes: plain manifests (no kustomize). No namespace is
+# Hangarr on Kubernetes: plain manifests (no kustomize). No namespace is
 # set: they go to the namespace of `kubectl -n <ns>` or of your Argo CD
 # application.
 #
 #   1. Put the image in a registry the nodes can pull from, and set it below
 #      (search "image:"). See README, « Kubernetes ».
 #   2. Create the master key secret in the same namespace (never commit it):
-#        kubectl -n <ns> create secret generic cleanarr-master-key \
+#        kubectl -n <ns> create secret generic hangarr-master-key \
 #          --from-literal=master-key="$(openssl rand -base64 32)"
-#   3. kubectl -n <ns> apply -f deploy/kubernetes/cleanarr.yaml (or sync Argo CD)
+#   3. kubectl -n <ns> apply -f deploy/kubernetes/hangarr.yaml (or sync Argo CD)
 #   4. Initial admin password (shown once):
-#        kubectl -n <ns> logs deploy/cleanarr | grep -A4 "INITIAL ADMIN"
+#        kubectl -n <ns> logs deploy/hangarr | grep -A4 "INITIAL ADMIN"
 #   5. Open the app (port-forward, or the Service / Ingress you choose), then
 #      configure Sonarr, Radarr, Plex and Tautulli in « Services » with their
 #      in-cluster addresses, e.g. http://sonarr:8989 in the same namespace.
@@ -18,7 +18,7 @@
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: cleanarr-config
+  name: hangarr-config
 data:
   # Keep true until you really want deletions to happen.
   DRY_RUN: "true"
@@ -36,7 +36,7 @@ data:
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: cleanarr-data
+  name: hangarr-data
 spec:
   accessModes: ["ReadWriteOnce"]
   resources:
@@ -47,20 +47,20 @@ spec:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: cleanarr
+  name: hangarr
   labels:
-    app.kubernetes.io/name: cleanarr
+    app.kubernetes.io/name: hangarr
 spec:
   replicas: 1
   strategy:
     type: Recreate
   selector:
     matchLabels:
-      app.kubernetes.io/name: cleanarr
+      app.kubernetes.io/name: hangarr
   template:
     metadata:
       labels:
-        app.kubernetes.io/name: cleanarr
+        app.kubernetes.io/name: hangarr
     spec:
       automountServiceAccountToken: false
       # Private registry (e.g. a private GHCR package):
@@ -75,18 +75,18 @@ spec:
           type: RuntimeDefault
       terminationGracePeriodSeconds: 30 # the app drains for 20 s on SIGTERM
       containers:
-        - name: cleanarr
-          image: ghcr.io/CHANGE-ME/cleanarr:latest # set your registry / tag
+        - name: hangarr
+          image: ghcr.io/CHANGE-ME/hangarr:latest # set your registry / tag
           imagePullPolicy: IfNotPresent
           ports:
             - name: http
               containerPort: 8080
           envFrom:
             - configMapRef:
-                name: cleanarr-config
+                name: hangarr-config
           env:
-            - name: CLEANARR_MASTER_KEY_FILE
-              value: /run/secrets/cleanarr/master-key
+            - name: HANGARR_MASTER_KEY_FILE
+              value: /run/secrets/hangarr/master-key
           securityContext:
             readOnlyRootFilesystem: true
             allowPrivilegeEscalation: false
@@ -107,30 +107,30 @@ spec:
             limits: { memory: 512Mi }
           volumeMounts:
             - { name: data, mountPath: /data }
-            - { name: master-key, mountPath: /run/secrets/cleanarr, readOnly: true }
+            - { name: master-key, mountPath: /run/secrets/hangarr, readOnly: true }
       volumes:
         - name: data
           persistentVolumeClaim:
-            claimName: cleanarr-data
+            claimName: hangarr-data
         - name: master-key
           secret:
-            secretName: cleanarr-master-key
+            secretName: hangarr-master-key
             defaultMode: 0440 # readable by the fsGroup (65532), not only root
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: cleanarr
+  name: hangarr
   # With the Tailscale operator, expose the app in your tailnet:
   # annotations:
   #   tailscale.com/expose: "true"
-  #   tailscale.com/hostname: "cleanarr"
+  #   tailscale.com/hostname: "hangarr"
 spec:
   selector:
-    app.kubernetes.io/name: cleanarr
+    app.kubernetes.io/name: hangarr
   ports:
     - name: http
       port: 8080
       targetPort: http
 # Tautulli webhook (optional): in Tautulli, use
-#   http://cleanarr.<ns>.svc.cluster.local:8080/webhooks/tautulli
+#   http://hangarr.<ns>.svc.cluster.local:8080/webhooks/tautulli

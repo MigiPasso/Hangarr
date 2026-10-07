@@ -44,7 +44,7 @@ type Media struct {
 	LastViewedAt       *int64
 	LastViewedBy       string
 	WatchState         string
-	ProtectedLocal     bool // protected in Cleanarr only (plex_only items)
+	ProtectedLocal     bool // protected in Hangarr only (plex_only items)
 }
 
 // MediaByID returns a media row; ErrNotFound if it does not exist.
@@ -204,7 +204,7 @@ func (s *Store) DeleteMedia(ctx context.Context, id int64) error {
 	return err
 }
 
-// SetLocalProtection protects (or not) an item in Cleanarr only.
+// SetLocalProtection protects (or not) an item in Hangarr only.
 func (s *Store) SetLocalProtection(ctx context.Context, id int64, protected bool) error {
 	_, err := s.db.ExecContext(ctx, `UPDATE media SET protected_local = ? WHERE id = ?`, protected, id)
 	return err

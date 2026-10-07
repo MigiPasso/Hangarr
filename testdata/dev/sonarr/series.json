@@ -1,0 +1,868 @@
+[
+  {
+    "id": 9,
+    "title": "Pluribus",
+    "sortTitle": "pluribus",
+    "status": "upcoming",
+    "overview": "",
+    "network": "Apple TV+",
+    "images": [
+      {
+        "coverType": "poster",
+        "url": "/MediaCover/9/poster.jpg"
+      }
+    ],
+    "seasons": [
+      {
+        "seasonNumber": 1,
+        "monitored": true,
+        "statistics": {
+          "episodeFileCount": 0,
+          "episodeCount": 0,
+          "totalEpisodeCount": 9,
+          "sizeOnDisk": 0,
+          "percentOfEpisodes": 0
+        }
+      }
+    ],
+    "year": 2025,
+    "path": "/tv/Pluribus",
+    "qualityProfileId": 1,
+    "monitored": true,
+    "runtime": 45,
+    "tvdbId": 449999,
+    "tmdbId": 225171,
+    "imdbId": "tt22202452",
+    "titleSlug": "pluribus",
+    "genres": [
+      "Drama",
+      "Science Fiction"
+    ],
+    "tags": [],
+    "added": "2026-08-15T10:00:00Z",
+    "ratings": {
+      "votes": 1000,
+      "value": 8.4
+    },
+    "statistics": {
+      "seasonCount": 1,
+      "episodeFileCount": 0,
+      "episodeCount": 0,
+      "totalEpisodeCount": 9,
+      "sizeOnDisk": 0,
+      "percentOfEpisodes": 0
+    }
+  },
+  {
+    "id": 10,
+    "title": "The Last of Us",
+    "sortTitle": "the last of us",
+    "status": "continuing",
+    "overview": "",
+    "network": "HBO",
+    "images": [
+      {
+        "coverType": "poster",
+        "url": "/MediaCover/10/poster.jpg"
+      }
+    ],
+    "seasons": [
+      {
+        "seasonNumber": 1,
+        "monitored": true,
+        "statistics": {
+          "episodeFileCount": 9,
+          "episodeCount": 9,
+          "totalEpisodeCount": 9,
+          "sizeOnDisk": 16200000000,
+          "percentOfEpisodes": 100
+        }
+      },
+      {
+        "seasonNumber": 2,
+        "monitored": true,
+        "statistics": {
+          "episodeFileCount": 7,
+          "episodeCount": 7,
+          "totalEpisodeCount": 7,
+          "sizeOnDisk": 12600000000,
+          "percentOfEpisodes": 100
+        }
+      },
+      {
+        "seasonNumber": 3,
+        "monitored": true,
+        "statistics": {
+          "episodeFileCount": 0,
+          "episodeCount": 0,
+          "totalEpisodeCount": 7,
+          "sizeOnDisk": 0,
+          "percentOfEpisodes": 0
+        }
+      }
+    ],
+    "year": 2023,
+    "path": "/tv/The Last of Us",
+    "qualityProfileId": 1,
+    "monitored": true,
+    "runtime": 45,
+    "tvdbId": 392256,
+    "tmdbId": 100088,
+    "imdbId": "tt3581920",
+    "titleSlug": "the-last-of-us",
+    "genres": [
+      "Drama",
+      "Horror"
+    ],
+    "tags": [],
+    "added": "2026-08-15T10:00:00Z",
+    "ratings": {
+      "votes": 1000,
+      "value": 8.4
+    },
+    "statistics": {
+      "seasonCount": 3,
+      "episodeFileCount": 16,
+      "episodeCount": 16,
+      "totalEpisodeCount": 23,
+      "sizeOnDisk": 28800000000,
+      "percentOfEpisodes": 0
+    }
+  },
+  {
+    "id": 11,
+    "title": "Stranger Things",
+    "sortTitle": "stranger things",
+    "status": "continuing",
+    "overview": "",
+    "network": "Netflix",
+    "images": [
+      {
+        "coverType": "poster",
+        "url": "/MediaCover/11/poster.jpg"
+      }
+    ],
+    "seasons": [
+      {
+        "seasonNumber": 1,
+        "monitored": true,
+        "statistics": {
+          "episodeFileCount": 8,
+          "episodeCount": 8,
+          "totalEpisodeCount": 8,
+          "sizeOnDisk": 14400000000,
+          "percentOfEpisodes": 100
+        }
+      },
+      {
+        "seasonNumber": 2,
+        "monitored": true,
+        "statistics": {
+          "episodeFileCount": 9,
+          "episodeCount": 9,
+          "totalEpisodeCount": 9,
+          "sizeOnDisk": 16200000000,
+          "percentOfEpisodes": 100
+        }
+      },
+      {
+        "seasonNumber": 3,
+        "monitored": true,
+        "statistics": {
+          "episodeFileCount": 8,
+          "episodeCount": 8,
+          "totalEpisodeCount": 8,
+          "sizeOnDisk": 14400000000,
+          "percentOfEpisodes": 100
+        }
+      },
+      {
+        "seasonNumber": 4,
+        "monitored": true,
+        "statistics": {
+          "episodeFileCount": 9,
+          "episodeCount": 9,
+          "totalEpisodeCount": 9,
+          "sizeOnDisk": 16200000000,
+          "percentOfEpisodes": 100
+        }
+      },
+      {
+        "seasonNumber": 5,
+        "monitored": true,
+        "statistics": {
+          "episodeFileCount": 0,
+          "episodeCount": 0,
+          "totalEpisodeCount": 8,
+          "sizeOnDisk": 0,
+          "percentOfEpisodes": 0
+        }
+      }
+    ],
+    "year": 2016,
+    "path": "/tv/Stranger Things",
+    "qualityProfileId": 1,
+    "monitored": true,
+    "runtime": 45,
+    "tvdbId": 305288,
+    "tmdbId": 66732,
+    "imdbId": "tt4574334",
+    "titleSlug": "stranger-things",
+    "genres": [
+      "Drama",
+      "Fantasy",
+      "Horror"
+    ],
+    "tags": [],
+    "added": "2026-08-15T10:00:00Z",
+    "ratings": {
+      "votes": 1000,
+      "value": 8.4
+    },
+    "statistics": {
+      "seasonCount": 5,
+      "episodeFileCount": 34,
+      "episodeCount": 34,
+      "totalEpisodeCount": 42,
+      "sizeOnDisk": 61200000000,
+      "percentOfEpisodes": 0
+    }
+  },
+  {
+    "id": 12,
+    "title": "The Bear",
+    "sortTitle": "the bear",
+    "status": "continuing",
+    "overview": "",
+    "network": "FX",
+    "images": [
+      {
+        "coverType": "poster",
+        "url": "/MediaCover/12/poster.jpg"
+      }
+    ],
+    "seasons": [
+      {
+        "seasonNumber": 1,
+        "monitored": true,
+        "statistics": {
+          "episodeFileCount": 8,
+          "episodeCount": 8,
+          "totalEpisodeCount": 8,
+          "sizeOnDisk": 14400000000,
+          "percentOfEpisodes": 100
+        }
+      },
+      {
+        "seasonNumber": 2,
+        "monitored": true,
+        "statistics": {
+          "episodeFileCount": 10,
+          "episodeCount": 10,
+          "totalEpisodeCount": 10,
+          "sizeOnDisk": 18000000000,
+          "percentOfEpisodes": 100
+        }
+      },
+      {
+        "seasonNumber": 3,
+        "monitored": true,
+        "statistics": {
+          "episodeFileCount": 10,
+          "episodeCount": 10,
+          "totalEpisodeCount": 10,
+          "sizeOnDisk": 18000000000,
+          "percentOfEpisodes": 100
+        }
+      },
+      {
+        "seasonNumber": 4,
+        "monitored": true,
+        "statistics": {
+          "episodeFileCount": 0,
+          "episodeCount": 0,
+          "totalEpisodeCount": 10,
+          "sizeOnDisk": 0,
+          "percentOfEpisodes": 0
+        }
+      }
+    ],
+    "year": 2022,
+    "path": "/tv/The Bear",
+    "qualityProfileId": 1,
+    "monitored": true,
+    "runtime": 45,
+    "tvdbId": 403245,
+    "tmdbId": 136315,
+    "imdbId": "tt14452776",
+    "titleSlug": "the-bear",
+    "genres": [
+      "Comedy",
+      "Drama"
+    ],
+    "tags": [],
+    "added": "2026-08-15T10:00:00Z",
+    "ratings": {
+      "votes": 1000,
+      "value": 8.4
+    },
+    "statistics": {
+      "seasonCount": 4,
+      "episodeFileCount": 28,
+      "episodeCount": 28,
+      "totalEpisodeCount": 38,
+      "sizeOnDisk": 50400000000,
+      "percentOfEpisodes": 0
+    }
+  },
+  {
+    "id": 13,
+    "title": "The Boys",
+    "sortTitle": "the boys",
+    "status": "continuing",
+    "overview": "",
+    "network": "Prime Video",
+    "images": [
+      {
+        "coverType": "poster",
+        "url": "/MediaCover/13/poster.jpg"
+      }
+    ],
+    "seasons": [
+      {
+        "seasonNumber": 1,
+        "monitored": true,
+        "statistics": {
+          "episodeFileCount": 8,
+          "episodeCount": 8,
+          "totalEpisodeCount": 8,
+          "sizeOnDisk": 14400000000,
+          "percentOfEpisodes": 100
+        }
+      },
+      {
+        "seasonNumber": 2,
+        "monitored": true,
+        "statistics": {
+          "episodeFileCount": 8,
+          "episodeCount": 8,
+          "totalEpisodeCount": 8,
+          "sizeOnDisk": 14400000000,
+          "percentOfEpisodes": 100
+        }
+      },
+      {
+        "seasonNumber": 3,
+        "monitored": true,
+        "statistics": {
+          "episodeFileCount": 8,
+          "episodeCount": 8,
+          "totalEpisodeCount": 8,
+          "sizeOnDisk": 14400000000,
+          "percentOfEpisodes": 100
+        }
+      },
+      {
+        "seasonNumber": 4,
+        "monitored": true,
+        "statistics": {
+          "episodeFileCount": 8,
+          "episodeCount": 8,
+          "totalEpisodeCount": 8,
+          "sizeOnDisk": 14400000000,
+          "percentOfEpisodes": 100
+        }
+      },
+      {
+        "seasonNumber": 5,
+        "monitored": true,
+        "statistics": {
+          "episodeFileCount": 0,
+          "episodeCount": 0,
+          "totalEpisodeCount": 8,
+          "sizeOnDisk": 0,
+          "percentOfEpisodes": 0
+        }
+      }
+    ],
+    "year": 2019,
+    "path": "/tv/The Boys",
+    "qualityProfileId": 1,
+    "monitored": true,
+    "runtime": 45,
+    "tvdbId": 355567,
+    "tmdbId": 76479,
+    "imdbId": "tt1190634",
+    "titleSlug": "the-boys",
+    "genres": [
+      "Action",
+      "Comedy",
+      "Crime"
+    ],
+    "tags": [],
+    "added": "2026-08-15T10:00:00Z",
+    "ratings": {
+      "votes": 1000,
+      "value": 8.4
+    },
+    "statistics": {
+      "seasonCount": 5,
+      "episodeFileCount": 32,
+      "episodeCount": 32,
+      "totalEpisodeCount": 40,
+      "sizeOnDisk": 57600000000,
+      "percentOfEpisodes": 0
+    }
+  },
+  {
+    "id": 14,
+    "title": "Slow Horses",
+    "sortTitle": "slow horses",
+    "status": "continuing",
+    "overview": "",
+    "network": "Apple TV+",
+    "images": [
+      {
+        "coverType": "poster",
+        "url": "/MediaCover/14/poster.jpg"
+      }
+    ],
+    "seasons": [
+      {
+        "seasonNumber": 1,
+        "monitored": true,
+        "statistics": {
+          "episodeFileCount": 6,
+          "episodeCount": 6,
+          "totalEpisodeCount": 6,
+          "sizeOnDisk": 10800000000,
+          "percentOfEpisodes": 100
+        }
+      },
+      {
+        "seasonNumber": 2,
+        "monitored": true,
+        "statistics": {
+          "episodeFileCount": 6,
+          "episodeCount": 6,
+          "totalEpisodeCount": 6,
+          "sizeOnDisk": 10800000000,
+          "percentOfEpisodes": 100
+        }
+      },
+      {
+        "seasonNumber": 3,
+        "monitored": true,
+        "statistics": {
+          "episodeFileCount": 6,
+          "episodeCount": 6,
+          "totalEpisodeCount": 6,
+          "sizeOnDisk": 10800000000,
+          "percentOfEpisodes": 100
+        }
+      },
+      {
+        "seasonNumber": 4,
+        "monitored": true,
+        "statistics": {
+          "episodeFileCount": 6,
+          "episodeCount": 6,
+          "totalEpisodeCount": 6,
+          "sizeOnDisk": 10800000000,
+          "percentOfEpisodes": 100
+        }
+      },
+      {
+        "seasonNumber": 5,
+        "monitored": true,
+        "statistics": {
+          "episodeFileCount": 6,
+          "episodeCount": 6,
+          "totalEpisodeCount": 6,
+          "sizeOnDisk": 10800000000,
+          "percentOfEpisodes": 100
+        }
+      },
+      {
+        "seasonNumber": 6,
+        "monitored": true,
+        "statistics": {
+          "episodeFileCount": 0,
+          "episodeCount": 0,
+          "totalEpisodeCount": 6,
+          "sizeOnDisk": 0,
+          "percentOfEpisodes": 0
+        }
+      }
+    ],
+    "year": 2022,
+    "path": "/tv/Slow Horses",
+    "qualityProfileId": 1,
+    "monitored": true,
+    "runtime": 45,
+    "tvdbId": 389963,
+    "tmdbId": 95480,
+    "imdbId": "tt5875444",
+    "titleSlug": "slow-horses",
+    "genres": [
+      "Drama",
+      "Thriller"
+    ],
+    "tags": [],
+    "added": "2026-08-15T10:00:00Z",
+    "ratings": {
+      "votes": 1000,
+      "value": 8.4
+    },
+    "statistics": {
+      "seasonCount": 6,
+      "episodeFileCount": 30,
+      "episodeCount": 30,
+      "totalEpisodeCount": 36,
+      "sizeOnDisk": 54000000000,
+      "percentOfEpisodes": 0
+    }
+  },
+  {
+    "id": 15,
+    "title": "Frieren: Beyond Journey's End",
+    "sortTitle": "frieren: beyond journey's end",
+    "status": "continuing",
+    "overview": "",
+    "network": "Nippon TV",
+    "images": [
+      {
+        "coverType": "poster",
+        "url": "/MediaCover/15/poster.jpg"
+      }
+    ],
+    "seasons": [
+      {
+        "seasonNumber": 1,
+        "monitored": true,
+        "statistics": {
+          "episodeFileCount": 28,
+          "episodeCount": 28,
+          "totalEpisodeCount": 28,
+          "sizeOnDisk": 19600000000,
+          "percentOfEpisodes": 100
+        }
+      },
+      {
+        "seasonNumber": 2,
+        "monitored": true,
+        "statistics": {
+          "episodeFileCount": 0,
+          "episodeCount": 0,
+          "totalEpisodeCount": 12,
+          "sizeOnDisk": 0,
+          "percentOfEpisodes": 0
+        }
+      }
+    ],
+    "year": 2023,
+    "path": "/tv/Frieren: Beyond Journey's End",
+    "qualityProfileId": 1,
+    "monitored": true,
+    "runtime": 24,
+    "tvdbId": 424536,
+    "tmdbId": 209867,
+    "imdbId": "tt22248376",
+    "titleSlug": "frieren-beyond-journeys-end",
+    "genres": [
+      "Animation",
+      "Anime",
+      "Fantasy"
+    ],
+    "tags": [],
+    "added": "2026-08-15T10:00:00Z",
+    "ratings": {
+      "votes": 1000,
+      "value": 8.4
+    },
+    "statistics": {
+      "seasonCount": 2,
+      "episodeFileCount": 28,
+      "episodeCount": 28,
+      "totalEpisodeCount": 40,
+      "sizeOnDisk": 19600000000,
+      "percentOfEpisodes": 0
+    }
+  },
+  {
+    "id": 16,
+    "title": "One Piece",
+    "sortTitle": "one piece",
+    "status": "continuing",
+    "overview": "",
+    "network": "Fuji TV",
+    "images": [
+      {
+        "coverType": "poster",
+        "url": "/MediaCover/16/poster.jpg"
+      }
+    ],
+    "seasons": [
+      {
+        "seasonNumber": 22,
+        "monitored": true,
+        "statistics": {
+          "episodeFileCount": 0,
+          "episodeCount": 0,
+          "totalEpisodeCount": 160,
+          "sizeOnDisk": 0,
+          "percentOfEpisodes": 0
+        }
+      }
+    ],
+    "year": 1999,
+    "path": "/tv/One Piece",
+    "qualityProfileId": 1,
+    "monitored": true,
+    "runtime": 24,
+    "tvdbId": 81797,
+    "tmdbId": 37854,
+    "imdbId": "tt0388629",
+    "titleSlug": "one-piece",
+    "genres": [
+      "Animation",
+      "Anime",
+      "Action",
+      "Adventure"
+    ],
+    "tags": [],
+    "added": "2026-08-15T10:00:00Z",
+    "ratings": {
+      "votes": 1000,
+      "value": 8.4
+    },
+    "statistics": {
+      "seasonCount": 1,
+      "episodeFileCount": 0,
+      "episodeCount": 0,
+      "totalEpisodeCount": 160,
+      "sizeOnDisk": 0,
+      "percentOfEpisodes": 0
+    }
+  },
+  {
+    "id": 17,
+    "title": "Jujutsu Kaisen",
+    "sortTitle": "jujutsu kaisen",
+    "status": "continuing",
+    "overview": "",
+    "network": "MBS",
+    "images": [
+      {
+        "coverType": "poster",
+        "url": "/MediaCover/17/poster.jpg"
+      }
+    ],
+    "seasons": [
+      {
+        "seasonNumber": 1,
+        "monitored": true,
+        "statistics": {
+          "episodeFileCount": 24,
+          "episodeCount": 24,
+          "totalEpisodeCount": 24,
+          "sizeOnDisk": 16800000000,
+          "percentOfEpisodes": 100
+        }
+      },
+      {
+        "seasonNumber": 2,
+        "monitored": true,
+        "statistics": {
+          "episodeFileCount": 23,
+          "episodeCount": 23,
+          "totalEpisodeCount": 23,
+          "sizeOnDisk": 16100000000,
+          "percentOfEpisodes": 100
+        }
+      },
+      {
+        "seasonNumber": 3,
+        "monitored": true,
+        "statistics": {
+          "episodeFileCount": 0,
+          "episodeCount": 0,
+          "totalEpisodeCount": 12,
+          "sizeOnDisk": 0,
+          "percentOfEpisodes": 0
+        }
+      }
+    ],
+    "year": 2020,
+    "path": "/tv/Jujutsu Kaisen",
+    "qualityProfileId": 1,
+    "monitored": true,
+    "runtime": 24,
+    "tvdbId": 377543,
+    "tmdbId": 95479,
+    "imdbId": "tt12343534",
+    "titleSlug": "jujutsu-kaisen",
+    "genres": [
+      "Animation",
+      "Anime",
+      "Action"
+    ],
+    "tags": [],
+    "added": "2026-08-15T10:00:00Z",
+    "ratings": {
+      "votes": 1000,
+      "value": 8.4
+    },
+    "statistics": {
+      "seasonCount": 3,
+      "episodeFileCount": 47,
+      "episodeCount": 47,
+      "totalEpisodeCount": 59,
+      "sizeOnDisk": 32900000000,
+      "percentOfEpisodes": 0
+    }
+  },
+  {
+    "id": 18,
+    "title": "Fallout",
+    "sortTitle": "fallout",
+    "status": "continuing",
+    "overview": "",
+    "network": "Prime Video",
+    "images": [
+      {
+        "coverType": "poster",
+        "url": "/MediaCover/18/poster.jpg"
+      }
+    ],
+    "seasons": [
+      {
+        "seasonNumber": 1,
+        "monitored": true,
+        "statistics": {
+          "episodeFileCount": 8,
+          "episodeCount": 8,
+          "totalEpisodeCount": 8,
+          "sizeOnDisk": 14400000000,
+          "percentOfEpisodes": 100
+        }
+      },
+      {
+        "seasonNumber": 2,
+        "monitored": true,
+        "statistics": {
+          "episodeFileCount": 0,
+          "episodeCount": 0,
+          "totalEpisodeCount": 8,
+          "sizeOnDisk": 0,
+          "percentOfEpisodes": 0
+        }
+      }
+    ],
+    "year": 2024,
+    "path": "/tv/Fallout",
+    "qualityProfileId": 1,
+    "monitored": true,
+    "runtime": 45,
+    "tvdbId": 416744,
+    "tmdbId": 106379,
+    "imdbId": "tt12637874",
+    "titleSlug": "fallout",
+    "genres": [
+      "Action",
+      "Drama",
+      "Science Fiction"
+    ],
+    "tags": [],
+    "added": "2026-08-15T10:00:00Z",
+    "ratings": {
+      "votes": 1000,
+      "value": 8.4
+    },
+    "statistics": {
+      "seasonCount": 2,
+      "episodeFileCount": 8,
+      "episodeCount": 8,
+      "totalEpisodeCount": 16,
+      "sizeOnDisk": 14400000000,
+      "percentOfEpisodes": 0
+    }
+  },
+  {
+    "id": 19,
+    "title": "House of the Dragon",
+    "sortTitle": "house of the dragon",
+    "status": "continuing",
+    "overview": "",
+    "network": "HBO",
+    "images": [
+      {
+        "coverType": "poster",
+        "url": "/MediaCover/19/poster.jpg"
+      }
+    ],
+    "seasons": [
+      {
+        "seasonNumber": 1,
+        "monitored": true,
+        "statistics": {
+          "episodeFileCount": 10,
+          "episodeCount": 10,
+          "totalEpisodeCount": 10,
+          "sizeOnDisk": 18000000000,
+          "percentOfEpisodes": 100
+        }
+      },
+      {
+        "seasonNumber": 2,
+        "monitored": true,
+        "statistics": {
+          "episodeFileCount": 8,
+          "episodeCount": 8,
+          "totalEpisodeCount": 8,
+          "sizeOnDisk": 14400000000,
+          "percentOfEpisodes": 100
+        }
+      },
+      {
+        "seasonNumber": 3,
+        "monitored": true,
+        "statistics": {
+          "episodeFileCount": 0,
+          "episodeCount": 0,
+          "totalEpisodeCount": 8,
+          "sizeOnDisk": 0,
+          "percentOfEpisodes": 0
+        }
+      }
+    ],
+    "year": 2022,
+    "path": "/tv/House of the Dragon",
+    "qualityProfileId": 1,
+    "monitored": true,
+    "runtime": 45,
+    "tvdbId": 371572,
+    "tmdbId": 94997,
+    "imdbId": "tt11198330",
+    "titleSlug": "house-of-the-dragon",
+    "genres": [
+      "Action",
+      "Drama",
+      "Fantasy"
+    ],
+    "tags": [],
+    "added": "2026-08-15T10:00:00Z",
+    "ratings": {
+      "votes": 1000,
+      "value": 8.4
+    },
+    "statistics": {
+      "seasonCount": 3,
+      "episodeFileCount": 18,
+      "episodeCount": 18,
+      "totalEpisodeCount": 26,
+      "sizeOnDisk": 32400000000,
+      "percentOfEpisodes": 0
+    }
+  }
+]

@@ -10,7 +10,8 @@ test.beforeEach(async ({ page }) => {
 });
 
 test("series grid shows posters and watch states", async ({ page }) => {
-  await page.getByRole("link", { name: "Séries" }).click();
+  await page.getByRole("link", { name: "Bibliothèque" }).click();
+  await expect(page.getByRole("link", { name: "Séries" })).toHaveAttribute("aria-current", "page");
   await expect(page).toHaveURL(/\/series$/);
   await expect(page.locator(".summary")).toContainText("6 séries");
   await expect(cards(page)).toHaveText(["Arcane", "Breaking Bad", "The Expanse", "Home Videos", "Severance", "Shōgun"]);

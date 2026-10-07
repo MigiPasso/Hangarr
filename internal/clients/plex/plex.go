@@ -14,7 +14,7 @@ import (
 	"strconv"
 	"strings"
 
-	"cleanarr/internal/clients/httpx"
+	"hangarr/internal/clients/httpx"
 )
 
 // Library item types for /library/sections/{key}/all?type=N.

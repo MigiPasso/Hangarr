@@ -8,9 +8,9 @@ import (
 	"slices"
 	"strings"
 
-	"cleanarr/internal/clients/sonarr"
-	"cleanarr/internal/store"
-	"cleanarr/internal/upstream"
+	"hangarr/internal/clients/sonarr"
+	"hangarr/internal/store"
+	"hangarr/internal/upstream"
 )
 
 // Protection actions stored in action_log.
@@ -40,7 +40,7 @@ type ProtectResult struct {
 	Tag       string // tag added; for a removal, the protection tags removed
 	Unchanged bool   // the item was already in the requested state
 	DryRun    bool
-	Local     bool // protected in Cleanarr only (plex_only item, Plex untouched)
+	Local     bool // protected in Hangarr only (plex_only item, Plex untouched)
 }
 
 // SetProtected adds the first PROTECTED_TAGS tag to the item in Sonarr/Radarr
@@ -99,7 +99,7 @@ func (s *Service) SetProtected(ctx context.Context, req ProtectRequest) (*Protec
 	return res, nil
 }
 
-// setLocalProtection protects an item that only Plex knows, in Cleanarr
+// setLocalProtection protects an item that only Plex knows, in Hangarr
 // only: nothing is sent to Plex, so dry-run does not apply. Changes are
 // journaled.
 func (s *Service) setLocalProtection(ctx context.Context, m *store.Media, req ProtectRequest) (*ProtectResult, error) {

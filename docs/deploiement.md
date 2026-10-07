@@ -1,4 +1,4 @@
-# Déployer Cleanarr
+# Déployer Hangarr
 
 Ce guide couvre la publication de l'image, le déploiement avec **Docker** ou **Kubernetes**, la connexion à
 Sonarr, Radarr, Plex et Tautulli, et les problèmes courants.
@@ -19,7 +19,7 @@ Sonarr, Radarr, Plex et Tautulli, et les problèmes courants.
 ## 1. Avant de commencer
 
 **Ce qu'il faut**
-- Sonarr, Radarr, Plex et Tautulli joignables depuis l'endroit où tourne Cleanarr.
+- Sonarr, Radarr, Plex et Tautulli joignables depuis l'endroit où tourne Hangarr.
 - Leurs clés d'accès (voir [6](#6-connecter-les-services)).
 - Docker (Compose ≥ 2.24) sur la machine, ou un cluster Kubernetes.
 
@@ -27,9 +27,9 @@ Sonarr, Radarr, Plex et Tautulli, et les problèmes courants.
 
 | Situation | Conseil |
 |---|---|
-| Stack *arr* dans un cluster Kubernetes | Déployer Cleanarr **dans le même namespace** : les services se joignent par leur nom court (`http://sonarr:8989`) et rien ne sort du cluster. |
+| Stack *arr* dans un cluster Kubernetes | Déployer Hangarr **dans le même namespace** : les services se joignent par leur nom court (`http://sonarr:8989`) et rien ne sort du cluster. |
 | Stack *arr* en Docker sur un serveur | `compose.yml` sur la même machine, sur le même réseau Docker. |
-| Test depuis un poste | `compose.yml` sur le poste, services joints via Tailscale (voir [10](#cleanarr-en-docker-ne-résout-pas-les-noms-tsnet)). |
+| Test depuis un poste | `compose.yml` sur le poste, services joints via Tailscale (voir [10](#hangarr-en-docker-ne-résout-pas-les-noms-tsnet)). |
 
 **Sécurité par défaut** : `DRY_RUN=true`. Toute suppression est simulée et journalisée, un bandeau orange le
 rappelle. Ne passez à `false` qu'une fois les propositions de nettoyage vérifiées.
@@ -53,11 +53,11 @@ l'image) ; pour Docker, `docker compose up --build` construit l'image localement
    ```
 4. **Construire et pousser** (amd64 + arm64, quelques minutes) :
    ```sh
-   make image PUSH=1 IMAGE=ghcr.io/<utilisateur>/cleanarr
-   docker buildx imagetools inspect ghcr.io/<utilisateur>/cleanarr:v0.1.0   # deux plateformes attendues
+   make image PUSH=1 IMAGE=ghcr.io/<utilisateur>/hangarr
+   docker buildx imagetools inspect ghcr.io/<utilisateur>/hangarr:v0.1.0   # deux plateformes attendues
    ```
 5. **Visibilité** : le paquet est **privé** au premier push.
-   - Public : `https://github.com/<utilisateur>?tab=packages` → *cleanarr* → *Package settings* → *Change
+   - Public : `https://github.com/<utilisateur>?tab=packages` → *hangarr* → *Package settings* → *Change
      visibility*. L'image ne contient aucun secret.
    - Privé : créez un secret de pull (token `read:packages`) et décommentez `imagePullSecrets` dans le manifest :
      ```sh
@@ -71,8 +71,8 @@ l'image) ; pour Docker, `docker compose up --build` construit l'image localement
 
 ```sh
 cp .env.example .env            # facultatif : DRY_RUN, COOKIE_SECURE, TZ, DEFAULT_LANG…
-docker compose up -d --build    # ou CLEANARR_IMAGE=ghcr.io/<utilisateur>/cleanarr:v0.1.0 dans .env
-docker compose logs cleanarr | grep -A4 "INITIAL ADMIN"
+docker compose up -d --build    # ou HANGARR_IMAGE=ghcr.io/<utilisateur>/hangarr:v0.1.0 dans .env
+docker compose logs hangarr | grep -A4 "INITIAL ADMIN"
 ```
 
 Ouvrez `http://<hôte>:8080` (ou `http://localhost:8080`).
@@ -91,14 +91,14 @@ Ouvrez `http://<hôte>:8080` (ou `http://localhost:8080`).
 
 ## 4. Déployer sur Kubernetes
 
-Fichier : [`deploy/kubernetes/cleanarr.yaml`](../deploy/kubernetes/cleanarr.yaml) (YAML simple, sans kustomize).
+Fichier : [`deploy/kubernetes/hangarr.yaml`](../deploy/kubernetes/hangarr.yaml) (YAML simple, sans kustomize).
 Il contient un ConfigMap, un PVC, un Deployment (une réplique, stratégie `Recreate`, non-root, système de fichiers
 en lecture seule) et un Service. **Il n'impose aucun namespace** : utilisez celui de votre stack (ici `arr`).
 
 ### 4.1 Renseigner l'image
 
 ```yaml
-image: ghcr.io/<utilisateur>/cleanarr:v0.1.0
+image: ghcr.io/<utilisateur>/hangarr:v0.1.0
 ```
 
 ### 4.2 Créer le secret de la clé maître
@@ -106,7 +106,7 @@ image: ghcr.io/<utilisateur>/cleanarr:v0.1.0
 Dans le **même namespace** que le Deployment, et jamais dans Git :
 
 ```sh
-kubectl -n arr create secret generic cleanarr-master-key \
+kubectl -n arr create secret generic hangarr-master-key \
   --from-literal=master-key="$(openssl rand -base64 32)"
 ```
 
@@ -116,8 +116,8 @@ ou changée, il faudra les ressaisir.
 ### 4.3 Appliquer
 
 ```sh
-kubectl -n arr apply -f deploy/kubernetes/cleanarr.yaml
-kubectl -n arr get pods -l app.kubernetes.io/name=cleanarr -w
+kubectl -n arr apply -f deploy/kubernetes/hangarr.yaml
+kubectl -n arr get pods -l app.kubernetes.io/name=hangarr -w
 ```
 
 **Avec Argo CD** : faites pointer l'application sur le fichier et choisissez le namespace de destination dans
@@ -131,21 +131,21 @@ Le Service écoute sur le port **8080**. Avec l'opérateur Tailscale, un Ingress
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: cleanarr
+  name: hangarr
 spec:
   ingressClassName: tailscale
   defaultBackend:
     service:
-      name: cleanarr
+      name: hangarr
       port:
         number: 8080
   tls:
     - hosts:
-        - cleanarr        # → https://cleanarr.<tailnet>.ts.net
+        - hangarr        # → https://hangarr.<tailnet>.ts.net
 ```
 
 Le Service doit sélectionner les pods par **le même label** que le Deployment :
-`app.kubernetes.io/name: cleanarr`. Sans exposition, `kubectl -n arr port-forward svc/cleanarr 8080:8080` puis
+`app.kubernetes.io/name: hangarr`. Sans exposition, `kubectl -n arr port-forward svc/hangarr 8080:8080` puis
 `http://localhost:8080` suffit.
 
 En HTTPS (Ingress Tailscale) ou via `port-forward` sur localhost, gardez `COOKIE_SECURE: "true"` dans le ConfigMap.
@@ -157,15 +157,15 @@ En HTTPS (Ingress Tailscale) ou via `port-forward` sur localhost, gardez `COOKIE
 Le compte `admin` est créé au premier démarrage et son mot de passe est écrit **une seule fois** dans les logs :
 
 ```sh
-kubectl -n arr logs deploy/cleanarr | grep -A4 "INITIAL ADMIN"      # Kubernetes
-docker compose logs cleanarr | grep -A4 "INITIAL ADMIN"             # Docker
+kubectl -n arr logs deploy/hangarr | grep -A4 "INITIAL ADMIN"      # Kubernetes
+docker compose logs hangarr | grep -A4 "INITIAL ADMIN"             # Docker
 ```
 
 Si rien ne sort (le pod a été recréé depuis), générez un mot de passe temporaire :
 
 ```sh
-kubectl -n arr exec deploy/cleanarr -- /cleanarr admin reset-password
-docker compose exec cleanarr /cleanarr admin reset-password
+kubectl -n arr exec deploy/hangarr -- /hangarr admin reset-password
+docker compose exec hangarr /hangarr admin reset-password
 ```
 
 À la connexion, l'application impose de choisir un nouveau mot de passe. L'interface est en anglais ; le lien
@@ -178,7 +178,7 @@ docker compose exec cleanarr /cleanarr admin reset-password
 Page **Services** (« Configuration » en français). Pour chacun : adresse, clé, **Test connection**, puis **Save**.
 La première synchronisation démarre seule dès que Sonarr, Radarr, Plex et Tautulli sont enregistrés.
 
-L'« API URL » est **l'adresse de base** du service, celle de son interface web, sans `/api` : Cleanarr ajoute le
+L'« API URL » est **l'adresse de base** du service, celle de son interface web, sans `/api` : Hangarr ajoute le
 reste. Incluez l'éventuelle *URL Base* (`https://hôte/sonarr`) et le port s'il n'est pas 443.
 
 | Service | Adresse (même namespace Kubernetes) | Clé |
@@ -191,7 +191,7 @@ reste. Incluez l'éventuelle *URL Base* (`https://hôte/sonarr`) et le port s'il
 Les noms et ports exacts sont ceux de vos Services : `kubectl -n arr get svc`. Hors cluster : l'adresse que vous
 ouvrez dans le navigateur (par exemple `https://sonarr.<tailnet>.ts.net`).
 
-> Indiquez l'**adresse finale** : si une adresse redirige vers un autre hôte, Cleanarr refuse pour ne pas y envoyer
+> Indiquez l'**adresse finale** : si une adresse redirige vers un autre hôte, Hangarr refuse pour ne pas y envoyer
 > la clé, et le test l'explique.
 
 ### Plex : adresse du serveur
@@ -202,7 +202,7 @@ C'est le **Plex Media Server** (port 32400), pas `app.plex.tv`. Vérification, s
 curl -s http://plex:32400/identity     # petit XML avec machineIdentifier et version
 ```
 
-Si Plex refuse le HTTP (*Paramètres → Réseau → Connexions sécurisées : Requises*) et que Cleanarr n'est pas dans le
+Si Plex refuse le HTTP (*Paramètres → Réseau → Connexions sécurisées : Requises*) et que Hangarr n'est pas dans le
 cluster :
 - utilisez l'adresse HTTPS `plex.direct` du serveur :
   ```sh
@@ -211,7 +211,7 @@ cluster :
     | grep -o '"uri":"https://[^"]*plex.direct:32400"'
   ```
 - ou un Ingress HTTPS Tailscale devant Plex,
-- ou ajoutez le réseau d'où vient Cleanarr dans *Réseau → Réseaux LAN* (`100.64.0.0/10` pour Tailscale : le trafic
+- ou ajoutez le réseau d'où vient Hangarr dans *Réseau → Réseaux LAN* (`100.64.0.0/10` pour Tailscale : le trafic
   reste chiffré dans le tailnet, rien n'est exposé publiquement).
 
 Le champ **Public URL** de Plex peut rester vide (liens « Ouvrir dans Plex » via app.plex.tv).
@@ -228,7 +228,7 @@ Avec le **compte propriétaire du serveur** (un compte partagé ne voit que ses 
     "/config/Library/Application Support/Plex Media Server/Preferences.xml"
   ```
 
-Ce token donne accès à tout le compte Plex : ne le partagez pas. Dans Cleanarr il est chiffré et jamais réaffiché.
+Ce token donne accès à tout le compte Plex : ne le partagez pas. Dans Hangarr il est chiffré et jamais réaffiché.
 Il change si vous vous déconnectez de tous les appareils ou changez votre mot de passe Plex.
 
 ### Tautulli
@@ -243,19 +243,19 @@ Tautulli est la source de l'historique de lecture (vu / pas vu, par utilisateur)
 Sans webhook, les statistiques suivent la synchronisation planifiée (heure et fréquence réglables dans **Settings**). Avec, elles
 sont à jour environ 30 secondes après chaque fin de lecture.
 
-1. Cleanarr : **Services → Tautulli → Webhook → Generate a secret**. Copiez-le : il n'est affiché **qu'une fois**.
+1. Hangarr : **Services → Tautulli → Webhook → Generate a secret**. Copiez-le : il n'est affiché **qu'une fois**.
 2. Tautulli : *Settings → Notification Agents → Add a new notification agent → **Webhook***.
-   - **Configuration** : *Webhook URL* `http://cleanarr:8080/webhooks/tautulli` (même namespace ; sinon l'adresse
-     sous laquelle Tautulli joint Cleanarr), *Webhook Method* `POST`.
+   - **Configuration** : *Webhook URL* `http://hangarr:8080/webhooks/tautulli` (même namespace ; sinon l'adresse
+     sous laquelle Tautulli joint Hangarr), *Webhook Method* `POST`.
    - **Triggers** : **Playback Stop** et **Watched**.
    - **Data** : pour ces deux déclencheurs, *JSON Headers* :
      ```json
-     {"X-Cleanarr-Token": "<le secret>"}
+     {"X-Hangarr-Token": "<le secret>"}
      ```
    - **Save**.
 3. Test : lancez puis arrêtez une lecture dans Plex.
    ```sh
-   kubectl -n arr logs deploy/cleanarr | grep -i webhook
+   kubectl -n arr logs deploy/hangarr | grep -i webhook
    ```
    Attendu : `tautulli webhook received`, puis `history sync finished` une trentaine de secondes plus tard.
 
@@ -290,30 +290,30 @@ Sans secret configuré, la route répond 404.
 À chaud, copie cohérente de la base dans `/data/backups/` :
 
 ```sh
-kubectl -n arr exec deploy/cleanarr -- /cleanarr backup
-docker compose exec cleanarr /cleanarr backup
+kubectl -n arr exec deploy/hangarr -- /hangarr backup
+docker compose exec hangarr /hangarr backup
 ```
 
-Conservez aussi la **clé maître** (le secret `cleanarr-master-key`, ou `master.key` dans le volume sans clé
+Conservez aussi la **clé maître** (le secret `hangarr-master-key`, ou `master.key` dans le volume sans clé
 fournie) : sans elle, les clés d'API enregistrées sont illisibles. Restauration : arrêter, remplacer
-`/data/cleanarr.db` par la copie, redémarrer.
+`/data/hangarr.db` par la copie, redémarrer.
 
 ### Mot de passe perdu
 
 ```sh
-kubectl -n arr exec deploy/cleanarr -- /cleanarr admin reset-password
+kubectl -n arr exec deploy/hangarr -- /hangarr admin reset-password
 ```
 
 ---
 
 ## 10. Dépannage
 
-### `secret "cleanarr-master-key" not found`
+### `secret "hangarr-master-key" not found`
 
 Le secret n'existe pas **dans le namespace du pod**. Créez-le ([4.2](#42-créer-le-secret-de-la-clé-maître)) :
 le kubelet réessaie seul, inutile de redéployer.
 
-### `namespaces "cleanarr" not found` (Argo CD)
+### `namespaces "hangarr" not found` (Argo CD)
 
 Une ressource porte un `namespace:` qui n'existe pas. Le manifest fourni n'en impose aucun : retirez toute ligne
 `namespace:` de votre copie et laissez Argo CD utiliser celui de l'application.
@@ -323,14 +323,14 @@ Une ressource porte un `namespace:` qui n'existe pas. Le manifest fourni n'en im
 Le proxy ne joint pas le pod.
 
 ```sh
-kubectl -n arr get pods -l app.kubernetes.io/name=cleanarr
-kubectl -n arr get endpoints cleanarr        # doit lister IP:8080
+kubectl -n arr get pods -l app.kubernetes.io/name=hangarr
+kubectl -n arr get endpoints hangarr        # doit lister IP:8080
 ```
 
 - Endpoints vides : le `selector` du Service ne correspond pas aux labels du pod
-  (`app.kubernetes.io/name: cleanarr`).
-- Pod non prêt : `kubectl -n arr describe pod -l app.kubernetes.io/name=cleanarr` (événements en bas) et
-  `kubectl -n arr logs deploy/cleanarr`.
+  (`app.kubernetes.io/name: hangarr`).
+- Pod non prêt : `kubectl -n arr describe pod -l app.kubernetes.io/name=hangarr` (événements en bas) et
+  `kubectl -n arr logs deploy/hangarr`.
 - Backend de l'Ingress sur le port 80 au lieu de **8080**.
 
 ### La connexion échoue sans message en HTTP
@@ -344,14 +344,14 @@ Mauvaise clé d'API ou mauvais token. Pour Plex, utilisez le token du compte pro
 
 ### « This address redirects to another host »
 
-L'adresse redirige ailleurs (proxy d'authentification, autre domaine). Cleanarr refuse pour ne pas envoyer la clé à
+L'adresse redirige ailleurs (proxy d'authentification, autre domaine). Hangarr refuse pour ne pas envoyer la clé à
 un autre hôte : indiquez l'adresse finale du service.
 
 ### « This address answers as Radarr, not Sonarr »
 
 L'adresse saisie est celle d'un autre service.
 
-### Cleanarr en Docker ne résout pas les noms `*.ts.net`
+### Hangarr en Docker ne résout pas les noms `*.ts.net`
 
 Un conteneur ne passe pas toujours par MagicDNS. Test :
 
@@ -359,10 +359,77 @@ Un conteneur ne passe pas toujours par MagicDNS. Test :
 docker run --rm curlimages/curl -sS https://sonarr.<tailnet>.ts.net/api/v3/system/status -H "X-Api-Key: <clé>"
 ```
 
-En cas d'erreur de résolution, ajoutez `dns: [100.100.100.100]` au service `cleanarr` de `compose.yml`, ou utilisez
+En cas d'erreur de résolution, ajoutez `dns: [100.100.100.100]` au service `hangarr` de `compose.yml`, ou utilisez
 les IP Tailscale (`100.x.y.z`).
 
 ### Le webhook Tautulli répond 401 (`bad token` dans les logs)
 
 L'en-tête JSON ne contient pas exactement le secret. Générez-en un nouveau et mettez à jour les deux déclencheurs
 dans Tautulli.
+
+---
+
+## 11. Migrer depuis Cleanarr
+
+Hangarr s'appelait **Cleanarr**. Une installation existante se migre sans rien ressaisir.
+
+**Ce que Hangarr reprend tout seul**
+
+- la base `cleanarr.db` est renommée `hangarr.db` au premier démarrage (avec ses fichiers `-wal` / `-shm`) ;
+- `CLEANARR_MASTER_KEY` / `CLEANARR_MASTER_KEY_FILE` sont encore lues, avec un avertissement dans les logs :
+  renommez-les `HANGARR_MASTER_KEY` / `HANGARR_MASTER_KEY_FILE`. La clé ne change pas, les clés d'API enregistrées
+  restent lisibles ;
+- l'en-tête `X-Cleanarr-Token` du webhook Tautulli est encore accepté (avertissement dans les logs) : remplacez-le
+  par `X-Hangarr-Token` dans les deux déclencheurs Tautulli.
+
+Les cookies ont changé de nom : il faut **se reconnecter une fois**, et rechoisir langue, thème et menu réduit.
+
+**Avant tout** : une sauvegarde, avec l'ancienne image.
+
+```sh
+docker compose -p cleanarr exec cleanarr /cleanarr backup        # Docker
+kubectl -n arr exec deploy/cleanarr -- /cleanarr backup          # Kubernetes
+```
+
+### Docker
+
+Le projet Compose s'appelle maintenant `hangarr` : son volume est `hangarr_hangarr-data`, il faut y copier les
+données de `cleanarr_cleanarr-data` (l'ancien volume reste intact, retour arrière possible).
+
+```sh
+docker compose -p cleanarr down                       # SANS -v : le volume est conservé
+docker volume ls | grep cleanarr                      # nom exact de l'ancien volume
+docker volume create hangarr_hangarr-data
+docker run --rm -v cleanarr_cleanarr-data:/from:ro -v hangarr_hangarr-data:/to alpine cp -a /from/. /to/
+```
+
+Dans `.env`, renommez `CLEANARR_IMAGE`, `CLEANARR_PORT` et `CLEANARR_MASTER_KEY(_FILE)` en `HANGARR_…` (les deux
+premiers ne sont plus lus : sans renommage, l'image et le port reprennent leur valeur par défaut). Puis :
+
+```sh
+docker compose up -d --build
+docker compose logs hangarr | grep -i deprecated      # rien ne doit sortir
+```
+
+Une fois Hangarr vérifié : `docker volume rm cleanarr_cleanarr-data`.
+
+### Kubernetes
+
+Le manifeste s'appelle maintenant `deploy/kubernetes/hangarr.yaml` et ses objets `hangarr*`. Le plus simple :
+**garder le PVC et le secret existants**.
+
+1. Arrêter l'ancienne version, **sans supprimer le PVC ni le secret** (une seule réplique à la fois, SQLite) :
+
+   ```sh
+   kubectl -n arr delete deploy/cleanarr svc/cleanarr cm/cleanarr-config
+   ```
+
+2. Dans `hangarr.yaml` : supprimer le bloc `PersistentVolumeClaim` `hangarr-data`, puis mettre
+   `claimName: cleanarr-data` et `secretName: cleanarr-master-key` dans les volumes du Deployment.
+3. Appliquer `hangarr.yaml`. Adapter l'Ingress ou le nom d'hôte Tailscale s'ils citaient `cleanarr`, et l'URL du
+   webhook dans Tautulli : `http://hangarr.<ns>.svc.cluster.local:8080/webhooks/tautulli`.
+
+### Dépôt et image
+
+Renommer le dépôt Forgejo (et le dossier local) en `hangarr` se fait de votre côté ; l'image se publie désormais
+sous `ghcr.io/<user>/hangarr` ([2](#2-publier-limage-sur-ghcr)).

@@ -6,7 +6,9 @@ package mockarr
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
+	"fmt"
 	"image"
 	"image/color"
 	"image/png"
@@ -42,15 +44,28 @@ type Mock struct {
 	// PlexDeletionDenied makes Plex refuse deletions (403), like a server
 	// without "Allow media deletion".
 	PlexDeletionDenied bool
+	// DevExtras adds dev/{sonarr/series,radarr/movie}.json to the catalog
+	// (the series and movies of the calendars; `make dev` only, the tests
+	// rely on the synthetic catalog alone).
+	DevExtras bool
+	// RealPosters serves the posters listed in posters.json, downloaded
+	// once (`make dev` only: the tests never reach the Internet).
+	RealPosters bool
 
-	mu    sync.Mutex
-	calls []Call
-	hits  map[string]int
+	mu      sync.Mutex
+	calls   []Call
+	hits    map[string]int
+	posters map[string]poster // "sonarr/3" -> downloaded poster
+}
+
+type poster struct {
+	body        []byte
+	contentType string
 }
 
 // New returns a mock serving fixtures from fsys.
 func New(fsys fs.FS, apiKey string) *Mock {
-	return &Mock{Fixtures: fsys, APIKey: apiKey, hits: map[string]int{}}
+	return &Mock{Fixtures: fsys, APIKey: apiKey, hits: map[string]int{}, posters: map[string]poster{}}
 }
 
 // ShiftToNow sets ShiftSeconds so that the anchor becomes today (whole days).
@@ -145,16 +160,46 @@ func (m *Mock) arr(service, appName string) http.Handler {
 		writeJSON(w, map[string]any{"appName": appName, "version": "4.0.0.0-mock"})
 	})
 	m.arrItems(mux, service)
+	mux.HandleFunc("GET /api/v3/calendar", func(w http.ResponseWriter, r *http.Request) {
+		m.hit(service + ":calendar")
+		m.calendar(w, r, service)
+	})
 	mux.HandleFunc("GET /api/v3/mediacover/{id}/{file}", func(w http.ResponseWriter, r *http.Request) {
 		m.hit(service + ":mediacover")
 		m.mediaCover(w, r, service)
 	})
-	for _, res := range []string{"series", "movie", "tag", "qualityprofile", "diskspace", "health"} {
+	mux.HandleFunc("GET /api/v3/indexerstatus", func(w http.ResponseWriter, _ *http.Request) {
+		m.hit(service + ":indexerstatus")
+		var rows []map[string]any
+		if err := m.readJSON(service+"/indexerstatus.json", &rows); err != nil {
+			writeJSON(w, []any{})
+			return
+		}
+		for _, row := range rows {
+			for _, k := range []string{"initialFailure", "mostRecentFailure", "disabledTill"} {
+				if t, err := time.Parse(time.RFC3339, fmt.Sprint(row[k])); err == nil {
+					row[k] = t.Add(todayShift()).Format(time.RFC3339)
+				}
+			}
+		}
+		writeJSON(w, rows)
+	})
+	for _, res := range []string{"tag", "qualityprofile", "diskspace", "health", "indexer"} {
 		mux.HandleFunc("GET /api/v3/"+res, func(w http.ResponseWriter, _ *http.Request) {
 			m.hit(service + ":" + res)
 			m.file(w, service+"/"+res+".json")
 		})
 	}
+	res := map[string]string{"sonarr": "series", "radarr": "movie"}[service]
+	mux.HandleFunc("GET /api/v3/"+res, func(w http.ResponseWriter, r *http.Request) {
+		m.hit(service + ":" + res)
+		items, err := m.catalog(service)
+		if err != nil {
+			http.Error(w, `{"error":"fixture not found"}`, http.StatusNotFound)
+			return
+		}
+		writeJSON(w, items)
+	})
 	return m.wrap(service, m.apiKey, mux)
 }
 
@@ -331,29 +376,28 @@ func (m *Mock) tautulliHistory(w http.ResponseWriter, r *http.Request) {
 // mediaCover serves a small generated PNG for items whose fixture declares
 // a matching image (poster/fanart), 404 otherwise.
 func (m *Mock) mediaCover(w http.ResponseWriter, r *http.Request, service string) {
-	file := "series"
-	if service == "radarr" {
-		file = "movie"
-	}
-	var items []struct {
-		ID     int64 `json:"id"`
-		Images []struct {
-			CoverType string `json:"coverType"`
-		} `json:"images"`
-	}
-	if err := m.readJSON(service+"/"+file+".json", &items); err != nil {
-		http.NotFound(w, r)
-		return
-	}
 	id, _ := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	cover, _, _ := strings.Cut(r.PathValue("file"), ".")
 	cover, _, _ = strings.Cut(cover, "-") // poster-500 → poster
-	for _, it := range items {
-		if it.ID != id {
+	if m.RealPosters && cover == "poster" {
+		if p, ok := m.realPoster(service + "/" + strconv.FormatInt(id, 10)); ok {
+			w.Header().Set("Content-Type", p.contentType)
+			_, _ = w.Write(p.body)
+			return
+		}
+	}
+	rows, err := m.catalog(service)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	for _, it := range rows {
+		if v, _ := it["id"].(float64); int64(v) != id {
 			continue
 		}
-		for _, img := range it.Images {
-			if img.CoverType == cover {
+		imgs, _ := it["images"].([]any)
+		for _, img := range imgs {
+			if c, _ := img.(map[string]any); c["coverType"] == cover {
 				w.Header().Set("Content-Type", "image/png")
 				_ = png.Encode(w, coverImage(service, id, cover))
 				return
@@ -382,10 +426,26 @@ func coverImage(service string, id int64, cover string) image.Image {
 }
 
 // item returns the raw fixture object of a series/movie by id.
-func (m *Mock) item(service string, id int64) (map[string]any, bool) {
+// catalog is the series (Sonarr) or movie (Radarr) list, with the dev
+// extras when enabled.
+func (m *Mock) catalog(service string) ([]map[string]any, error) {
 	file := map[string]string{"sonarr": "sonarr/series.json", "radarr": "radarr/movie.json"}[service]
 	var items []map[string]any
 	if err := m.readJSON(file, &items); err != nil {
+		return nil, err
+	}
+	if m.DevExtras {
+		var extras []map[string]any
+		if err := m.readJSON("dev/"+file, &extras); err == nil {
+			items = append(items, extras...)
+		}
+	}
+	return items, nil
+}
+
+func (m *Mock) item(service string, id int64) (map[string]any, bool) {
+	items, err := m.catalog(service)
+	if err != nil {
 		return nil, false
 	}
 	for _, it := range items {
@@ -498,4 +558,92 @@ func (m *Mock) arrItems(mux *http.ServeMux, service string) {
 	mux.HandleFunc("DELETE /api/v3/episodefile/bulk", func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, map[string]any{})
 	})
+}
+
+// todayShift moves the anchor to today (UTC): the calendars and the indexer
+// failures are about now, whatever ShiftSeconds says.
+func todayShift() time.Duration {
+	return time.Now().UTC().Truncate(24 * time.Hour).Sub(time.Unix(Anchor, 0).UTC())
+}
+
+// calendarDates are the date fields of the calendar fixtures.
+var calendarDates = map[string][]string{"sonarr": {"airDateUtc"}, "radarr": {"inCinemas", "digitalRelease", "physicalRelease"}}
+
+// calendar serves {service}/calendar.json with its dates moved so that the
+// anchor is today (a calendar of the past shows nothing, so this does not
+// depend on ShiftSeconds), keeping the entries with a date in [start, end).
+func (m *Mock) calendar(w http.ResponseWriter, r *http.Request, service string) {
+	var rows []map[string]any
+	if err := m.readJSON(service+"/calendar.json", &rows); err != nil {
+		writeJSON(w, []any{})
+		return
+	}
+	start, errS := time.Parse(time.RFC3339, r.URL.Query().Get("start"))
+	end, errE := time.Parse(time.RFC3339, r.URL.Query().Get("end"))
+	shift := todayShift()
+	out := []map[string]any{}
+	for _, row := range rows {
+		in := false
+		for _, k := range calendarDates[service] {
+			v, _ := row[k].(string)
+			t, err := time.Parse(time.RFC3339, v)
+			if err != nil {
+				continue
+			}
+			t = t.Add(shift)
+			row[k] = t.Format(time.RFC3339)
+			if k == "airDateUtc" {
+				row["airDate"] = t.Format(time.DateOnly)
+			}
+			in = in || ((errS != nil || !t.Before(start)) && (errE != nil || t.Before(end)))
+		}
+		if in {
+			out = append(out, row)
+		}
+	}
+	writeJSON(w, out)
+}
+
+// realPoster downloads the poster of key ("sonarr/3") listed in posters.json,
+// once; ok is false when there is none or the download failed.
+func (m *Mock) realPoster(key string) (poster, bool) {
+	m.mu.Lock()
+	p, ok := m.posters[key]
+	m.mu.Unlock()
+	if ok {
+		return p, p.body != nil
+	}
+	var urls map[string]string
+	_ = m.readJSON("posters.json", &urls)
+	p = poster{}
+	if u := urls[key]; strings.HasPrefix(u, "https://") {
+		if b, ct, err := download(u); err == nil {
+			p = poster{body: b, contentType: ct}
+		}
+	}
+	m.mu.Lock()
+	m.posters[key] = p // failures too: no retry storm
+	m.mu.Unlock()
+	return p, p.body != nil
+}
+
+func download(u string) ([]byte, string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+	if err != nil {
+		return nil, "", err
+	}
+	req.Header.Set("User-Agent", "hangarr-mockarr/1.0")
+	res, err := (&http.Client{Timeout: 20 * time.Second}).Do(req) //nolint:gosec // G107: fixed URLs from posters.json, dev only
+	if err != nil {
+		return nil, "", err
+	}
+	defer func() { _ = res.Body.Close() }()
+	ct := res.Header.Get("Content-Type")
+	if res.StatusCode != http.StatusOK || !strings.HasPrefix(ct, "image/") {
+		return nil, "", fmt.Errorf("poster %s: %d %s", u, res.StatusCode, ct)
+	}
+	b, err := io.ReadAll(io.LimitReader(res.Body, 5<<20))
+	return b, ct, err
 }

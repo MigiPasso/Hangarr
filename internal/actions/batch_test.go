@@ -57,7 +57,7 @@ func TestProtectBatch(t *testing.T) {
 	e := newEnv(t, true)
 	report := e.svc.ProtectBatch(context.Background(),
 		[]int64{e.mediaID("movie", "Dune"), e.mediaID("series", "Severance"), e.mediaID("movie", "Vacances 2019")}, "admin")
-	// Plex-only: protected in Cleanarr only.
+	// Plex-only: protected in Hangarr only.
 	if len(report) != 3 || !report[0].OK || report[0].Unchanged || !report[1].OK || !report[1].Unchanged || !report[2].OK {
 		t.Errorf("report: %+v", report)
 	}

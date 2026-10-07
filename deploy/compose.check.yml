@@ -2,7 +2,7 @@
 # image, read-only rootfs, user, volume) next to the mock upstreams, without
 # publishing any port nor reading a local .env, then runs deploy/check.sh.
 services:
-  cleanarr:
+  hangarr:
     container_name: !reset null
     ports: !reset []
     env_file: !reset []
@@ -29,7 +29,7 @@ services:
   check:
     image: curlimages/curl:8.22.0
     depends_on:
-      cleanarr:
+      hangarr:
         condition: service_healthy
     volumes:
       - ./deploy/check.sh:/check.sh:ro

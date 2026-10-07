@@ -2,11 +2,11 @@
 <div class="title-row"><h1>{{t "Services"}}</h1>{{template "info" (t "Environment variables win and lock their field. Keys and tokens are encrypted and never shown again: leave a field empty to keep it.")}}</div>
 {{if .Data.KeyInDataDir}}
 <div class="alert alert-warning config-intro" role="note">
-  <strong>{{t "Encryption key stored with the data."}}</strong>{{template "info" (t "A backup of the volume exposes the keys. Set CLEANARR_MASTER_KEY (or _FILE; `cleanarr master-key` makes one): secrets are re-encrypted at the next start, nothing to re-enter.")}}
+  <strong>{{t "Encryption key stored with the data."}}</strong>{{template "info" (t "A backup of the volume exposes the keys. Set HANGARR_MASTER_KEY (or _FILE; `hangarr master-key` makes one): secrets are re-encrypted at the next start, nothing to re-enter.")}}
 </div>
 {{else if not .Data.CanStoreSecrets}}
 <div class="alert alert-warning config-intro" role="alert">
-  <strong>{{t "No master key: keys and tokens cannot be saved."}}</strong>{{template "info" (t "Set CLEANARR_MASTER_KEY (or _FILE) and restart; `cleanarr master-key` makes one.")}}
+  <strong>{{t "No master key: keys and tokens cannot be saved."}}</strong>{{template "info" (t "Set HANGARR_MASTER_KEY (or _FILE) and restart; `hangarr master-key` makes one.")}}
 </div>
 {{end}}
 <div class="config-grid">
@@ -59,19 +59,19 @@
 
 {{define "webhook_box"}}
 <div class="webhook-box">
-  <div class="title-row"><h3>{{t "Webhook"}}</h3>{{template "info" (t "Tautulli calls Cleanarr when a play stops: stats are updated 30 s later instead of at the daily sync. Its content is ignored.")}}</div>
+  <div class="title-row"><h3>{{t "Webhook"}}</h3>{{template "info" (t "Tautulli calls Hangarr when a play stops: stats are updated 30 s later instead of at the daily sync. Its content is ignored.")}}</div>
   {{with .GeneratedSecret}}
   <div class="alert alert-warning" role="alert">
     <p><strong>{{t "New secret, shown once:"}}</strong></p>
     <p><code class="secret">{{.}}</code></p>
-    <p>{{t "JSON header for Tautulli:"}} <code class="secret">{"X-Cleanarr-Token": "{{.}}"}</code></p>
+    <p>{{t "JSON header for Tautulli:"}} <code class="secret">{"X-Hangarr-Token": "{{.}}"}</code></p>
   </div>
   {{end}}
   <ol class="small">
     <li>{{t "Tautulli → Settings → Notification Agents → add a Webhook."}}</li>
-    <li>{{t "URL:"}} <code>{{.WebhookURL}}</code>{{template "info" (t "Use the address Tautulli reaches Cleanarr at, e.g. http://cleanarr:8080/webhooks/tautulli on the same Docker network.")}} · <code>POST</code></li>
+    <li>{{t "URL:"}} <code>{{.WebhookURL}}</code>{{template "info" (t "Use the address Tautulli reaches Hangarr at, e.g. http://hangarr:8080/webhooks/tautulli on the same Docker network.")}} · <code>POST</code></li>
     <li>{{t "Triggers: Playback Stop and Watched."}}</li>
-    <li>{{t "Data, for both triggers, JSON Headers:"}} <code>{"X-Cleanarr-Token": "…"}</code></li>
+    <li>{{t "Data, for both triggers, JSON Headers:"}} <code>{"X-Hangarr-Token": "…"}</code></li>
   </ol>
   {{if .WebhookLocked}}<p class="small muted">{{t "Secret set by the environment"}} (<code>TAUTULLI_WEBHOOK_SECRET</code>)</p>
   {{else if not .CanStoreSecrets}}

@@ -9,7 +9,7 @@ import (
 	"testing"
 	"testing/fstest"
 
-	"cleanarr/internal/syncer"
+	"hangarr/internal/syncer"
 )
 
 func putTags(t *testing.T, body string) ([]int64, map[string]any) {
@@ -163,7 +163,7 @@ func TestLocalProtection(t *testing.T) {
 		e := newEnv(t, dryRun)
 		ctx := context.Background()
 		id := e.mediaID("movie", "Vacances 2019")
-		// In Cleanarr only, even in dry-run: nothing is sent anywhere.
+		// In Hangarr only, even in dry-run: nothing is sent anywhere.
 		res, err := e.svc.SetProtected(ctx, ProtectRequest{MediaID: id, Protect: true, Username: "admin"})
 		if err != nil || !res.Local || res.Unchanged || res.DryRun {
 			t.Fatalf("dry-run=%v protect: %+v %v", dryRun, res, err)

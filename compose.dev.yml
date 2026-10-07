@@ -1,6 +1,6 @@
 # Development and test environment. Everything runs here: nothing is
 # installed on the host besides Docker (see CLAUDE.md / README.md).
-name: cleanarr-dev
+name: hangarr-dev
 
 x-upstreams-mock: &upstreams-mock
   SONARR_URL: http://mock:8989
@@ -28,7 +28,7 @@ services:
       LOG_LEVEL: debug
       # Dev-only key: the services come from the environment (locked in the
       # UI), but public URLs and the webhook secret can be saved.
-      CLEANARR_MASTER_KEY: ZGV2LW9ubHktbWFzdGVyLWtleS0tZG8tbm90LXVzZSE=
+      HANGARR_MASTER_KEY: ZGV2LW9ubHktbWFzdGVyLWtleS0tZG8tbm90LXVzZSE=
     ports:
       # DEV_PORT=8081 make dev when 8080 is taken (e.g. by compose.yml).
       - "${DEV_PORT:-8080}:8080"
@@ -48,6 +48,10 @@ services:
       MOCK_API_KEY: mock-api-key
       # Fixture history is anchored on 2026-10-01: shift it to today.
       MOCK_SHIFT_DATES: "true"
+      # Dev only: the calendar's series and movies in the catalog, real posters
+      # (TVmaze, IMDb) downloaded by the mock. `make e2e` turns both off.
+      MOCK_DEV_EXTRAS: ${MOCK_DEV_EXTRAS:-true}
+      MOCK_REAL_POSTERS: ${MOCK_REAL_POSTERS:-true}
 
   # Same app against real instances configured in .env: `make dev-real`.
   app-real:
@@ -56,8 +60,8 @@ services:
       context: .
       target: dev
     working_dir: /src
-    # Makefile passes CLEANARR_ENV_FILE=.env; the default keeps compose valid without .env.
-    env_file: ${CLEANARR_ENV_FILE:-.env.example}
+    # Makefile passes HANGARR_ENV_FILE=.env; the default keeps compose valid without .env.
+    env_file: ${HANGARR_ENV_FILE:-.env.example}
     environment:
       DATA_DIR: /data
       DRY_RUN: ${DRY_RUN:-true}
@@ -93,7 +97,7 @@ services:
     profiles: [real]
     image: golang:1.27.1-bookworm
     working_dir: /src
-    env_file: ${CLEANARR_ENV_FILE:-.env.example}
+    env_file: ${HANGARR_ENV_FILE:-.env.example}
     environment:
       GOFLAGS: -buildvcs=false
     volumes:
@@ -136,7 +140,7 @@ services:
       # The e2e assertions check the French interface (English is the default).
       DEFAULT_LANG: fr
     healthcheck:
-      test: ["CMD", "/cleanarr", "healthcheck"]
+      test: ["CMD", "/hangarr", "healthcheck"]
       interval: 2s
       timeout: 3s
       retries: 30
@@ -162,7 +166,7 @@ services:
       # The e2e assertions check the French interface (English is the default).
       DEFAULT_LANG: fr
     healthcheck:
-      test: ["CMD", "/cleanarr", "healthcheck"]
+      test: ["CMD", "/hangarr", "healthcheck"]
       interval: 2s
       timeout: 3s
       retries: 30
@@ -183,7 +187,7 @@ services:
     secrets:
       - master_key
     environment:
-      CLEANARR_MASTER_KEY_FILE: /run/secrets/master_key
+      HANGARR_MASTER_KEY_FILE: /run/secrets/master_key
       DRY_RUN: "true"
       COOKIE_SECURE: "false"
       LOG_FORMAT: json
@@ -191,7 +195,7 @@ services:
       # The e2e assertions check the French interface (English is the default).
       DEFAULT_LANG: fr
     healthcheck:
-      test: ["CMD", "/cleanarr", "healthcheck"]
+      test: ["CMD", "/hangarr", "healthcheck"]
       interval: 2s
       timeout: 3s
       retries: 30

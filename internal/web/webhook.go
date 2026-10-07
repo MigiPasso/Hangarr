@@ -12,15 +12,18 @@ import (
 	"strconv"
 	"time"
 
-	"cleanarr/internal/store"
-	"cleanarr/internal/upstream"
+	"hangarr/internal/store"
+	"hangarr/internal/upstream"
 )
 
 // Tautulli webhook limits.
 const (
-	webhookHeader    = "X-Cleanarr-Token"
-	webhookMaxBody   = 64 << 10
-	webhookPerMinute = 60
+	webhookHeader = "X-Hangarr-Token"
+	// legacyWebhookHeader is the header of Cleanarr (the former name), still
+	// accepted so that a Tautulli configured before the rename keeps working.
+	legacyWebhookHeader = "X-Cleanarr-Token"
+	webhookMaxBody      = 64 << 10
+	webhookPerMinute    = 60
 )
 
 // tautulliWebhook (POST /webhooks/tautulli) is the only route without a
@@ -41,7 +44,11 @@ func (s *Server) tautulliWebhook(w http.ResponseWriter, r *http.Request) {
 	// The payload is never trusted nor parsed: the history is read back
 	// from the Tautulli API.
 	_, _ = io.Copy(io.Discard, io.LimitReader(r.Body, webhookMaxBody))
-	got := sha256.Sum256([]byte(r.Header.Get(webhookHeader)))
+	token, legacy := r.Header.Get(webhookHeader), false
+	if token == "" {
+		token, legacy = r.Header.Get(legacyWebhookHeader), true
+	}
+	got := sha256.Sum256([]byte(token))
 	want := sha256.Sum256([]byte(secret))
 	if subtle.ConstantTimeCompare(got[:], want[:]) != 1 {
 		s.Log.Warn("tautulli webhook rejected: bad token", "ip", ip)
@@ -53,13 +60,16 @@ func (s *Server) tautulliWebhook(w http.ResponseWriter, r *http.Request) {
 		scheduled = s.Sync.RequestHistorySync(s.baseContext())
 	}
 	s.Log.Info("tautulli webhook received", "ip", ip, "scheduled", scheduled)
+	if legacy {
+		s.Log.Warn("tautulli webhook uses the deprecated header " + legacyWebhookHeader + ": rename it " + webhookHeader + " in Tautulli")
+	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusAccepted)
 	_, _ = io.WriteString(w, `{"status":"accepted"}`)
 }
 
 // webhookURL is the address shown in the Configuration page; Tautulli must
-// use the address under which it reaches cleanarr.
+// use the address under which it reaches hangarr.
 func webhookURL(r *http.Request) string {
 	scheme := "http"
 	if r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https" {
