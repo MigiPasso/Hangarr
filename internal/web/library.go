@@ -265,7 +265,7 @@ func (s *Server) library(kind, path, title string) http.HandlerFunc {
 		active.Del("dir")
 		data.Active = len(active) > 0
 		data.More = len(f.Genres) > 0 || f.YearMin > 0 || f.YearMax > 0 || f.RatingMin > 0 || len(f.Tags) > 0 ||
-			f.Profile != "" || f.Network != "" || len(f.Match) > 0
+			f.Profile != "" || f.Network != ""
 		data.Inactive = inactiveOptions
 		data.ViewURLs = map[string]string{}
 		for _, v := range []string{"grid", "table"} {

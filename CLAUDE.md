@@ -121,9 +121,9 @@ Pas de framework web, pas de build Node pour l'app, pas de CDN.
   finie** = `completed` (saisons précédentes possiblement vues ailleurs, décision utilisateur) : `scoring.WatchState` et
   SQL de `libraryView`.
 - Filtres de la Bibliothèque **simplifiés** (décision utilisateur, « un filtre = une question ») : Qui ? (`user`, tout
-  devient le point de vue de ce spectateur), État, Pas regardé depuis (`inactive` 30/90/180/365, jamais vu = depuis
-  l'ajout, même règle que Nettoyage), Ajouté, Taille min/max, Statut ; le reste dans « Plus de filtres » (genres, année,
-  note, tags, profil, réseau/studio, présence Plex/*arr). Supprimés : Vu par / Jamais vu par / Vu par personne /
+  devient le point de vue de ce spectateur), État, Présent dans (Plex et/ou Sonarr/Radarr, juste sous État, décision
+  utilisateur), Pas regardé depuis (`inactive` 30/90/180/365, jamais vu = depuis l'ajout, même règle que Nettoyage),
+  Ajouté, Taille min/max, Statut ; le reste dans « Plus de filtres » (genres, année, note, tags, profil, réseau/studio). Supprimés : Vu par / Jamais vu par / Vu par personne /
   spectateurs distincts min. Nettoyage : « Pas regardé depuis » ne propose que des délais plus longs que la règle.
 - Bibliothèque : une requête SQL paramétrée par lot (`store.LibraryQuery`, CTE `v` avec colonnes `eff_*` ; point de vue
   utilisateur calculé à la volée, mêmes règles que `scoring`). Recherche sur `title_norm` (sans accents ni article).

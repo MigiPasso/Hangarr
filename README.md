@@ -9,8 +9,8 @@ proprement. Comme un hangar, on y range un peu tout. Spécification complète : 
 - **Tableau de bord** : volumes, espace récupérable, temps de visionnage, dernières lectures.
 - **Séries / Films** : grille d'affiches ou tableau, recherche, défilement infini. Filtres « une question = un
   filtre » : *Qui ?* (tout le monde ou un spectateur : états et dernières vues deviennent les siens), *État*, *Pas
-  regardé depuis* (jamais vu : depuis l'ajout), *Ajouté*, *Taille*, *Statut* ; genres, année, note, tags, profil,
-  réseau/studio et présence Plex/Sonarr/Radarr sous « Plus de filtres ».
+  regardé depuis* (jamais vu : depuis l'ajout), *Ajouté*, *Taille*, *Statut*, *Présent dans* (Plex et/ou Sonarr/Radarr) ;
+  genres, année, note, tags, profil et réseau/studio sous « Plus de filtres ».
 - **Fiche** : progression par saison et par spectateur, historique, liens vers Sonarr, Radarr et Plex.
 - **À venir** : calendrier des sorties de ce qui est monitoré (épisodes Sonarr, sorties cinéma / numérique / physique
   Radarr), lu en direct, en liste ou en grille d'affiches paginées (30 jours, 3 mois ou 1 an ; 10, 25, 50 ou 100 par page), ou en calendrier
