@@ -185,6 +185,10 @@ Pas de framework web, pas de build Node pour l'app, pas de CDN.
   partage le verrou de la sync complète). `LastSyncAt` ne compte que les sources de catalogue. Secret généré dans
   Configuration (affiché une seule fois).
 - `internal/images` : proxy MediaCover (`poster-500.jpg`) → cache disque `DATA_DIR/cache/img`, ETag, sémaphore (4),
+  toute image réduite avant mise en cache (`resize.go`, bibliothèque standard, filtre boîte, JPEG q85) : affiches
+  500 px, fonds **1280 px** de large, quelle que soit la source (décision utilisateur) ; plus de 50 Mpx refusé (bombe de
+  décompression), format non décodable (WebP) servi tel quel ; noms de fichiers versionnés (`cacheVersion`), anciennes
+  versions supprimées au démarrage. Volume : 5 Gi par défaut dans le manifeste (10 Gi pour une grosse bibliothèque),
   singleflight, repli `remoteUrl` https, placeholder SVG. Pas de JS supplémentaire côté client. Éléments Plex seul :
   `/img/plex/{ratingKey}/{poster|fanart}` (clé vérifiée en base), `/photo/:/transcode` (500×750 / 1280×720) puis
   `/library/metadata/{key}/thumb|art` ; template `imgURL` choisit *arr ou Plex.

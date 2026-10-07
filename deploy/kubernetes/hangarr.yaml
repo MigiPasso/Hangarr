@@ -41,7 +41,7 @@ spec:
   accessModes: ["ReadWriteOnce"]
   resources:
     requests:
-      storage: 1Gi
+      storage: 5Gi # database, image cache, backups; 10Gi for a large library
   # storageClassName: <your-storage-class>
 ---
 apiVersion: apps/v1

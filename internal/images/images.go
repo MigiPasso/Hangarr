@@ -33,6 +33,9 @@ const (
 	MissTTL              = time.Hour           // how long a missing image is not retried
 	BrowserMaxAge        = 7 * 24 * time.Hour  // Cache-Control for images
 	fetchTimeout         = 20 * time.Second
+	// cacheVersion is part of the cached file names: files of an older
+	// version (full-size images) are removed by New.
+	cacheVersion = "v2"
 )
 
 var errNoImage = errors.New("no image available")
@@ -66,11 +69,32 @@ type Proxy struct {
 
 // New builds a proxy caching into dir.
 func New(dir string, client func(kind string) *httpx.Client, lookup Lookup, log *slog.Logger) *Proxy {
-	return &Proxy{
+	p := &Proxy{
 		Dir: dir, Client: client, Lookup: lookup, Log: log,
 		Remote: &http.Client{Timeout: fetchTimeout, CheckRedirect: httpsOnly},
 		sem:    make(chan struct{}, MaxConcurrentFetches),
 		misses: map[string]time.Time{},
+	}
+	p.pruneOldVersions()
+	return p
+}
+
+// pruneOldVersions removes the cached files of an older cacheVersion.
+func (p *Proxy) pruneOldVersions() {
+	entries, err := os.ReadDir(p.Dir)
+	if err != nil {
+		return // no cache yet
+	}
+	n := 0
+	for _, e := range entries {
+		if name := e.Name(); strings.HasSuffix(name, ".img") && !strings.HasSuffix(name, "-"+cacheVersion+".img") {
+			if os.Remove(filepath.Join(p.Dir, name)) == nil {
+				n++
+			}
+		}
+	}
+	if n > 0 && p.Log != nil {
+		p.Log.Info("image cache: removed files of an older version", "count", n)
 	}
 }
 
@@ -113,7 +137,7 @@ func upstreamRequests(kind string, id int64, variant string) []httpx.Request {
 // is then the Plex rating key), variant "poster" or "fanart". Validation of
 // the parameters is the caller's job.
 func (p *Proxy) ServeImage(w http.ResponseWriter, r *http.Request, kind string, arrID int64, variant string) {
-	key := fmt.Sprintf("%s-%d-%s", kind, arrID, variant)
+	key := fmt.Sprintf("%s-%d-%s-%s", kind, arrID, variant, cacheVersion)
 	path := filepath.Join(p.Dir, key+".img")
 
 	if st, err := os.Stat(path); err == nil && p.now().Sub(st.ModTime()) < RefreshAfter {
@@ -189,7 +213,9 @@ func (p *Proxy) fetch(ctx context.Context, kind string, arrID int64, variant str
 		for _, req := range upstreamRequests(kind, arrID, variant) {
 			b, err := client.Do(ctx, req)
 			if err == nil && isImage(b) {
-				return p.write(path, b)
+				if b, err = shrink(b, maxWidth(variant)); err == nil {
+					return p.write(path, b)
+				}
 			}
 			var se *httpx.StatusError
 			if err != nil && (!errors.As(err, &se) || se.Status != http.StatusNotFound) {
@@ -197,7 +223,11 @@ func (p *Proxy) fetch(ctx context.Context, kind string, arrID int64, variant str
 			}
 		}
 	}
-	if b, err := p.fetchRemote(ctx, info.RemoteURL); err == nil {
+	b, err := p.fetchRemote(ctx, info.RemoteURL)
+	if err == nil {
+		b, err = shrink(b, maxWidth(variant))
+	}
+	if err == nil {
 		return p.write(path, b)
 	} else if !errors.Is(err, errNoImage) {
 		lastErr = err
