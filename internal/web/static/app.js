@@ -190,6 +190,30 @@
   });
 })();
 
+// Sections loaded later (hx-trigger="load", data-load-error): when the request
+// fails (server error, network, timeout), HTMX swaps nothing and the spinner
+// would stay forever; show the message and a link that reloads the page.
+(function () {
+  "use strict";
+
+  function failed(e) {
+    var elt = e.detail && e.detail.elt;
+    if (!elt || !elt.hasAttribute || !elt.hasAttribute("data-load-error")) { return; }
+    var p = document.createElement("p");
+    p.className = "error-text";
+    p.setAttribute("role", "alert");
+    p.textContent = elt.getAttribute("data-load-error") + " ";
+    var retry = document.createElement("a");
+    retry.href = location.href;
+    retry.textContent = elt.getAttribute("data-load-retry");
+    p.appendChild(retry);
+    elt.replaceChildren(p);
+  }
+  document.addEventListener("htmx:responseError", failed);
+  document.addEventListener("htmx:sendError", failed);
+  document.addEventListener("htmx:timeout", failed);
+})();
+
 // Sidebar: collapse to icons on wide screens (remembered in a cookie read by
 // the server, no flash), slide-in panel on small screens. Without JavaScript
 // the menu is simply shown above the page on small screens (.no-js).
@@ -200,19 +224,32 @@
 
   function shell() { return document.querySelector(".shell"); }
 
+  var small = window.matchMedia("(max-width: 800px)");
+
+  // While the panel is open, the rest of the page is inert: Tab stays in the
+  // menu and screen readers ignore what is behind. Closing gives the focus
+  // back to the ☰ button.
   function setOpen(open) {
     var s = shell();
     if (!s) { return; }
+    var wasOpen = s.classList.contains("is-open");
     s.classList.toggle("is-open", open);
     var backdrop = s.querySelector(".sidebar-backdrop");
     if (backdrop) { backdrop.hidden = !open; }
+    var main = s.querySelector(".shell-main");
+    if (main) { main.inert = open; }
     var button = document.querySelector("[data-sidebar-open]");
     if (button) { button.setAttribute("aria-expanded", open ? "true" : "false"); }
     if (open) {
-      var first = s.querySelector(".sidebar a, .sidebar button");
+      var first = s.querySelector(".sidebar a, .sidebar-close");
       if (first) { first.focus(); }
+    } else if (wasOpen && button && small.matches) {
+      button.focus();
     }
   }
+
+  // Back to a wide screen: the panel is no longer an overlay.
+  small.addEventListener("change", function (e) { if (!e.matches) { setOpen(false); } });
 
   document.addEventListener("click", function (e) {
     if (!e.target.closest) { return; }
@@ -221,7 +258,6 @@
     if (e.target.closest("[data-sidebar-collapse]")) {
       var s = shell();
       if (!s) { return; }
-      if (window.matchMedia("(max-width: 800px)").matches) { setOpen(false); return; }
       var collapsed = !s.classList.contains("is-collapsed");
       s.classList.toggle("is-collapsed", collapsed);
       document.cookie = "hangarr_sidebar=" + (collapsed ? "collapsed" : "open") +
@@ -232,8 +268,6 @@
     var s = shell();
     if (e.key === "Escape" && s && s.classList.contains("is-open")) {
       setOpen(false);
-      var button = document.querySelector("[data-sidebar-open]");
-      if (button) { button.focus(); }
     }
   });
 })();

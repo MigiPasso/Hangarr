@@ -130,6 +130,7 @@ func TestFrenchCatalogComplete(t *testing.T) {
 		"The number typed does not match the number of items to delete.",
 		"Invalid time: hour 0 to 23, minute 0 to 59.",
 		"Expected an http(s) address, e.g. http://host:port.", "At least 32 characters.",
+		"This is the address of a page (/login, /movie/…): keep only the address of the application.",
 		"The address changed: type the credential again.",
 		"The credential is set by the environment: change this address there too.",
 		"Invalid or missing CSRF token. Reload the page.", "Internal error.", "Unknown session.",

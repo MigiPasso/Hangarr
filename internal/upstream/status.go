@@ -2,9 +2,12 @@ package upstream
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"sync"
 	"time"
+
+	"golang.org/x/sync/singleflight"
 
 	"hangarr/internal/clients/sonarr"
 	"hangarr/internal/i18n"
@@ -65,16 +68,69 @@ func alerts(ctx context.Context, c *Clients, svc string) []sonarr.HealthCheck {
 // (IndexerStatusCheck, IndexerRssCheck, IndexerSearchCheck…).
 func IsIndexerAlert(a sonarr.HealthCheck) bool { return strings.HasPrefix(a.Source, "Indexer") }
 
+// alertsTTL keeps the health alerts of a service for the two sections of the
+// Santé page (services and trackers), loaded by two requests at once.
+const alertsTTL = 15 * time.Second
+
+type alertsKey struct {
+	c   *Clients // a configuration change installs new Clients: fresh key
+	svc string
+}
+
+type alertsEntry struct {
+	at   time.Time
+	list []sonarr.HealthCheck
+}
+
+var (
+	alertsMu     sync.Mutex
+	alertsCache  = map[alertsKey]alertsEntry{}
+	alertsFlight singleflight.Group
+)
+
 // healthAlerts returns every Sonarr/Radarr health alert other than "ok".
+// Concurrent callers share one request and the result is kept alertsTTL.
 func healthAlerts(ctx context.Context, c *Clients, svc string) []sonarr.HealthCheck {
+	key := alertsKey{c, svc}
+	alertsMu.Lock()
+	e, ok := alertsCache[key]
+	alertsMu.Unlock()
+	if ok && time.Since(e.at) < alertsTTL {
+		return e.list
+	}
+	v, _, _ := alertsFlight.Do(fmt.Sprintf("%p/%s", c, svc), func() (any, error) {
+		list, err := fetchAlerts(context.WithoutCancel(ctx), c, svc)
+		if err != nil {
+			return list, nil // shared with the concurrent callers, never cached: retried next time
+		}
+		alertsMu.Lock()
+		defer alertsMu.Unlock()
+		for k, old := range alertsCache { // drop stale entries (old configurations)
+			if time.Since(old.at) >= alertsTTL {
+				delete(alertsCache, k)
+			}
+		}
+		alertsCache[key] = alertsEntry{at: time.Now(), list: list}
+		return list, nil
+	})
+	list, _ := v.([]sonarr.HealthCheck)
+	return list
+}
+
+// fetchAlerts reads the health alerts other than "ok"; on error the list is
+// empty (the connection itself is reported by Check).
+func fetchAlerts(ctx context.Context, c *Clients, svc string) ([]sonarr.HealthCheck, error) {
 	ctx, cancel := context.WithTimeout(ctx, CheckTimeout)
 	defer cancel()
-	var list []sonarr.HealthCheck
+	var (
+		list []sonarr.HealthCheck
+		err  error
+	)
 	switch {
 	case svc == Sonarr && c.Sonarr != nil:
-		list, _ = c.Sonarr.Health(ctx)
+		list, err = c.Sonarr.Health(ctx)
 	case svc == Radarr && c.Radarr != nil:
-		list, _ = c.Radarr.Health(ctx)
+		list, err = c.Radarr.Health(ctx)
 	}
 	var out []sonarr.HealthCheck
 	for _, a := range list {
@@ -82,5 +138,5 @@ func healthAlerts(ctx context.Context, c *Clients, svc string) []sonarr.HealthCh
 			out = append(out, a)
 		}
 	}
-	return out
+	return out, err
 }

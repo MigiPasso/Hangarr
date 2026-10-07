@@ -25,7 +25,12 @@
 {{with $d.Failed}}<p class="alert alert-warning" role="status">{{t "Unreachable, releases missing: %s." (join . ", ")}} <a href="/health">{{t "Health"}}</a></p>{{end}}
 {{with $d.Unconfigured}}<p class="small muted">{{t "Not configured: %s." (join . ", ")}} <a href="/config">{{t "Configure the services"}}</a></p>{{end}}
 
-{{if eq $d.View "month"}}{{template "calendar_month" $d}}
+{{if $d.Loading}}
+<div hx-get="{{$d.LiveURL}}" hx-trigger="load" hx-target="#calendar-page" hx-select="#calendar-page" hx-swap="outerHTML" {{template "load_error"}}>
+  <p class="muted"><span class="spinner" aria-hidden="true"></span> {{t "Reading Sonarr and Radarr…"}}</p>
+  <noscript><p><a href="{{$d.LiveURL}}">{{t "Show the releases"}}</a></p></noscript>
+</div>
+{{else if eq $d.View "month"}}{{template "calendar_month" $d}}
 {{else if and $d.List (eq $d.View "grid")}}
 {{/* One continuous flow: a date tile, then that day's cards, then the next
      date tile… so the rows are always full. */}}

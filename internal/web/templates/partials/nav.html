@@ -8,6 +8,10 @@
     <button type="button" class="sidebar-collapse" data-sidebar-collapse aria-label="{{t "Collapse the menu"}}" title="{{t "Collapse the menu"}}" aria-controls="sidebar">
       <svg viewBox="0 0 16 16" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M9.5 3.5 5 8l4.5 4.5M13 3.5v9"/></svg>
     </button>
+    {{/* Small screens: the panel is closed, not collapsed. */}}
+    <button type="button" class="sidebar-close" data-sidebar-close aria-label="{{t "Close the menu"}}" title="{{t "Close the menu"}}">
+      <svg viewBox="0 0 16 16" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" d="M4 4l8 8M12 4l-8 8"/></svg>
+    </button>
   </div>
   {{if not .Session.MustChangePassword}}
   <nav class="side-nav">
@@ -118,3 +122,7 @@
 
 {{/* info: a small "i" showing its text on hover or keyboard focus. */}}
 {{define "info"}}<span class="info" tabindex="0" role="img" aria-label="{{.}}" data-tip="{{.}}">i</span>{{end}}
+
+{{/* load_error: attributes of a section loaded later (hx-trigger="load"):
+     app.js shows this message and a retry link if the request fails. */}}
+{{define "load_error"}}data-load-error="{{t "Loading failed."}}" data-load-retry="{{t "Retry"}}"{{end}}

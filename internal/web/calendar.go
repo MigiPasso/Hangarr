@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"net/url"
 	"slices"
 	"sort"
 	"strconv"
@@ -83,6 +84,11 @@ type calendarData struct {
 	// without a configuration.
 	Failed       []string
 	Unconfigured []string
+	// Loading: the page is sent at once and the releases load by HTMX (a
+	// slow Sonarr/Radarr never delays the page); LiveURL shows them without
+	// JavaScript.
+	Loading bool
+	LiveURL string
 }
 
 // monthNames are the full English month names (translation keys; "May" is
@@ -133,6 +139,15 @@ func (s *Server) calendar(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// First load: the page at once, the releases by HTMX (or with live=1).
+	if !isHTMX(r) && q.Get("live") != "1" {
+		live := r.URL.Query()
+		live.Set("live", "1")
+		d.Loading, d.LiveURL = true, "/calendar?"+live.Encode()
+		s.render(w, r, http.StatusOK, "calendar", "", s.page(r, "Upcoming", "calendar", d))
+		return
+	}
+
 	entries, failed, unconfigured := s.calendarEntries(ctx, l, start, end)
 	d.Failed, d.Unconfigured = failed, unconfigured
 	if len(entries) > 0 {
@@ -170,14 +185,14 @@ func (s *Server) calendar(w http.ResponseWriter, r *http.Request) {
 // calendarListURL is the list or grid view with its period, page size and
 // page.
 func calendarListURL(view string, days, size, page int) string {
-	u := fmt.Sprintf("/calendar?days=%d&size=%d", days, size)
+	q := url.Values{"days": {strconv.Itoa(days)}, "size": {strconv.Itoa(size)}}
 	if view == "grid" {
-		u = "/calendar?view=grid&" + u[len("/calendar?"):]
+		q.Set("view", "grid")
 	}
 	if page > 1 {
-		u += "&page=" + strconv.Itoa(page)
+		q.Set("page", strconv.Itoa(page))
 	}
-	return u
+	return "/calendar?" + q.Encode()
 }
 
 // calendarEntries reads both calendars in parallel; failed and unconfigured

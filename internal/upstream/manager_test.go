@@ -179,6 +179,38 @@ func TestSaveValidation(t *testing.T) {
 	}
 }
 
+// A public URL copied from the address bar (a page of the application) is
+// refused: the links would open that page (the "/login" seen in production).
+func TestPublicURLIsNotAPage(t *testing.T) {
+	for _, c := range []struct {
+		svc, url string
+		page     bool
+	}{
+		{Radarr, "https://radarr.example.ts.net/login", true},
+		{Radarr, "https://radarr.example.ts.net/movie/27205", true},
+		{Sonarr, "https://sonarr.example.ts.net/settings/general", true},
+		{Sonarr, "https://sonarr.example.ts.net/?returnUrl=%2F", true},
+		{Plex, "https://plex.example:32400/web", true},
+		{Plex, "https://plex.example:32400/web/index.html#!/server/x", true},
+		{Radarr, "https://radarr.example.ts.net", false},
+		{Radarr, "https://example.org/radarr", false}, // base path
+		{Sonarr, "https://example.org/series", false}, // base path named like a section
+		{Plex, "https://plex.example:32400", false},
+	} {
+		if got := pageOfTheApp(c.svc, c.url); got != c.page {
+			t.Errorf("%s %s: page %v", c.svc, c.url, got)
+		}
+	}
+	m := newManager(t, nil, nil)
+	_, err := m.Save(context.Background(), Radarr, input(RadarrURL, "http://radarr:7878",
+		RadarrPublicURL, "https://radarr.example.ts.net/login"), store.AuthEvent{}, time.Now())
+	var verr ValidationError
+	if !errors.As(err, &verr) || verr[RadarrPublicURL] == "" {
+		t.Fatalf("public URL ending in /login: %v", err)
+	}
+	save(t, m, Radarr, input(RadarrURL, "http://radarr:7878", RadarrPublicURL, "https://radarr.example.ts.net"))
+}
+
 func TestEnvironmentWins(t *testing.T) {
 	m := newManager(t, Values{SonarrURL: "http://env-sonarr:8989", SonarrAPIKey: "env-key-0123456789"}, newBox(t, "k"))
 	if changed := save(t, m, Sonarr, input(SonarrURL, "http://ui:8989", SonarrAPIKey, "ui-key")); len(changed) != 0 {
