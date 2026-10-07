@@ -696,4 +696,11 @@ var fr = map[string]string{ //nolint:gosec // G101: UI texts mentioning keys and
 	"General":           "Général",
 	"Collapse the menu": "Réduire le menu",
 	"Open the menu":     "Ouvrir le menu",
+
+	// Audit 1.0.0: kept credentials, plain-text errors
+	"The address changed: type the credential again.":                          "L'adresse a changé : saisissez à nouveau l'identifiant.",
+	"The credential is set by the environment: change this address there too.": "L'identifiant est défini par l'environnement : changez aussi cette adresse là-bas.",
+	"Invalid or missing CSRF token. Reload the page.":                          "Jeton CSRF invalide ou manquant. Rechargez la page.",
+	"Internal error.":  "Erreur interne.",
+	"Unknown session.": "Session inconnue.",
 }

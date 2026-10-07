@@ -244,7 +244,7 @@ func (s *Server) revokeSession(w http.ResponseWriter, r *http.Request) {
 	sess := sessionFrom(r)
 	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if err != nil {
-		http.Error(w, "Session inconnue", http.StatusNotFound)
+		http.Error(w, s.loc(r).T("Unknown session."), http.StatusNotFound)
 		return
 	}
 	if id == sess.ID {
@@ -257,7 +257,7 @@ func (s *Server) revokeSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !ok {
-		http.Error(w, "Session inconnue", http.StatusNotFound)
+		http.Error(w, s.loc(r).T("Unknown session."), http.StatusNotFound)
 		return
 	}
 	if isHTMX(r) {

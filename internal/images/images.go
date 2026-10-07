@@ -122,7 +122,7 @@ func (p *Proxy) ServeImage(w http.ResponseWriter, r *http.Request, kind string, 
 	}
 	info, ok, err := p.Lookup(r.Context(), kind, arrID, variant)
 	if err != nil {
-		http.Error(w, "Erreur interne", http.StatusInternalServerError)
+		http.Error(w, "Internal error.", http.StatusInternalServerError)
 		return
 	}
 	if !ok {

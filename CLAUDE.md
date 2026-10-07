@@ -92,6 +92,10 @@ Pas de framework web, pas de build Node pour l'app, pas de CDN.
 - Requêtes sortantes : clients amont via `httpx` uniquement (redirections suivies seulement vers le même hôte,
   `httpx.SameHostOnly`, sinon la clé partirait ailleurs) ; images distantes : https seulement, redirections https, 3 max.
   Jamais `http.DefaultClient` pour un appel authentifié.
+- Identifiants conservés (champ vide) : jamais envoyés à une autre origine. Si l'URL d'API d'un service change de
+  schéma, d'hôte ou de port, ses identifiants doivent être ressaisis (enregistrement **et** test de connexion,
+  `Manager.keptCredentials`) ; identifiant défini par l'environnement → adresse aussi par l'environnement. Sinon une
+  session suffirait à rediriger le token Plex ou une clé d'API vers un hôte tiers (audit 1.0.0).
 - Rate limit par IP partagé entre connexion et changement de mot de passe ; CSP avec `object-src 'none'; base-uri 'none'`.
 - Kubernetes : image distroless nonroot (65532), rootfs en lecture seule, seul `/data` est inscriptible,
   `/healthz` (liveness) et `/readyz` (readiness, sans dépendre des *arr*), arrêt propre sur SIGTERM (20 s).
