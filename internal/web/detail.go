@@ -39,7 +39,8 @@ type userSeason struct {
 }
 
 type userProgress struct {
-	Name      string
+	UserID    int64
+	Name      string // "" when the account is unknown (shown as "User 12")
 	Seasons   []userSeason
 	Last      string // "S01E03" (series) of the last complete play
 	LastAt    int64
@@ -138,10 +139,7 @@ func buildProgress(eps []sonarr.Episode, watches []store.EpisodeWatch, seasons [
 	for _, w := range watches {
 		a := byUser[w.UserID]
 		if a == nil {
-			a = &acc{p: userProgress{Name: w.UserName}, watched: map[epKey]bool{}}
-			if a.p.Name == "" {
-				a.p.Name = "Utilisateur " + strconv.FormatInt(w.UserID, 10)
-			}
+			a = &acc{p: userProgress{UserID: w.UserID, Name: w.UserName}, watched: map[epKey]bool{}}
 			byUser[w.UserID] = a
 			order = append(order, w.UserID)
 		}

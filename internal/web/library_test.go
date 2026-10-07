@@ -113,6 +113,18 @@ func TestLibraryHTMXPartial(t *testing.T) {
 	if !strings.Contains(r.header.Get("Vary"), "HX-Request") {
 		t.Error("Vary header missing")
 	}
+	// The view links and the reset link sit outside #results: they are
+	// swapped out of band so that they keep the new filters (choosing a
+	// user then switching to the table kept "Everyone").
+	r = e.do(e.c, "GET", "/series?user=1001", nil, map[string]string{"HX-Request": "true", "HX-Target": "results"})
+	for _, want := range []string{`id="view-toggle"`, `/series?user=1001&amp;view=table`, `id="filters-reset" hx-swap-oob="true"`} {
+		if !strings.Contains(r.body, want) {
+			t.Errorf("partial without %s:\n%s", want, r.body)
+		}
+	}
+	if !strings.Contains(r.body, `id="view-toggle" class="view-toggle" role="group" aria-label="Affichage" hx-swap-oob="true"`) {
+		t.Errorf("view links not swapped out of band:\n%s", r.body)
+	}
 	// A history restore gets the full page even with HTMX headers.
 	r = e.do(e.c, "GET", "/series", nil, map[string]string{"HX-Request": "true", "HX-Target": "results",
 		"HX-History-Restore-Request": "true"})
@@ -365,3 +377,4 @@ func TestLibraryPresentInFilter(t *testing.T) {
 		t.Errorf("plex_only movies: %q", cardTitles(r.body))
 	}
 }
+

@@ -511,6 +511,8 @@ func Describe(l i18n.Localizer, err error) string {
 		return ""
 	case errors.Is(err, ErrNotConfigured):
 		return l.T("Required fields missing (URL and key).")
+	case errors.As(err, &re) && re.Downgrade:
+		return l.T("This address redirects from https to http: refused so the key does not travel in clear. Enter the final address.")
 	case errors.As(err, &re):
 		return l.T("This address redirects to another host (%s): refused so the key is not sent there. Enter the final address.", re.Host)
 	case errors.As(err, &we):

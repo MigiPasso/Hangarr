@@ -29,9 +29,10 @@ func (s *Syncer) RequestHistorySync(ctx context.Context) bool {
 		s.mu.Lock()
 		s.historyPending = false
 		s.mu.Unlock()
-		if ctx.Err() != nil {
+		if ctx.Err() != nil || !s.addBackground() {
 			return
 		}
+		defer s.background.Done()
 		if _, err := s.RunHistory(ctx); errors.Is(err, ErrAlreadyRunning) {
 			// A full sync is running and may have read the history before
 			// the event: try again after it.
@@ -59,12 +60,19 @@ func (s *Syncer) RunHistory(ctx context.Context) (int, error) {
 	start := s.now()
 	n := 0
 	var sources []string
+	var failed []error
+	// A failing source does not hold back the other one (merged mode):
+	// what was read is still linked and counted.
 	for _, r := range s.syncHistories(ctx, up) {
 		if r.Err != nil {
-			return 0, fmt.Errorf("%s: %w", r.Source, r.Err)
+			failed = append(failed, fmt.Errorf("%s: %w", r.Source, r.Err))
+			continue
 		}
 		n += r.Items
 		sources = append(sources, r.Source)
+	}
+	if err := ctx.Err(); err != nil {
+		return 0, err
 	}
 	if err := s.linkEvents(ctx); err != nil {
 		return 0, err
@@ -76,5 +84,5 @@ func (s *Syncer) RunHistory(ctx context.Context) (int, error) {
 		return 0, err
 	}
 	s.Log.Info("history sync finished", "sources", sources, "sessions", n, "duration_ms", s.now().Sub(start).Milliseconds())
-	return n, nil
+	return n, errors.Join(failed...)
 }

@@ -66,12 +66,16 @@ type Syncer struct {
 
 	historyPending bool
 	running        atomic.Bool
-	mu             sync.Mutex
-	progress       string // English message key (translated by the UI)
-	progressArgs   []any
-	last           *Result
-	schedule       Schedule
-	wake           chan struct{}
+	// background tracks the syncs started by Start and RequestHistorySync,
+	// awaited by Wait; stopping refuses new ones.
+	background   sync.WaitGroup
+	stopping     bool
+	mu           sync.Mutex
+	progress     string // English message key (translated by the UI)
+	progressArgs []any
+	last         *Result
+	schedule     Schedule
+	wake         chan struct{}
 }
 
 // SourceResult is the outcome of one source.
@@ -160,13 +164,39 @@ func (s *Syncer) Start(ctx context.Context) bool {
 	if !up.Ready() || !s.running.CompareAndSwap(false, true) {
 		return false
 	}
+	if !s.addBackground() {
+		s.running.Store(false)
+		return false
+	}
 	go func() {
+		defer s.background.Done()
 		defer s.running.Store(false)
 		if _, err := s.run(ctx, up); err != nil && ctx.Err() == nil {
 			s.Log.Error("sync failed", "err", err)
 		}
 	}()
 	return true
+}
+
+// addBackground registers a background sync; false once Wait was called.
+func (s *Syncer) addBackground() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.stopping {
+		return false
+	}
+	s.background.Add(1)
+	return true
+}
+
+// Wait refuses new background syncs and waits for the running ones (their
+// context should be canceled first), so that they finish before the
+// database is closed.
+func (s *Syncer) Wait() {
+	s.mu.Lock()
+	s.stopping = true
+	s.mu.Unlock()
+	s.background.Wait()
 }
 
 func (s *Syncer) run(ctx context.Context, up *upstream.Clients) (*Result, error) {
@@ -199,6 +229,18 @@ func (s *Syncer) run(ctx context.Context, up *upstream.Clients) (*Result, error)
 	if up.Plex != nil {
 		sources = append(sources, SourcePlex)
 	}
+	finished := map[string]bool{}
+	// A run left open (shutdown during the fetch, local error) would show
+	// as running forever.
+	defer func() {
+		for src, id := range runIDs {
+			if !finished[src] {
+				if err := s.Store.FinishSyncRun(context.WithoutCancel(ctx), id, s.now(), 0, store.ErrSyncInterrupted); err != nil {
+					s.Log.Error("sync run not recorded", "source", src, "err", err)
+				}
+			}
+		}
+	}()
 	for _, src := range sources {
 		id, err := s.Store.StartSyncRun(ctx, src, start)
 		if err != nil {
@@ -207,6 +249,7 @@ func (s *Syncer) run(ctx context.Context, up *upstream.Clients) (*Result, error)
 		runIDs[src] = id
 	}
 	finish := func(r SourceResult) {
+		finished[r.Source] = true
 		if err := s.Store.FinishSyncRun(context.WithoutCancel(ctx), runIDs[r.Source], s.now(), r.Items, r.Err); err != nil {
 			s.Log.Error("sync run not recorded", "source", r.Source, "err", err)
 		}

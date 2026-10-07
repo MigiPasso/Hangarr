@@ -173,6 +173,11 @@ func serve() error {
 		}
 	}
 	sy.SetSchedule(syncer.Schedule{At: at, EveryHours: every})
+	if n, err := st.InterruptUnfinishedSyncRuns(ctx, time.Now()); err != nil {
+		return err
+	} else if n > 0 {
+		log.Warn("syncs interrupted by the previous stop marked as such", "runs", n)
+	}
 	lookup := func(ctx context.Context, kind string, arrID int64, variant string) (images.Info, bool, error) {
 		title, remote, ok, err := st.ImageInfo(ctx, kind, arrID, variant)
 		return images.Info{Title: title, RemoteURL: remote}, ok, err
@@ -205,6 +210,7 @@ func serve() error {
 	err = srv.Run(ctx, cfg.ListenAddr)
 	stop()
 	wg.Wait()
+	sy.Wait() // syncs started from the UI or the webhook, before the database closes
 	if err != nil {
 		return err
 	}

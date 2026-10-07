@@ -57,6 +57,7 @@ var fr = map[string]string{ //nolint:gosec // G101: UI texts mentioning keys and
 	"Direct stream":                                "Direct stream",
 	"Transcode":                                    "Transcodage",
 	"running":                                      "en cours",
+	"interrupted (Hangarr stopped)":                "interrompue (arrêt de Hangarr)",
 	"Plex (catalog)":                               "Plex (catalogue)",
 	"Tautulli (history)":                           "Tautulli (historique)",
 	"Plex (history)":                               "Plex (historique)",
@@ -230,6 +231,7 @@ var fr = map[string]string{ //nolint:gosec // G101: UI texts mentioning keys and
 	"No action yet.":     "Aucune action pour l'instant.",
 	"Event":              "Événement",
 	"User":               "Utilisateur",
+	"User %d":            "Utilisateur %d",
 	"No event.":          "Aucun événement.",
 	"Newer":              "Plus récents",
 	"Older":              "Plus anciens",
@@ -488,6 +490,8 @@ var fr = map[string]string{ //nolint:gosec // G101: UI texts mentioning keys and
 	"Unreadable response: this address does not look like the expected API.":                                      "Réponse illisible : cette adresse ne semble pas être l'API attendue.",
 	"No answer within %d s.":                                                                                      "Pas de réponse en %d s.",
 	"Unreachable: %s":                                                                                             "Injoignable : %s",
+
+	"This address redirects from https to http: refused so the key does not travel in clear. Enter the final address.": "Cette adresse redirige de https vers http : refusé pour que la clé ne circule pas en clair. Indiquez directement l'adresse finale.",
 
 	// Actions, toasts, security events
 	"Item not found.": "Élément introuvable.",

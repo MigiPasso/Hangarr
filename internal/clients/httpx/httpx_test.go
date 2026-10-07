@@ -136,3 +136,18 @@ func TestRedirectOnSameHostIsFollowed(t *testing.T) {
 		t.Fatalf("same-host redirect: %v %v", err, out)
 	}
 }
+
+func TestRedirectToPlainHTTPIsRefused(t *testing.T) {
+	via := []*http.Request{{URL: &url.URL{Scheme: "https", Host: "sonarr.example:443"}}}
+	var re *RedirectError
+	if err := SameHostOnly(&http.Request{URL: &url.URL{Scheme: "http", Host: "sonarr.example"}}, via); !errors.As(err, &re) || !re.Downgrade {
+		t.Errorf("https → http on the same host must be refused: %v", err)
+	}
+	if err := SameHostOnly(&http.Request{URL: &url.URL{Scheme: "https", Host: "sonarr.example"}}, via); err != nil {
+		t.Errorf("https → https on the same host: %v", err)
+	}
+	via[0].URL.Scheme = "http"
+	if err := SameHostOnly(&http.Request{URL: &url.URL{Scheme: "https", Host: "sonarr.example"}}, via); err != nil {
+		t.Errorf("http → https upgrade must be followed: %v", err)
+	}
+}

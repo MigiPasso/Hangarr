@@ -62,7 +62,7 @@
 </section>
 {{end}}
 
-{{define "run_status"}}{{if eq .Status "success"}}<span class="ok-text">OK</span>{{else if eq .Status "running"}}<span class="muted">{{t "running"}}</span>{{else}}<span class="error-text" title="{{.Error}}">{{t "Error: %s" .Error}}</span>{{end}}{{end}}
+{{define "run_status"}}{{if eq .Status "success"}}<span class="ok-text">OK</span>{{else if eq .Status "running"}}<span class="muted">{{t "running"}}</span>{{else if eq .Status "interrupted"}}<span class="muted">{{t "interrupted (Hangarr stopped)"}}</span>{{else}}<span class="error-text" title="{{.Error}}">{{t "Error: %s" .Error}}</span>{{end}}{{end}}
 
 {{define "health_list"}}{{$title := index . 0}}{{$hint := index . 1}}{{$l := index . 2}}
 <div class="health-list">

@@ -176,7 +176,7 @@ func (p *Proxy) ServeImage(w http.ResponseWriter, r *http.Request, kind string, 
 	}
 	if variant == "fanart" {
 		w.Header().Set("Content-Type", "image/svg+xml")
-		w.Header().Set("Cache-Control", fmt.Sprintf("public, max-age=%d", int(MissTTL.Seconds())))
+		w.Header().Set("Cache-Control", fmt.Sprintf("private, max-age=%d", int(MissTTL.Seconds())))
 		_, _ = w.Write([]byte(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 9"><rect width="16" height="9" fill="#2a2d33"/></svg>`))
 		return
 	}
@@ -316,7 +316,7 @@ func (p *Proxy) serveFile(w http.ResponseWriter, r *http.Request, path string) {
 	head := make([]byte, 512)
 	n, _ := io.ReadFull(f, head)
 	w.Header().Set("Content-Type", http.DetectContentType(head[:n]))
-	w.Header().Set("Cache-Control", fmt.Sprintf("public, max-age=%d", int(BrowserMaxAge.Seconds())))
+	w.Header().Set("Cache-Control", fmt.Sprintf("private, max-age=%d", int(BrowserMaxAge.Seconds())))
 	w.Header().Set("ETag", fmt.Sprintf(`"%x-%x"`, st.Size(), st.ModTime().Unix()))
 	http.ServeContent(w, r, "", st.ModTime(), f)
 }
@@ -350,6 +350,6 @@ func servePlaceholder(w http.ResponseWriter, title string) {
 	}
 	b.WriteString(`</text></svg>`)
 	w.Header().Set("Content-Type", "image/svg+xml")
-	w.Header().Set("Cache-Control", fmt.Sprintf("public, max-age=%d", int(MissTTL.Seconds())))
+	w.Header().Set("Cache-Control", fmt.Sprintf("private, max-age=%d", int(MissTTL.Seconds())))
 	_, _ = w.Write(b.Bytes())
 }
