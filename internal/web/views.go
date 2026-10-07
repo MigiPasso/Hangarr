@@ -115,7 +115,7 @@ func (v *views) funcs(l i18n.Localizer, loc *time.Location, protectedTags []stri
 		},
 		"bytes":      l.Bytes,
 		"stateLabel": func(it store.LibraryItem) string { return stateLabel(l, it) },
-		"protected":  func(tags []string) bool { return isProtected(tags, protectedTags) },
+		"protected":  func(tags []string) bool { return store.HasProtectedTag(tags, protectedTags) },
 		"has":        func(list []string, v string) bool { return slices.Contains(list, v) },
 		"hasID":      func(list []int64, v int64) bool { return slices.Contains(list, v) },
 		"list":       func(v ...string) []string { return v },
@@ -383,18 +383,6 @@ func imgURL(kind string, arrID int64, plexKey, variant string) string {
 		return fmt.Sprintf("/img/plex/%d/%s", n, variant)
 	}
 	return ""
-}
-
-// isProtected reports whether tags contain a PROTECTED_TAGS entry (case-insensitive).
-func isProtected(tags, protected []string) bool {
-	for _, t := range tags {
-		for _, p := range protected {
-			if strings.EqualFold(t, p) {
-				return true
-			}
-		}
-	}
-	return false
 }
 
 // pair is a value/label option for selects and checkbox lists.

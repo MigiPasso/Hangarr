@@ -259,7 +259,7 @@ func (s *Server) detail(kind string) http.HandlerFunc {
 		}
 		ctx := r.Context()
 		d := detailData{M: m, Path: kindPath(kind), Links: s.links(ctx, m),
-			Protected: isProtected(m.Tags, s.Config.ProtectedTags) || m.ProtectedLocal, Deletable: plexDeletable(m) || m.ArrID > 0}
+			Protected: store.HasProtectedTag(m.Tags, s.Config.ProtectedTags) || m.ProtectedLocal, Deletable: plexDeletable(m) || m.ArrID > 0}
 		switch {
 		case s.Actions == nil:
 		case plexDeletable(m):
@@ -332,7 +332,7 @@ type deleteData struct {
 func (s *Server) deleteForm(r *http.Request, m *store.Media, season *int) (deleteData, error) {
 	d := deleteData{M: m, Path: kindPath(m.Kind), Plex: m.ArrID == 0, Season: season, SizeBytes: m.SizeBytes, DryRun: s.Config.DryRun,
 		ConfirmByTyping: s.Config.ConfirmByTyping && m.Kind == "series" && season == nil,
-		Protected:       isProtected(m.Tags, s.Config.ProtectedTags) || m.ProtectedLocal, DeleteFiles: true}
+		Protected:       store.HasProtectedTag(m.Tags, s.Config.ProtectedTags) || m.ProtectedLocal, DeleteFiles: true}
 	if season != nil {
 		seasons, err := s.Store.Seasons(r.Context(), m.ID)
 		if err != nil {

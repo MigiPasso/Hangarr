@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -202,3 +203,37 @@ func TestPruneSyncRunsKeepsTheLatestOfEachSource(t *testing.T) {
 	}
 }
 
+// The protection rule is evaluated in Go (badges, deletion) and in SQL
+// (cleanup candidates): both must give the same answer.
+func TestProtectedTagRuleGoAndSQLAgree(t *testing.T) {
+	s := openTemp(t)
+	ctx := context.Background()
+	protected := []string{"keep", "Archive"}
+	for _, c := range []struct {
+		tags []string
+		want bool
+	}{
+		{nil, false},
+		{[]string{"keep"}, true},
+		{[]string{"KEEP"}, true},
+		{[]string{" keep "}, true},
+		{[]string{"4k", "archive"}, true},
+		{[]string{"keeper"}, false},
+		{[]string{"kee p"}, false},
+	} {
+		b, _ := json.Marshal(c.tags)
+		if c.tags == nil {
+			b = []byte("[]")
+		}
+		clause, args := protectedClause("m", protected)
+		var excluded bool
+		err := s.db.QueryRowContext(ctx, `SELECT NOT EXISTS (SELECT 1 FROM (SELECT ? AS tags, 0 AS protected_local) m
+			WHERE 1 = 1`+clause+`)`, append([]any{string(b)}, args...)...).Scan(&excluded)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := HasProtectedTag(c.tags, protected); got != c.want || excluded != c.want {
+			t.Errorf("%q: Go %v, SQL %v, want %v", c.tags, got, excluded, c.want)
+		}
+	}
+}

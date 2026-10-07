@@ -18,8 +18,24 @@ func userClause(alias string, user int64) (string, []any) {
 	return " AND " + alias + ".user_id = ?", []any{user}
 }
 
+// HasProtectedTag reports whether labels contain one of the protection tags
+// (PROTECTED_TAGS), ignoring case and surrounding spaces. It is the rule of
+// every check in Go (badges, batch selection, deletion); protectedClause is
+// its SQL twin (TestProtectedTagRuleGoAndSQLAgree).
+func HasProtectedTag(labels, protected []string) bool {
+	for _, l := range labels {
+		for _, p := range protected {
+			if strings.EqualFold(strings.TrimSpace(l), strings.TrimSpace(p)) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // protectedClause excludes media carrying one of the protection tags, or
-// protected in Hangarr only.
+// protected in Hangarr only. SQLite's lower() only folds ASCII letters:
+// *arr tag labels are lowercase anyway.
 func protectedClause(alias string, tags []string) (string, []any) {
 	local := " AND NOT " + alias + ".protected_local"
 	if len(tags) == 0 {
@@ -29,7 +45,7 @@ func protectedClause(alias string, tags []string) (string, []any) {
 	for i, t := range tags {
 		args[i] = strings.ToLower(strings.TrimSpace(t))
 	}
-	return local + " AND NOT EXISTS (SELECT 1 FROM json_each(" + alias + ".tags) j WHERE lower(j.value) IN (" +
+	return local + " AND NOT EXISTS (SELECT 1 FROM json_each(" + alias + ".tags) j WHERE lower(trim(j.value)) IN (" +
 		placeholders(len(tags)) + "))", args
 }
 

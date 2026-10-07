@@ -83,7 +83,7 @@ func (s *Server) classify(r *http.Request, ids []int64, protectAction bool) (*ba
 		switch {
 		case m.ArrID == 0:
 			e.Reason = "in Plex only"
-		case isProtected(m.Tags, s.Config.ProtectedTags):
+		case store.HasProtectedTag(m.Tags, s.Config.ProtectedTags):
 			e.Reason = "already protected"
 			if !protectAction {
 				e.Reason = "protected by a tag"
