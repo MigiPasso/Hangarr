@@ -460,7 +460,7 @@ spec:
   accessModes: ["ReadWriteOnce"]
   resources:
     requests:
-      storage: 1Gi
+      storage: 5Gi
   # storageClassName: <votre-storage-class>
 ---
 apiVersion: v1
