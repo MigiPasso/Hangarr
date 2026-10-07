@@ -17,7 +17,6 @@ type settingsData struct {
 	Minute  string // "00"
 	Every   int    // hours between syncs (24: once a day)
 	Choices []int  // allowed intervals
-	Times   string // "04:00, 10:00, 16:00, 22:00" (several syncs a day)
 	NextRun string
 	Error   string
 	Saved   bool
@@ -35,13 +34,6 @@ func (s *Server) settingsData(l i18n.Localizer, errMsg string, saved bool) setti
 		sc := s.Sync.Schedule()
 		at := sc.At
 		d.Hour, d.Minute, d.Every = fmt.Sprintf("%02d", at.Hour), fmt.Sprintf("%02d", at.Minute), sc.EveryHours
-		if sc.EveryHours < 24 {
-			var times []string
-			for _, t := range sc.Times() {
-				times = append(times, t.String())
-			}
-			d.Times = strings.Join(times, ", ")
-		}
 		d.NextRun = l.DateTime(s.Sync.NextRun()) // already in the schedule time zone
 	}
 	return d

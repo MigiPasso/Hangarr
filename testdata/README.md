@@ -36,15 +36,16 @@ Hand-written from the API documentation, timestamps anchored on **2026-10-01T00:
   seasons released at once, an episode airing today, releases up to +130 days);
 - Lost: deleted from the library → orphan history row; plus a music track and a live session, both ignored.
 
-## Dev extras (`testdata/dev/`, `posters.json`)
+## Dev extras (`testdata/dev/`, `posters.json`, `fanarts.json`)
 
 For `make dev` only (`compose.dev.yml`), never used by the tests:
 
 - `MOCK_DEV_EXTRAS=true`: `dev/sonarr/series.json` and `dev/radarr/movie.json` are added to the catalog (the series
   and movies of the calendars, so that they sync and get a detail page);
 - `MOCK_REAL_POSTERS=true`: `mediacover` serves the real posters listed in `posters.json` (`"sonarr/3"` → URL;
-  TVmaze for series and anime, IMDb for movies), downloaded once by the mock and kept in memory. Only URLs are
-  committed, never the images.
+  TVmaze for series and anime, IMDb for movies) and the real backdrops listed in `fanarts.json` (TMDB, `w1280`),
+  downloaded once by the mock and kept in memory. Only URLs are committed, never the images. An item without a
+  fanart there gets a 404: the detail page then shows its blurred poster.
 
 ## Real captures (`testdata/captured/`)
 

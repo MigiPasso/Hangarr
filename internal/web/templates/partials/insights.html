@@ -2,7 +2,7 @@
 <div>
   <h3>{{index . 0}}</h3>
   {{with index . 1}}
-  <table class="table compact">
+  <div class="table-wrap"><table class="table compact">
     <thead><tr><th>#</th><th>{{t "Title"}}</th><th class="num">{{t "Plays"}}</th><th class="num">{{t "Hours"}}</th></tr></thead>
     <tbody>
     {{range $i, $t := .}}
@@ -11,7 +11,7 @@
         <td class="num">{{$t.Plays}}</td><td class="num">{{hours $t.WatchSeconds}}</td></tr>
     {{end}}
     </tbody>
-  </table>
+  </table></div>
   {{else}}<p class="muted small">{{t "No plays in this period."}}</p>{{end}}
 </div>
 {{end}}

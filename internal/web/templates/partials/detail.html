@@ -1,6 +1,11 @@
 {{define "detail_body"}}{{$d := .Data}}{{$m := $d.M}}
 <article class="detail state-{{$m.WatchState}}" data-media-id="{{$m.ID}}">
-  {{with imgURL $m.Kind $m.ArrID $m.PlexRatingKey "fanart"}}<div class="detail-hero"><img src="{{.}}" alt="" decoding="async"></div>{{end}}
+  {{/* Backdrop: the fanart over the blurred poster, which shows when there is no fanart. */}}
+  {{$poster := imgURL $m.Kind $m.ArrID $m.PlexRatingKey "poster"}}{{$fanart := imgURL $m.Kind $m.ArrID $m.PlexRatingKey "fanart"}}
+  <div class="detail-hero{{if or $poster $fanart}} has-art{{end}}">
+    {{with $poster}}<img class="hero-ambient" src="{{.}}" alt="" decoding="async">{{end}}
+    {{with $fanart}}<img class="hero-art" src="{{.}}" alt="" decoding="async">{{end}}
+  </div>
   <div class="detail-head">
     <div class="detail-poster">
       {{with imgURL $m.Kind $m.ArrID $m.PlexRatingKey "poster"}}<img src="{{.}}" alt="" width="200" height="300" decoding="async">
@@ -12,39 +17,53 @@
         <span class="badge state">{{stateName $m.WatchState}}{{if and (eq $m.Kind "series") $m.DownloadedEpisodes}} · {{$m.WatchedEpisodes}}/{{$m.DownloadedEpisodes}}{{end}}</span>
         {{if eq $m.MatchState "plex_only"}}<span class="badge">{{t "Plex only"}}</span>{{else if eq $m.MatchState "arr_only"}}<span class="badge">{{t "Not in Plex"}}</span>{{else if eq $m.MatchMethod "fuzzy"}}<span class="badge">{{t "Fuzzy match"}}</span>{{template "info" (t "Matched by title and year: no common ID.")}}{{else if eq $m.MatchMethod "file"}}<span class="badge">{{t "Matched by file"}}</span>{{template "info" (t "Same file or folder on disk in Plex and Sonarr/Radarr: no common ID.")}}{{end}}
       </p>
-      <dl class="facts">
-        {{with $m.Genres}}<dt>{{t "Genres"}}</dt><dd>{{range $i, $g := .}}{{if $i}}, {{end}}{{$g}}{{end}}</dd>{{end}}
-        {{if $m.Rating}}<dt>{{t "Rating"}}</dt><dd>{{num $m.Rating}}</dd>{{end}}
-        {{with $m.NetworkOrStudio}}<dt>{{if eq $m.Kind "series"}}{{t "Network"}}{{else}}{{t "Studio"}}{{end}}</dt><dd>{{.}}</dd>{{end}}
-        {{if eq $m.Kind "series"}}{{with $m.Status}}<dt>{{t "Status"}}</dt><dd>{{if eq . "continuing"}}{{t "Continuing"}}{{else if eq . "ended"}}{{t "Ended"}}{{else}}{{.}}{{end}}</dd>{{end}}{{end}}
-        {{with $m.QualityProfile}}<dt>{{t "Quality"}}</dt><dd>{{.}}</dd>{{end}}
-        <dt>{{t "Size"}}</dt><dd>{{if $m.SizeBytes}}{{bytes $m.SizeBytes}}{{else}}{{t "no file"}}{{end}}</dd>
-        {{if $m.AddedAt}}<dt>{{t "Added"}}</dt><dd>{{dateptr $m.AddedAt}}</dd>{{end}}
-        {{with $m.Tags}}<dt>{{t "Tags"}}</dt><dd>{{range $i, $t := .}}{{if $i}}, {{end}}{{$t}}{{end}}</dd>{{end}}
-        {{with $m.Path}}<dt>{{t "Path"}}</dt><dd class="path">{{.}}</dd>{{end}}
-        <dt>{{t "Plays"}}</dt><dd>{{t "%d (%d complete)" $m.Plays $m.CompletedPlays}} · {{tn $m.Viewers "%d viewer" "%d viewers"}} · {{duration $m.WatchSeconds}}</dd>
-        <dt>{{t "Last watched"}}</dt><dd>{{if $m.LastViewedAt}}{{if $m.LastViewedBy}}{{t "%s by %s" (relptr $m.LastViewedAt) $m.LastViewedBy}}{{else}}{{relptr $m.LastViewedAt}}{{end}}{{else}}{{t "never"}}{{end}}</dd>
+      {{/* Identity line: rating, genres, network or studio, status. */}}
+      <p class="detail-meta">
+        {{if $m.Rating}}<span class="rating" title="{{t "Rating"}}">★ {{num $m.Rating}}</span>{{end}}
+        {{with $m.Genres}}<span>{{range $i, $g := .}}{{if $i}}, {{end}}{{$g}}{{end}}</span>{{end}}
+        {{with $m.NetworkOrStudio}}<span title="{{if eq $m.Kind "series"}}{{t "Network"}}{{else}}{{t "Studio"}}{{end}}">{{.}}</span>{{end}}
+        {{if eq $m.Kind "series"}}{{with $m.Status}}<span>{{if eq . "continuing"}}{{t "Continuing"}}{{else if eq . "ended"}}{{t "Ended"}}{{else}}{{.}}{{end}}</span>{{end}}{{end}}
+      </p>
+      {{/* Key figures. */}}
+      <dl class="detail-stats">
+        <div><dt>{{t "Size"}}</dt><dd>{{if $m.SizeBytes}}{{bytes $m.SizeBytes}}{{else}}<span class="muted">{{t "no file"}}</span>{{end}}</dd>
+          {{if and (eq $m.Kind "series") $m.TotalEpisodes}}<dd class="sub">{{t "%d / %d episodes" $m.DownloadedEpisodes $m.TotalEpisodes}}</dd>{{end}}</div>
+        {{with $m.QualityProfile}}<div><dt>{{t "Quality"}}</dt><dd>{{.}}</dd></div>{{end}}
+        <div><dt>{{t "Plays"}}</dt><dd title="{{t "%d (%d complete)" $m.Plays $m.CompletedPlays}}">{{$m.Plays}}</dd>
+          {{if $m.Plays}}<dd class="sub">{{tn $m.Viewers "%d viewer" "%d viewers"}} · {{duration $m.WatchSeconds}}</dd>{{end}}</div>
+        <div><dt>{{t "Last watched"}}</dt><dd>{{if $m.LastViewedAt}}{{relptr $m.LastViewedAt}}{{else}}<span class="muted">{{t "never"}}</span>{{end}}</dd>
+          {{if and $m.LastViewedAt $m.LastViewedBy}}<dd class="sub">{{t "by %s" $m.LastViewedBy}}</dd>{{end}}</div>
       </dl>
-      <p class="detail-actions">
-        {{range $d.Links}}<a class="button" href="{{.URL}}" target="_blank" rel="noopener noreferrer">{{.Label}} ↗</a>{{end}}
-        {{if $d.Modal}}<a class="button" href="{{$d.Path}}/{{$m.ID}}">{{t "Open page"}}</a>{{end}}
+      <div class="detail-actions">
+        <div class="detail-buttons">
         {{if $d.CanProtect}}
+        {{$why := ""}}{{if $m.ArrID}}{{$why = t "Adds or removes the “%s” tag in Sonarr/Radarr. Protected items are never proposed nor deleted." $d.ProtectTag}}{{else}}{{$why = t "Not in Sonarr/Radarr: protected in Hangarr only, Plex is not changed. Protected items cannot be deleted."}}{{end}}
         <form method="post" action="{{$d.Path}}/{{$m.ID}}/protect" class="inline" hx-post="{{$d.Path}}/{{$m.ID}}/protect">
           <input type="hidden" name="csrf_token" value="{{$d.CSRFToken}}">
           {{if $d.Protected}}
           <input type="hidden" name="protect" value="0">
-          <button type="submit">{{t "Unprotect"}}</button>
+          <button type="submit" title="{{$why}}">{{t "Unprotect"}}</button>
           {{else}}
           <input type="hidden" name="protect" value="1">
-          <button type="submit">{{t "Protect"}}</button>
+          <button type="submit" title="{{$why}}">{{t "Protect"}}</button>
           {{end}}
         </form>
-        {{if $m.ArrID}}{{template "info" (t "Adds or removes the “%s” tag in Sonarr/Radarr. Protected items are never proposed nor deleted." $d.ProtectTag)}}{{else}}{{template "info" (t "Not in Sonarr/Radarr: protected in Hangarr only, Plex is not changed. Protected items cannot be deleted.")}}{{end}}
         {{end}}
         {{if $d.Deletable}}
         <button type="button" class="danger" hx-get="{{$d.Path}}/{{$m.ID}}/delete" hx-target="#confirm-body"
                 {{if $d.Protected}}disabled title="{{if $m.ArrID}}{{t "Protected by a tag"}}{{else}}{{t "Protected in Hangarr"}}{{end}}"{{end}}>{{if eq $m.Kind "series"}}{{t "Delete series"}}{{else}}{{t "Delete movie"}}{{end}}</button>
         {{end}}
+        </div>
+        <nav class="detail-links" aria-label="{{t "Open in"}}">
+          {{range $d.Links}}<a href="{{.URL}}" target="_blank" rel="noopener noreferrer">{{.Label}} ↗</a>{{end}}
+          {{if $d.Modal}}<a href="{{$d.Path}}/{{$m.ID}}">{{t "Open page"}}</a>{{end}}
+        </nav>
+      </div>
+      {{/* Secondary details. */}}
+      <p class="detail-foot small muted">
+        {{if $m.AddedAt}}<span>{{t "Added %s" (dateptr $m.AddedAt)}}</span>{{end}}
+        {{with $m.Path}}<span class="path" title="{{t "Path"}}">{{.}}</span>{{end}}
+        {{with $m.Tags}}<span>{{range .}}<span class="tag">{{.}}</span>{{end}}</span>{{end}}
       </p>
     </div>
   </div>
@@ -52,24 +71,23 @@
   {{with $m.Overview}}<p class="overview">{{.}}</p>{{end}}
 
   {{if eq $m.Kind "series"}}
-  <section>
+  <section class="detail-section">
     <div class="title-row"><h2>{{t "Seasons"}}</h2>{{if not $d.Exact}}{{template "info" (t "Sonarr unreachable: approximate counts from the last sync.")}}{{end}}</div>
     <div class="table-wrap">
       <table class="table seasons-table">
-        <thead><tr><th>{{t "Season"}}</th><th>{{t "Monitored"}}</th><th>{{t "Downloaded"}}</th><th>{{t "Watched"}}</th><th>{{t "Last watched"}}</th><th class="num">{{t "Size"}}</th><th></th></tr></thead>
+        <thead><tr><th>{{t "Season"}}</th><th>{{t "Watched"}}</th><th>{{t "On disk"}}</th><th>{{t "Last watched"}}</th><th><span class="visually-hidden">{{t "Actions"}}</span></th></tr></thead>
         <tbody>
         {{range $d.Seasons}}
-          <tr>
-            <td>{{if eq .Number 0}}{{t "Specials"}}{{else}}{{t "Season %d" .Number}}{{end}}</td>
-            <td>{{if .Monitored}}{{t "yes"}}{{else}}<span class="muted">{{t "no"}}</span>{{end}}</td>
-            <td>{{.Files}} / {{.Total}}</td>
-            <td><progress max="{{.Total}}" value="{{.Watched}}"></progress> {{.Watched}} / {{.Total}}</td>
+          <tr{{if eq .Number 0}} class="muted-row"{{end}}>
+            <td class="season-name">{{if eq .Number 0}}{{t "Specials"}}{{else}}{{t "Season %d" .Number}}{{end}}{{if not .Monitored}} <span class="badge badge-muted">{{t "not monitored"}}</span>{{end}}</td>
+            <td class="season-progress"><progress max="{{.Total}}" value="{{.Watched}}"></progress> <span>{{t "%d / %d watched" .Watched .Total}}</span></td>
+            <td>{{if .Files}}{{t "%d / %d episodes" .Files .Total}}{{with .SizeBytes}} <span class="muted">· {{bytes .}}</span>{{end}}{{else}}<span class="muted">{{t "no file"}}</span>{{end}}</td>
             <td>{{if .LastViewedAt}}{{relptr .LastViewedAt}}{{else}}<span class="muted">{{t "never"}}</span>{{end}}</td>
-            <td class="num">{{if .SizeBytes}}{{bytes .SizeBytes}}{{else}}–{{end}}</td>
             <td class="actions">
               {{if and $d.Deletable .Deletable}}
-              <button type="button" class="danger small" hx-get="{{$d.Path}}/{{$m.ID}}/delete?season={{.Number}}" hx-target="#confirm-body"
-                      {{if $d.Protected}}disabled title="{{t "Protected by a tag"}}"{{end}}>{{t "Delete season"}}</button>
+              <button type="button" class="icon-button danger" hx-get="{{$d.Path}}/{{$m.ID}}/delete?season={{.Number}}" hx-target="#confirm-body"
+                      aria-label="{{t "Delete season"}}"
+                      title="{{if $d.Protected}}{{t "Protected by a tag"}}{{else}}{{t "Delete season"}}{{end}}"{{if $d.Protected}} disabled{{end}}>{{template "trash_icon"}}</button>
               {{end}}
             </td>
           </tr>
@@ -81,50 +99,44 @@
   {{end}}
 
   {{if $d.Users}}
-  <section>
-    <h2>{{t "Progress by viewer"}}</h2>
-    <div class="table-wrap">
-      <table class="table">
-        <thead><tr><th>{{t "Viewer"}}</th>
-          {{if eq $m.Kind "series"}}<th>{{t "Seasons (watched / downloaded)"}}</th><th>{{t "Last episode"}}</th><th>{{t "Next"}}</th>{{else}}<th>{{t "State"}}</th><th class="num">{{t "Plays"}}</th>{{end}}
-          <th>{{t "Last activity"}}</th></tr></thead>
-        <tbody>
-        {{range $d.Users}}
-          <tr>
-            <td>{{with .Name}}{{.}}{{else}}{{t "User %d" .UserID}}{{end}}</td>
-            {{if eq $m.Kind "series"}}
-            <td class="user-seasons">{{range .Seasons}}<span title="{{t "Season %d" .Number}}">S{{.Number}} {{.Watched}}/{{.Files}}</span>{{end}}</td>
-            <td>{{with .Last}}{{.}}{{else}}<span class="muted">{{t "none"}}</span>{{end}}</td>
-            <td>{{if .Next}}{{.Next}}{{else if .UpToDate}}<span class="ok-text">{{t "up to date"}}</span>{{else}}<span class="muted">–</span>{{end}}</td>
-            {{else}}
-            <td>{{if .Completed}}{{t "Watched"}}{{else}}{{t "Started"}}{{end}}</td>
-            <td class="num">{{.Plays}}</td>
-            {{end}}
-            <td>{{datetime .LastAt}}</td>
-          </tr>
-        {{end}}
-        </tbody>
-      </table>
+  {{/* One compact row per viewer (most recent first); a series row opens on
+       its seasons. Beyond 6 viewers the others are folded. */}}
+  <section class="detail-section">
+    <div class="title-row"><h2>{{t "Progress by viewer"}}</h2><span class="muted small">{{tn (len $d.Users) "%d viewer" "%d viewers"}}</span></div>
+    <div class="viewer-list">
+    {{range $i, $u := $d.Users}}
+      {{if eq $i 6}}<details class="viewer-more"><summary>{{tn (minus (len $d.Users) 6) "Show %d more viewer" "Show %d more viewers"}}</summary>{{end}}
+      {{if eq $m.Kind "series"}}
+      <details class="viewer-row">
+        <summary class="viewer-line">{{template "viewer_line" (list2 $u $m.Kind)}}</summary>
+        <ul class="viewer-seasons">
+          {{range .Seasons}}<li><span>{{t "Season %d" .Number}}</span><progress max="{{.Files}}" value="{{.Watched}}"></progress><span class="muted">{{.Watched}} / {{.Files}}</span></li>{{end}}
+        </ul>
+      </details>
+      {{else}}
+      <div class="viewer-row"><div class="viewer-line">{{template "viewer_line" (list2 $u $m.Kind)}}</div></div>
+      {{end}}
+    {{end}}
+    {{if gt (len $d.Users) 6}}</details>{{end}}
     </div>
   </section>
   {{end}}
 
-  <section>
-    <h2>{{t "Play history"}}</h2>
+  <section class="detail-section">
+    <div class="title-row"><h2>{{t "Play history"}}</h2>{{with $d.History}}<span class="muted small">{{tn (len .) "%d play" "%d plays"}}</span>{{end}}</div>
     {{if $d.History}}
-    <div class="table-wrap">
+    <div class="table-wrap history-scroll">
       <table class="table history-table">
-        <thead><tr><th>{{t "Date"}}</th><th>{{t "Viewer"}}</th>{{if eq $m.Kind "series"}}<th>{{t "Episode"}}</th>{{end}}<th>{{t "Duration"}}</th><th class="num">%</th><th>{{t "Device"}}</th><th>{{t "Playback"}}</th></tr></thead>
+        <thead><tr><th>{{t "Date"}}</th><th>{{t "Viewer"}}</th>{{if eq $m.Kind "series"}}<th>{{t "Episode"}}</th>{{end}}<th>{{t "Played"}}</th><th>{{t "Device"}}</th><th>{{t "Playback"}}</th></tr></thead>
         <tbody>
         {{range $d.History}}
           <tr>
-            <td>{{datetime .StoppedAt}}</td>
+            <td class="nowrap" title="{{datetime .StoppedAt}}">{{datetime .StoppedAt}}</td>
             <td>{{with .UserName}}{{.}}{{else}}<span class="muted">{{t "unknown"}}</span>{{end}}</td>
-            {{if eq $m.Kind "series"}}<td>{{episode .SeasonNumber .EpisodeNumber}} <span class="muted">{{.Title}}</span></td>{{end}}
-            <td>{{duration .PlaySeconds}}</td>
-            <td class="num">{{.PercentComplete}}{{if .Watched}} ✓{{end}}</td>
-            <td>{{.Player}}{{with .Platform}} <span class="muted">({{.}})</span>{{end}}</td>
-            <td>{{transcode .TranscodeDecision}}</td>
+            {{if eq $m.Kind "series"}}<td><strong>{{episode .SeasonNumber .EpisodeNumber}}</strong> <span class="muted">{{.Title}}</span></td>{{end}}
+            <td class="nowrap">{{duration .PlaySeconds}} <span class="muted">· {{.PercentComplete}} %</span>{{if .Watched}} <span class="ok-text" title="{{t "Watched|done"}}">✓</span>{{end}}</td>
+            <td>{{$player := .Player}}{{$player}}{{with .Platform}}{{if ne . $player}} <span class="muted">· {{.}}</span>{{end}}{{end}}</td>
+            <td>{{with .TranscodeDecision}}{{$k := lower .}}<span class="badge {{if eq $k "transcode"}}badge-warn{{else if eq $k "direct play"}}badge-ok{{else}}badge-muted{{end}}">{{transcode .}}</span>{{end}}</td>
           </tr>
         {{end}}
         </tbody>
@@ -133,4 +145,24 @@
     {{else}}<p class="muted">{{t "No plays recorded."}}</p>{{end}}
   </section>
 </article>
+{{end}}
+
+{{define "trash_icon"}}<svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" d="M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.7 9h5.6l.7-9M7 7v4.5M9 7v4.5"/></svg>{{end}}
+
+{{/* viewer_line: a userProgress and the media kind. */}}
+{{define "viewer_line"}}{{$u := index . 0}}{{$kind := index . 1}}
+<span class="avatar" aria-hidden="true">{{initial $u.Name}}</span>
+<span class="viewer-name">{{with $u.Name}}{{.}}{{else}}{{t "User %d" $u.UserID}}{{end}}</span>
+{{if eq $kind "series"}}
+<span class="viewer-bar"><progress max="{{$u.Files}}" value="{{$u.Watched}}" aria-label="{{t "Episodes watched"}}"></progress><span class="muted">{{$u.Watched}} / {{$u.Files}}</span></span>
+<span class="viewer-next">
+  {{with $u.Last}}<span title="{{t "Last episode"}}"><span class="visually-hidden">{{t "Last episode"}} </span>{{.}}</span>{{end}}
+  {{if $u.Next}}<span aria-hidden="true">→</span> <strong title="{{t "Next"}}"><span class="visually-hidden">{{t "Next"}} </span>{{$u.Next}}</strong>
+  {{else if $u.UpToDate}}<span class="ok-text">✓ {{t "up to date"}}</span>{{end}}
+</span>
+{{else}}
+<span class="viewer-bar">{{if $u.Completed}}<span class="ok-text">✓ {{t "Watched|done"}}</span>{{else}}{{t "Started"}}{{end}}</span>
+<span class="viewer-next muted">{{tn $u.Plays "%d play" "%d plays"}}</span>
+{{end}}
+<span class="viewer-when small muted" title="{{datetime $u.LastAt}}">{{reltime $u.LastAt}}</span>
 {{end}}

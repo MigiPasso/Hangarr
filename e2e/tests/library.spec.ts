@@ -108,12 +108,32 @@ test("daily sync time can be changed", async ({ page }) => {
   // Several syncs a day: from the chosen time, every N hours.
   await page.getByLabel("Fréquence").selectOption({ label: "Toutes les 6 heures" });
   await page.locator("#settings-form").getByRole("button", { name: "Enregistrer" }).click();
-  await expect(page.getByText("Chaque jour à 00:45, 06:45, 12:45, 18:45")).toBeVisible();
+  await expect(page.locator("#settings-form").getByText("Enregistré.", { exact: true })).toBeVisible();
   await page.reload();
   await expect(page.getByLabel("Fréquence")).toHaveValue("6");
   await page.getByLabel("Fréquence").selectOption({ label: "Une fois par jour" });
   await page.locator("#settings-form").getByRole("button", { name: "Enregistrer" }).click();
   await expect(page.getByText(/Chaque jour à/)).toHaveCount(0);
+});
+
+test("cleanup days stepper", async ({ page }) => {
+  await page.goto("/settings");
+  const days = page.getByLabel("Pas regardé depuis");
+  const before = Number(await days.inputValue());
+  await page.getByRole("button", { name: "30 jours de plus" }).click();
+  await expect(days).toHaveValue(String(before + 30));
+  await page.locator("#cleanup-form").getByRole("button", { name: "Enregistrer" }).click();
+  await expect(page.locator("#cleanup-form").getByText("Enregistré.", { exact: true })).toBeVisible();
+  await page.reload();
+  await expect(days).toHaveValue(String(before + 30));
+  // At the minimum, the − button is disabled.
+  await days.fill("7");
+  await expect(page.getByRole("button", { name: "30 jours de moins" })).toBeDisabled();
+  await page.getByRole("button", { name: "30 jours de plus" }).click();
+  await expect(days).toHaveValue("37");
+  await days.fill(String(before));
+  await page.locator("#cleanup-form").getByRole("button", { name: "Enregistrer" }).click();
+  await expect(page.locator("#cleanup-form").getByText("Enregistré.", { exact: true })).toBeVisible();
 });
 
 test("theme button switches light / dark and remembers it", async ({ page }) => {
@@ -149,9 +169,22 @@ test("language: English and French, switched from the top bar", async ({ page })
 });
 
 test("help icons show their text on focus", async ({ page }) => {
-  await page.goto("/settings");
+  await page.goto("/series");
   const info = page.locator(".info").first();
   await info.focus();
-  await expect(info).toHaveAttribute("data-tip", /Sonarr, Radarr, Plex et Tautulli/);
-  await expect(page.getByRole("heading", { name: "Synchronisation", exact: true })).toBeVisible();
+  await expect(info).toHaveAttribute("data-tip", /deviennent ceux de cet utilisateur/);
+  await expect(page.getByRole("heading", { name: "Filtres", exact: true })).toBeVisible();
+});
+
+test("no page scrolls sideways on a phone", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/series");
+  const detail = await page.locator(".media-card a.card-link", { hasText: "Breaking Bad" }).getAttribute("href");
+  for (const path of ["/", "/series", "/movies?view=table", detail!, "/calendar", "/calendar?view=month", "/cleanup",
+    "/stats", "/health", "/journal", "/config", "/settings", "/account"]) {
+    await page.goto(path);
+    await page.waitForLoadState("networkidle");
+    const [scroll, client] = await page.evaluate(() => [document.documentElement.scrollWidth, document.documentElement.clientWidth]);
+    expect(scroll, `${path} is ${scroll}px wide for a ${client}px screen`).toBeLessThanOrEqual(client);
+  }
 });

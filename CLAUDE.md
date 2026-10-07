@@ -62,7 +62,12 @@ Pas de framework web, pas de build Node pour l'app, pas de CDN.
   `DEFAULT_LANG=fr`. Nombres, tailles, dates et durées relatives via le `Localizer`. Titres dynamiques : `pageRaw`.
 - Aide contextuelle : explications courtes derrière un « i » (`{{template "info" (t "…")}}`, bulle CSS au survol et au
   focus), **toujours à côté** du titre ou du `<label>` (`.title-row`), jamais dedans (sinon le texte d'aide entre dans
-  le nom accessible). Explications concises.
+  le nom accessible). Explications concises. Bulle cachée = `display: none` (sinon elle élargit les panneaux défilants) ;
+  dans `.title-row` elle s'ouvre sous la ligne, alignée à gauche. Bouton + « i » : envelopper dans `.with-info`. Pas de
+  « i » sur Protéger (explication en `title` du bouton, décision utilisateur).
+- Tableaux : toujours dans `<div class="table-wrap">` (défilement horizontal contenu, `position: relative` pour les
+  en-têtes `visually-hidden`) ; aucune page ne doit défiler sur le côté en mobile (test e2e « no page scrolls sideways »).
+- Champs numériques : stepper `.stepper` (boutons `data-step-by` + `aria-controls`, `app.js`), pas les flèches natives.
 - SQL toujours paramétré ; les requêtes vivent dans `internal/store`.
 - Pages : rendu complet, ou partial si `HX-Request` est présent. Redirections HTMX via `HX-Redirect` (`redirect()`).
 - Templates : une page = `templates/pages/<nom>.html` (déclarée dans `pages` de `views.go`) + `layout.html` + `partials/*`.
@@ -110,7 +115,8 @@ Pas de framework web, pas de build Node pour l'app, pas de CDN.
   tautulli :8181) depuis `testdata/`, appels destructeurs exposés sur `GET /_calls`, `POST /_reset`.
   Les tests d'intégration l'utilisent via `httptest`. `MOCK_SHIFT_DATES=true` recale l'historique sur aujourd'hui.
   Dev seulement (`compose.dev.yml`) : `MOCK_DEV_EXTRAS` (catalogue `testdata/dev/`) et `MOCK_REAL_POSTERS` (vraies
-  affiches de `testdata/posters.json`, téléchargées par le mock) ; jamais dans les tests (pas d'Internet, comptes stables).
+  affiches de `testdata/posters.json` et vraies images de fond TMDB de `testdata/fanarts.json`, téléchargées par le
+  mock ; seulement les URL sont versionnées) ; jamais dans les tests (pas d'Internet, comptes stables).
 - `testdata/` : scénario synthétique décrit dans `testdata/README.md` (les tests en dépendent) ;
   `testdata/captured/` : vraies réponses anonymisées, seulement vérifiées au décodage.
 - `internal/syncer` (et non `internal/sync`, pour ne pas masquer le paquet standard) : fetch parallèle, stockage,
@@ -224,7 +230,17 @@ Pas de framework web, pas de build Node pour l'app, pas de CDN.
   décision utilisateur ; ni blanc ni noir purs, texte ~13:1, bordures discrètes). Boutons `--btn` au-dessus des cartes
   (visibles en sombre), `--on-accent` pour le texte sur fond accent/danger. Couleurs des graphiques validées pour les deux
   surfaces (validateur dataviz lancé dans Docker, surfaces `#f8f9fa` / `#1f2227`). Les pastilles
-  posées sur les affiches restent sombres dans les deux thèmes.
+  posées sur les affiches restent sombres dans les deux thèmes. Style standard : police Inter, retouches limitées à
+  `:root:not([data-style])` ; clair adouci (pas de surfaces quasi blanches, décision utilisateur).
+- Styles d'interface (Réglages > Apparence, expérimentaux, décision utilisateur) : standard, **Catppuccin** (Latte en
+  clair adouci, Macchiato en sombre), **Lumen** (verre liquide sur aurore, palettes Aurore / Océan / Braise / Jade),
+  **Y2K** (techno-skeuomorphisme : métal, LCD, voyants, vu-mètres, fenêtres Aqua). Cookies `hangarr_style` /
+  `hangarr_palette` (listes blanches `styles` / `palettes` de `lang.go`, routes `GET /style/{name}` et
+  `/palette/{name}?next=` comme `/lang`), rendus par le serveur (`<html data-style data-palette>`, pas de flash) ; une
+  feuille par style (`static/<style>.css`) chargée seulement si actif, règles limitées à `:root[data-style="…"]`.
+  Polices vendorisées dans `static/fonts` (OFL, licences jointes, servies en `font/woff2`). Règle : **une couleur = une
+  variable** de `app.css` ; un nouvel élément d'UI qui les utilise s'adapte à tous les styles. Couleurs de graphiques
+  des styles optionnels non validées dataviz (d'où « expérimental »).
 - Projets Compose : `hangarr` = `compose.yml` (prod), `hangarr-dev` = `compose.dev.yml`, `hangarr-e2e`,
   `hangarr-deploy-check` : ne jamais leur donner le même nom (un `down` emporterait l'autre).
 - `make e2e` tourne dans le projet compose `hangarr-e2e` (séparé) et lit le mot de passe initial dans les logs.

@@ -42,6 +42,8 @@ type userProgress struct {
 	UserID    int64
 	Name      string // "" when the account is unknown (shown as "User 12")
 	Seasons   []userSeason
+	Watched   int    // episodes watched among those on disk, all seasons (series)
+	Files     int    // episodes on disk, all seasons (series)
 	Last      string // "S01E03" (series) of the last complete play
 	LastAt    int64
 	Next      string // next episode on disk to watch, "" when unknown
@@ -174,6 +176,8 @@ func buildProgress(eps []sonarr.Episode, watches []store.EpisodeWatch, seasons [
 				us.Watched = min(us.Watched, se.Files)
 			}
 			a.p.Seasons = append(a.p.Seasons, us)
+			a.p.Watched += us.Watched
+			a.p.Files += us.Files
 		}
 		if exact && len(onDisk) > 0 {
 			start := 0

@@ -1,52 +1,128 @@
 {{define "content"}}
+<div class="settings">
 <h1>{{t "Settings"}}</h1>
-<section class="card narrow">
-  <div class="title-row"><h2>{{t "Synchronization"}}</h2>{{template "info" (t "Sonarr, Radarr, Plex and Tautulli are read on this schedule. “Sync now” in the top bar runs one immediately.")}}</div>
+
+<section class="card settings-section" aria-labelledby="settings-sync">
+  <header class="settings-head">
+    <h2 id="settings-sync">{{t "Synchronization"}}</h2>
+    <p>{{t "Sonarr, Radarr, Plex and Tautulli are read on this schedule. “Sync now” in the top bar runs one immediately."}}</p>
+  </header>
   {{template "settings_form" .}}
 </section>
-<section class="card narrow">
-  <div class="title-row"><h2>{{t "Cleanup"}}</h2>{{template "info" (t "Proposes what nobody watched for this many days (never watched: since added). Protected items are never proposed.")}}</div>
+
+<section class="card settings-section" aria-labelledby="settings-cleanup">
+  <header class="settings-head">
+    <h2 id="settings-cleanup">{{t "Cleanup"}}</h2>
+  </header>
   {{template "cleanup_form" .}}
 </section>
+
+<section class="card settings-section" aria-labelledby="settings-appearance">
+  <header class="settings-head">
+    <h2 id="settings-appearance">{{t "Appearance"}}</h2>
+    <p>{{t "Applied right away and remembered by this browser. Light and dark themes apply to every style."}}</p>
+  </header>
+  <div class="setting" role="group" aria-labelledby="setting-style">
+    <div><span id="setting-style" class="setting-label">{{t "Style"}}</span></div>
+    <div class="setting-control">
+      <div class="style-switch">
+        <a class="button" href="/style/standard?next=/settings"{{if not .Style}} aria-current="true"{{end}}>{{t "Standard"}}</a>
+        <a class="button" href="/style/catppuccin?next=/settings"{{if eq .Style "catppuccin"}} aria-current="true"{{end}}>{{t "Catppuccin (experimental)"}}</a>
+        <a class="button" href="/style/lumen?next=/settings"{{if eq .Style "lumen"}} aria-current="true"{{end}}>{{t "Lumen (experimental)"}}</a>
+        <a class="button" href="/style/y2k?next=/settings"{{if eq .Style "y2k"}} aria-current="true"{{end}}>{{t "Y2K (experimental)"}}</a>
+      </div>
+    </div>
+  </div>
+  {{if eq .Style "lumen"}}
+  <div class="setting" role="group" aria-labelledby="setting-color">
+    <div><span id="setting-color" class="setting-label">{{t "Color"}}</span></div>
+    <div class="setting-control">
+      <div class="style-switch">
+        <a class="button" href="/palette/aurora?next=/settings"{{if not .Palette}} aria-current="true"{{end}}>{{t "Aurora"}}</a>
+        <a class="button" href="/palette/ocean?next=/settings"{{if eq .Palette "ocean"}} aria-current="true"{{end}}>{{t "Ocean"}}</a>
+        <a class="button" href="/palette/ember?next=/settings"{{if eq .Palette "ember"}} aria-current="true"{{end}}>{{t "Ember"}}</a>
+        <a class="button" href="/palette/jade?next=/settings"{{if eq .Palette "jade"}} aria-current="true"{{end}}>{{t "Jade"}}</a>
+      </div>
+    </div>
+  </div>
+  {{end}}
+</section>
+</div>
 {{end}}
 
 {{define "settings_form"}}{{$s := .Data.Sync}}
-<form id="settings-form" method="post" action="/settings" class="stack"
+<form id="settings-form" method="post" action="/settings" class="settings-form"
       hx-post="/settings" hx-target="this" hx-swap="outerHTML">
   <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
-  <div class="title-row"><label for="sync_every">{{t "Frequency"}}</label>{{template "info" (t "Syncs start at the time below, then repeat every N hours. Each one reads every library again: a few a day is plenty, Tautulli's webhook already refreshes the history after each play.")}}</div>
-  <select id="sync_every" name="sync_every">
-    {{range $s.Choices}}<option value="{{.}}"{{if eq . $s.Every}} selected{{end}}>{{if eq . 24}}{{t "Once a day"}}{{else if eq . 1}}{{t "Every hour"}}{{else}}{{t "Every %d hours" .}}{{end}}</option>{{end}}
-  </select>
-  <fieldset class="clock"{{if $s.Error}} aria-describedby="sync-time-error"{{end}}>
-    <legend>{{t "Sync time"}}</legend>
-    <label for="sync_hour" class="visually-hidden">{{t "Hour"}}</label>
-    <select id="sync_hour" name="sync_hour" required{{if $s.Error}} aria-invalid="true"{{end}}>
-      {{range hoursOfDay}}{{$v := printf "%02d" .}}<option value="{{$v}}"{{if eq $v $s.Hour}} selected{{end}}>{{$v}}</option>{{end}}
-    </select>
-    <span aria-hidden="true">:</span>
-    <label for="sync_minute" class="visually-hidden">{{t "Minute"}}</label>
-    <select id="sync_minute" name="sync_minute" required{{if $s.Error}} aria-invalid="true"{{end}}>
-      {{range minutesOfHour}}{{$v := printf "%02d" .}}<option value="{{$v}}"{{if eq $v $s.Minute}} selected{{end}}>{{$v}}</option>{{end}}
-    </select>
-  </fieldset>
-  {{with $s.Error}}<p id="sync-time-error" class="field-error">{{t .}}</p>{{end}}
-  {{with $s.Times}}<p class="small muted">{{t "Every day at %s" .}}</p>{{end}}
-  {{with $s.NextRun}}<p class="small muted">{{t "Next sync: %s" .}}</p>{{end}}
-  {{if $s.Saved}}<p class="small ok-text" role="status">{{t "Saved."}}</p>{{end}}
-  <button type="submit" class="primary">{{t "Save"}}</button>
+  <div class="setting">
+    <div>
+      <label for="sync_every" class="setting-label">{{t "Frequency"}}</label>
+      <p id="sync-every-help" class="setting-help">{{t "Each sync reads every library again: a few a day is plenty, Tautulli's webhook already refreshes the history after each play."}}</p>
+    </div>
+    <div class="setting-control">
+      <select id="sync_every" name="sync_every" aria-describedby="sync-every-help">
+        {{range $s.Choices}}<option value="{{.}}"{{if eq . $s.Every}} selected{{end}}>{{if eq . 24}}{{t "Once a day"}}{{else if eq . 1}}{{t "Every hour"}}{{else}}{{t "Every %d hours" .}}{{end}}</option>{{end}}
+      </select>
+    </div>
+  </div>
+  <div class="setting" role="group" aria-labelledby="sync-time-label" aria-describedby="sync-time-help{{if $s.Error}} sync-time-error{{end}}">
+    <div>
+      <span id="sync-time-label" class="setting-label">{{t "Start time"}}</span>
+      <p id="sync-time-help" class="setting-help">{{t "The day's first sync; the next ones follow at the chosen frequency."}}</p>
+      {{with $s.Error}}<p id="sync-time-error" class="field-error">{{t .}}</p>{{end}}
+    </div>
+    <div class="setting-control clock">
+      <label for="sync_hour" class="visually-hidden">{{t "Hour"}}</label>
+      <select id="sync_hour" name="sync_hour" required{{if $s.Error}} aria-invalid="true"{{end}}>
+        {{range hoursOfDay}}{{$v := printf "%02d" .}}<option value="{{$v}}"{{if eq $v $s.Hour}} selected{{end}}>{{$v}}</option>{{end}}
+      </select>
+      <span aria-hidden="true">:</span>
+      <label for="sync_minute" class="visually-hidden">{{t "Minute"}}</label>
+      <select id="sync_minute" name="sync_minute" required{{if $s.Error}} aria-invalid="true"{{end}}>
+        {{range minutesOfHour}}{{$v := printf "%02d" .}}<option value="{{$v}}"{{if eq $v $s.Minute}} selected{{end}}>{{$v}}</option>{{end}}
+      </select>
+    </div>
+  </div>
+  <div class="settings-foot">
+    <p class="small muted">{{with $s.NextRun}}{{t "Next sync: %s" .}}{{end}}</p>
+    <div class="settings-actions">
+      {{if $s.Saved}}<span class="small ok-text" role="status">{{t "Saved."}}</span>{{end}}
+      <button type="submit" class="primary">{{t "Save"}}</button>
+    </div>
+  </div>
 </form>
 {{end}}
 
 {{define "cleanup_form"}}{{$s := .Data.Cleanup}}
-<form id="cleanup-form" method="post" action="/settings/cleanup" class="stack"
+<form id="cleanup-form" method="post" action="/settings/cleanup" class="settings-form"
       hx-post="/settings/cleanup" hx-target="this" hx-swap="outerHTML">
   <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
-  <label for="cleanup_days">{{t "Propose what nobody watched for (days)"}}</label>
-  <input id="cleanup_days" name="days" type="number" min="7" max="3650" step="1" required value="{{$s.Days}}"
-         {{if $s.Error}}aria-invalid="true"{{end}}>
-  {{with $s.Error}}<p class="field-error" role="alert">{{.}}</p>{{end}}
-  {{if $s.Saved}}<p class="small ok-text" role="status">{{t "Saved."}}</p>{{end}}
-  <button type="submit" class="primary">{{t "Save"}}</button>
+  <div class="setting">
+    <div>
+      <label for="cleanup_days" class="setting-label">{{t "Not watched for"}}</label>
+      <p id="cleanup-days-help" class="setting-help">{{t "Proposes what nobody watched for this many days (never watched: since added). Protected items are never proposed."}}</p>
+      {{with $s.Error}}<p id="cleanup-days-error" class="field-error" role="alert">{{.}}</p>{{end}}
+    </div>
+    <div class="setting-control">
+      <div class="stepper">
+        <button type="button" class="stepper-btn" data-step-by="-30" aria-controls="cleanup_days"
+                aria-label="{{t "30 fewer days"}}" title="{{t "30 fewer days"}}">{{template "stepper_icon" "minus"}}</button>
+        <input id="cleanup_days" name="days" type="number" min="7" max="3650" step="1" required value="{{$s.Days}}" inputmode="numeric"
+               aria-describedby="cleanup-days-help{{if $s.Error}} cleanup-days-error{{end}}"{{if $s.Error}} aria-invalid="true"{{end}}>
+        <button type="button" class="stepper-btn" data-step-by="30" aria-controls="cleanup_days"
+                aria-label="{{t "30 more days"}}" title="{{t "30 more days"}}">{{template "stepper_icon" "plus"}}</button>
+      </div>
+      <span class="muted">{{t "days|unit"}}</span>
+    </div>
+  </div>
+  <div class="settings-foot">
+    <p></p>
+    <div class="settings-actions">
+      {{if $s.Saved}}<span class="small ok-text" role="status">{{t "Saved."}}</span>{{end}}
+      <button type="submit" class="primary">{{t "Save"}}</button>
+    </div>
+  </div>
 </form>
 {{end}}
+
+{{define "stepper_icon"}}<svg viewBox="0 0 16 16" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M3.5 8h9{{if eq . "plus"}}M8 3.5v9{{end}}"/></svg>{{end}}

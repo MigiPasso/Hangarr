@@ -48,14 +48,15 @@ type Mock struct {
 	// (the series and movies of the calendars; `make dev` only, the tests
 	// rely on the synthetic catalog alone).
 	DevExtras bool
-	// RealPosters serves the posters listed in posters.json, downloaded
-	// once (`make dev` only: the tests never reach the Internet).
+	// RealPosters serves the posters listed in posters.json and the fanarts
+	// listed in fanarts.json, downloaded once (`make dev` only: the tests
+	// never reach the Internet).
 	RealPosters bool
 
 	mu      sync.Mutex
 	calls   []Call
 	hits    map[string]int
-	posters map[string]poster // "sonarr/3" -> downloaded poster
+	posters map[string]poster // "poster/sonarr/3" -> downloaded image
 }
 
 type poster struct {
@@ -363,10 +364,14 @@ func (m *Mock) mediaCover(w http.ResponseWriter, r *http.Request, service string
 	id, _ := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	cover, _, _ := strings.Cut(r.PathValue("file"), ".")
 	cover, _, _ = strings.Cut(cover, "-") // poster-500 → poster
-	if m.RealPosters && cover == "poster" {
-		if p, ok := m.realPoster(service + "/" + strconv.FormatInt(id, 10)); ok {
+	if m.RealPosters && (cover == "poster" || cover == "fanart") {
+		if p, ok := m.realImage(cover, service+"/"+strconv.FormatInt(id, 10)); ok {
 			w.Header().Set("Content-Type", p.contentType)
 			_, _ = w.Write(p.body)
+			return
+		}
+		if cover == "fanart" { // none listed: the app falls back to the blurred poster
+			http.NotFound(w, r)
 			return
 		}
 	}
@@ -588,17 +593,20 @@ func (m *Mock) calendar(w http.ResponseWriter, r *http.Request, service string) 
 	writeJSON(w, out)
 }
 
-// realPoster downloads the poster of key ("sonarr/3") listed in posters.json,
-// once; ok is false when there is none or the download failed.
-func (m *Mock) realPoster(key string) (poster, bool) {
+// realImage downloads the poster or fanart of key ("sonarr/3") listed in
+// posters.json or fanarts.json, once; ok is false when there is none or the
+// download failed.
+func (m *Mock) realImage(cover, key string) (poster, bool) {
+	file := map[string]string{"poster": "posters.json", "fanart": "fanarts.json"}[cover]
+	cacheKey := cover + "/" + key
 	m.mu.Lock()
-	p, ok := m.posters[key]
+	p, ok := m.posters[cacheKey]
 	m.mu.Unlock()
-	if ok {
+	if ok || file == "" {
 		return p, p.body != nil
 	}
 	var urls map[string]string
-	_ = m.readJSON("posters.json", &urls)
+	_ = m.readJSON(file, &urls)
 	p = poster{}
 	if u := urls[key]; strings.HasPrefix(u, "https://") {
 		if b, ct, err := download(u); err == nil {
@@ -606,7 +614,7 @@ func (m *Mock) realPoster(key string) (poster, bool) {
 		}
 	}
 	m.mu.Lock()
-	m.posters[key] = p // failures too: no retry storm
+	m.posters[cacheKey] = p // failures too: no retry storm
 	m.mu.Unlock()
 	return p, p.body != nil
 }
@@ -619,14 +627,14 @@ func download(u string) ([]byte, string, error) {
 		return nil, "", err
 	}
 	req.Header.Set("User-Agent", "hangarr-mockarr/1.0")
-	res, err := (&http.Client{Timeout: 20 * time.Second}).Do(req) //nolint:gosec // G107: fixed URLs from posters.json, dev only
+	res, err := (&http.Client{Timeout: 20 * time.Second}).Do(req) //nolint:gosec // G107: fixed URLs from posters.json / fanarts.json, dev only
 	if err != nil {
 		return nil, "", err
 	}
 	defer func() { _ = res.Body.Close() }()
 	ct := res.Header.Get("Content-Type")
 	if res.StatusCode != http.StatusOK || !strings.HasPrefix(ct, "image/") {
-		return nil, "", fmt.Errorf("poster %s: %d %s", u, res.StatusCode, ct)
+		return nil, "", fmt.Errorf("image %s: %d %s", u, res.StatusCode, ct)
 	}
 	b, err := io.ReadAll(io.LimitReader(res.Body, 5<<20))
 	return b, ct, err

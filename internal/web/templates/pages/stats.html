@@ -66,12 +66,12 @@
   <section class="card">
     <div class="title-row"><h2>{{t "Cost per play"}}</h2>{{template "info" (t "Stored size divided by the number of plays (all time). Most expensive first.")}}</div>
     {{if $d.Cost}}
-    <table class="table compact">
+    <div class="table-wrap"><table class="table compact">
       <thead><tr><th>{{t "Title"}}</th><th class="num">{{t "Size"}}</th><th class="num">{{t "Plays"}}</th><th class="num">{{t "Per play"}}</th></tr></thead>
       <tbody>{{range $d.Cost}}<tr>
         <td><a href="{{mediaPath .Kind}}/{{.MediaID}}" hx-get="{{mediaPath .Kind}}/{{.MediaID}}" hx-target="#modal-body">{{.Title}}</a></td>
         <td class="num">{{bytes .SizeBytes}}</td><td class="num">{{.Plays}}</td><td class="num">{{bytes .BytesPerPlay}}</td></tr>{{end}}</tbody>
-    </table>
+    </table></div>
     {{else}}<p class="muted">{{t "No data"}}</p>{{end}}
   </section>
   {{end}}
@@ -80,12 +80,12 @@
   <section class="card">
     <h2>{{t "Viewer ranking"}}</h2>
     {{if $d.Ranking}}
-    <table class="table compact">
+    <div class="table-wrap"><table class="table compact">
       <thead><tr><th>{{t "Viewer"}}</th><th class="num">{{t "Hours"}}</th><th class="num">{{t "Plays"}}</th><th class="num">{{t "Titles"}}</th><th>{{t "Last activity"}}</th></tr></thead>
       <tbody>{{range $d.Ranking}}<tr>
         <td><a href="/stats/users/{{.UserID}}">{{with .Name}}{{.}}{{else}}#{{.UserID}}{{end}}</a></td>
         <td class="num">{{hours .WatchSeconds}}</td><td class="num">{{.Plays}}</td><td class="num">{{.Titles}}</td><td>{{reltime .LastAt}}</td></tr>{{end}}</tbody>
-    </table>
+    </table></div>
     {{else}}<p class="muted">{{t "No activity in this period."}}</p>{{end}}
   </section>
   {{end}}
@@ -104,12 +104,12 @@
   <section class="card">
     <div class="title-row"><h2>{{t "Abandoned|section"}}</h2>{{template "info" (t "Started, then not watched for more than %d days." abandonDays)}}</div>
     {{if $d.Abandoned}}
-    <table class="table compact">
+    <div class="table-wrap"><table class="table compact">
       <thead><tr><th>{{t "Title"}}</th><th>{{t "Progress"}}</th><th>{{t "Last watched"}}</th><th class="num">{{t "Size"}}</th></tr></thead>
       <tbody>{{range $d.Abandoned}}<tr>
         <td><a href="{{mediaPath .Kind}}/{{.ID}}" hx-get="{{mediaPath .Kind}}/{{.ID}}" hx-target="#modal-body">{{.Title}}</a></td>
         <td class="nowrap">{{stateLabel .}}</td><td>{{relptr .LastViewedAt}}{{with .LastViewedBy}} · {{.}}{{end}}</td><td class="num">{{bytes .SizeBytes}}</td></tr>{{end}}</tbody>
-    </table>
+    </table></div>
     {{else}}<p class="muted">{{t "Nothing abandoned."}}</p>{{end}}
   </section>
 
@@ -117,12 +117,12 @@
   <section class="card">
     <h2>{{t "Movies started, never finished"}}</h2>
     {{with $d.Completion.Unfinished}}
-    <table class="table compact">
+    <div class="table-wrap"><table class="table compact">
       <thead><tr><th>{{t "Movie"}}</th><th class="num">{{t "Sessions"}}</th><th class="num">{{t "Max reached"}}</th></tr></thead>
       <tbody>{{range .}}<tr>
         <td><a href="/movies/{{.MediaID}}" hx-get="/movies/{{.MediaID}}" hx-target="#modal-body">{{.Title}}</a></td>
         <td class="num">{{.Plays}}</td><td class="num">{{t "%d%%" .Viewers}}</td></tr>{{end}}</tbody>
-    </table>
+    </table></div>
     {{else}}<p class="muted">{{t "Every started movie was finished."}}</p>{{end}}
   </section>
 
@@ -139,13 +139,13 @@
   <section class="card wide">
     <div class="title-row"><h2>{{t "Who watches what"}}</h2>{{template "info" (t "Largest series and their viewers (episodes watched / downloaded).")}}</div>
     {{if $d.WhoWatches}}
-    <table class="table compact">
+    <div class="table-wrap"><table class="table compact">
       <thead><tr><th>{{t "Series|one"}}</th><th class="num">{{t "Size"}}</th><th>{{t "State"}}</th><th>{{t "Viewers|many"}}</th></tr></thead>
       <tbody>{{range $sv := $d.WhoWatches}}<tr>
         <td><a href="/series/{{$sv.MediaID}}" hx-get="/series/{{$sv.MediaID}}" hx-target="#modal-body">{{$sv.Title}}</a></td>
         <td class="num">{{bytes $sv.SizeBytes}}</td><td>{{stateName $sv.State}}</td>
         <td>{{range $sv.Viewers}}<span class="viewer">{{with .Name}}{{.}}{{else}}#{{.UserID}}{{end}} {{.Watched}}/{{$sv.Downloaded}} <span class="muted">({{reltime .LastAt}})</span></span>{{else}}<span class="muted">{{t "nobody"}}</span>{{end}}</td></tr>{{end}}</tbody>
-    </table>
+    </table></div>
     {{end}}
   </section>
   {{end}}
