@@ -168,22 +168,6 @@ func (m *Mock) arr(service, appName string) http.Handler {
 		m.hit(service + ":mediacover")
 		m.mediaCover(w, r, service)
 	})
-	mux.HandleFunc("GET /api/v3/indexerstatus", func(w http.ResponseWriter, _ *http.Request) {
-		m.hit(service + ":indexerstatus")
-		var rows []map[string]any
-		if err := m.readJSON(service+"/indexerstatus.json", &rows); err != nil {
-			writeJSON(w, []any{})
-			return
-		}
-		for _, row := range rows {
-			for _, k := range []string{"initialFailure", "mostRecentFailure", "disabledTill"} {
-				if t, err := time.Parse(time.RFC3339, fmt.Sprint(row[k])); err == nil {
-					row[k] = t.Add(todayShift()).Format(time.RFC3339)
-				}
-			}
-		}
-		writeJSON(w, rows)
-	})
 	for _, res := range []string{"tag", "qualityprofile", "diskspace", "health", "indexer"} {
 		mux.HandleFunc("GET /api/v3/"+res, func(w http.ResponseWriter, _ *http.Request) {
 			m.hit(service + ":" + res)
@@ -560,8 +544,8 @@ func (m *Mock) arrItems(mux *http.ServeMux, service string) {
 	})
 }
 
-// todayShift moves the anchor to today (UTC): the calendars and the indexer
-// failures are about now, whatever ShiftSeconds says.
+// todayShift moves the anchor to today (UTC): the calendars are about now,
+// whatever ShiftSeconds says.
 func todayShift() time.Duration {
 	return time.Now().UTC().Truncate(24 * time.Hour).Sub(time.Unix(Anchor, 0).UTC())
 }

@@ -309,31 +309,11 @@ type Indexer struct {
 	Priority                int    `json:"priority"`
 }
 
-// IndexerStatus is an entry of GET /api/v3/indexerstatus: an indexer that
-// failed recently, disabled until DisabledTill.
-type IndexerStatus struct {
-	IndexerID         int64      `json:"indexerId"`
-	InitialFailure    httpx.Time `json:"initialFailure"`
-	MostRecentFailure httpx.Time `json:"mostRecentFailure"`
-	DisabledTill      httpx.Time `json:"disabledTill"`
-}
-
 // Indexers lists the instance's indexers.
 func (c *Client) Indexers(ctx context.Context) ([]Indexer, error) { return Indexers(ctx, c.HTTP) }
-
-// IndexerStatuses lists the instance's failing indexers.
-func (c *Client) IndexerStatuses(ctx context.Context) ([]IndexerStatus, error) {
-	return IndexerStatuses(ctx, c.HTTP)
-}
 
 // Indexers lists the indexers of a Sonarr or Radarr instance.
 func Indexers(ctx context.Context, h *httpx.Client) ([]Indexer, error) {
 	var out []Indexer
 	return out, h.JSON(ctx, httpx.Request{Path: "/api/v3/indexer"}, &out)
-}
-
-// IndexerStatuses lists the failing indexers of a Sonarr or Radarr instance.
-func IndexerStatuses(ctx context.Context, h *httpx.Client) ([]IndexerStatus, error) {
-	var out []IndexerStatus
-	return out, h.JSON(ctx, httpx.Request{Path: "/api/v3/indexerstatus"}, &out)
 }

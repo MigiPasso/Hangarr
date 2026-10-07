@@ -46,7 +46,7 @@
     </div>
     <div class="media-meta">
       <h3 title="{{.Title}}">{{.Title}}</h3>
-      <p class="small muted cal-parts">{{with .Time}}<span>{{.}}</span>{{end}}{{if gt .Count 1}}<span>{{tn .Count "%d episode" "%d episodes"}}</span>{{end}}{{with .Note}}<span>{{.}}</span>{{end}}{{if .HasFile}}<span>{{t "Downloaded|calendar"}}</span>{{end}}</p>
+      <p class="small muted cal-parts">{{with .Time}}<span>{{.}}</span>{{end}}{{if gt .Count 1}}<span>{{tn .Count "%d episode" "%d episodes"}}</span>{{end}}{{range .Notes}}<span>{{.}}</span>{{end}}{{if .HasFile}}<span>{{t "Downloaded|calendar"}}</span>{{end}}</p>
     </div>
     {{if .MediaID}}</a>{{end}}
   </article>
@@ -66,7 +66,7 @@
         <div class="cal-entry">
           <div>
             {{if .MediaID}}<a href="{{mediaPath .Kind}}/{{.MediaID}}" hx-get="{{mediaPath .Kind}}/{{.MediaID}}" hx-target="#modal-body">{{.Title}}</a>{{else}}<span>{{.Title}}</span>{{end}}
-            {{with .Note}}<span class="badge">{{.}}</span>{{end}}
+            {{range .Notes}}<span class="badge">{{.}}</span>{{end}}
             {{if .HasFile}}<span class="badge badge-muted">{{t "Downloaded|calendar"}}</span>{{end}}
           </div>
           <div class="small muted">
@@ -102,7 +102,7 @@
           {{range .Entries}}<li class="cal-chip cal-{{.Kind}}{{if .HasFile}} cal-done{{end}}">
             {{if .MediaID}}<a href="{{mediaPath .Kind}}/{{.MediaID}}" hx-get="{{mediaPath .Kind}}/{{.MediaID}}" hx-target="#modal-body">{{.Title}}</a>{{else}}<span>{{.Title}}</span>{{end}}
             <span class="small muted">{{.What}}{{with .Time}} · {{.}}{{end}}</span>
-            {{with .Note}}<span class="small cal-note">{{.}}</span>{{end}}
+            {{range .Notes}}<span class="small cal-note">{{.}}</span>{{end}}
           </li>{{end}}
         </ul>{{end}}
       </td>{{end}}

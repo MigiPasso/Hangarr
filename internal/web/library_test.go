@@ -347,3 +347,21 @@ func TestPlexOnlyPosters(t *testing.T) {
 		t.Errorf("unknown rating key: %d", r.status)
 	}
 }
+
+// "Present in" sits right under the watch state, outside « More filters »,
+// and does not open that block.
+func TestLibraryPresentInFilter(t *testing.T) {
+	e := newLibEnv(t, 0)
+	r := e.do(e.c, "GET", "/movies?match=plex_only", nil, nil)
+	state, present, more := strings.Index(r.body, "<legend>État de visionnage</legend>"), strings.Index(r.body, "<legend>Présent dans</legend>"),
+		strings.Index(r.body, "<summary>Plus de filtres</summary>")
+	if state < 0 || present < state || more < present {
+		t.Errorf("order: state %d, present in %d, more filters %d", state, present, more)
+	}
+	if strings.Contains(r.body, `class="more-filters" open`) {
+		t.Error("the presence filter must not open « More filters »")
+	}
+	if !slices.Equal(cardTitles(r.body), []string{"Vacances 2019"}) || !strings.Contains(r.body, `value="plex_only" checked`) {
+		t.Errorf("plex_only movies: %q", cardTitles(r.body))
+	}
+}

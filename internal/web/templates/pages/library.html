@@ -29,6 +29,13 @@
         {{end}}
       </fieldset>
 
+      <fieldset>
+        <legend>{{t "Present in"}}</legend>
+        {{range pairs "matched" "Plex and Sonarr/Radarr" "arr_only" "Sonarr/Radarr only" "plex_only" "Plex only"}}
+        <label class="check"><input type="checkbox" name="match" value="{{.V}}"{{if has $d.Filter.Match .V}} checked{{end}}> {{t .L}}</label>
+        {{end}}
+      </fieldset>
+
       <div class="title-row"><label for="f-inactive" class="field-label">{{t "Not watched for"}}</label>{{template "info" (t "Never watched: counted from the date added, like on the Cleanup page.")}}</div>
       <label class="field">
         <select id="f-inactive" name="inactive">
@@ -99,11 +106,6 @@
             {{range .Networks}}<option{{if eq $d.Filter.Network .}} selected{{end}}>{{.}}</option>{{end}}
           </select>
         </label>
-        <fieldset><legend>{{t "Present in"}}</legend>
-          {{range pairs "matched" "Plex and Sonarr/Radarr" "arr_only" "Sonarr/Radarr only" "plex_only" "Plex only"}}
-          <label class="check"><input type="checkbox" name="match" value="{{.V}}"{{if has $d.Filter.Match .V}} checked{{end}}> {{t .L}}</label>
-          {{end}}
-        </fieldset>
       </details>
       {{end}}
       <noscript><button type="submit" class="primary">{{t "Filter"}}</button></noscript>

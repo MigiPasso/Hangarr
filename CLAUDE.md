@@ -121,9 +121,9 @@ Pas de framework web, pas de build Node pour l'app, pas de CDN.
   finie** = `completed` (saisons précédentes possiblement vues ailleurs, décision utilisateur) : `scoring.WatchState` et
   SQL de `libraryView`.
 - Filtres de la Bibliothèque **simplifiés** (décision utilisateur, « un filtre = une question ») : Qui ? (`user`, tout
-  devient le point de vue de ce spectateur), État, Pas regardé depuis (`inactive` 30/90/180/365, jamais vu = depuis
-  l'ajout, même règle que Nettoyage), Ajouté, Taille min/max, Statut ; le reste dans « Plus de filtres » (genres, année,
-  note, tags, profil, réseau/studio, présence Plex/*arr). Supprimés : Vu par / Jamais vu par / Vu par personne /
+  devient le point de vue de ce spectateur), État, Présent dans (Plex et/ou Sonarr/Radarr, juste sous État, décision
+  utilisateur), Pas regardé depuis (`inactive` 30/90/180/365, jamais vu = depuis l'ajout, même règle que Nettoyage),
+  Ajouté, Taille min/max, Statut ; le reste dans « Plus de filtres » (genres, année, note, tags, profil, réseau/studio). Supprimés : Vu par / Jamais vu par / Vu par personne /
   spectateurs distincts min. Nettoyage : « Pas regardé depuis » ne propose que des délais plus longs que la règle.
 - Bibliothèque : une requête SQL paramétrée par lot (`store.LibraryQuery`, CTE `v` avec colonnes `eff_*` ; point de vue
   utilisateur calculé à la volée, mêmes règles que `scoring`). Recherche sur `title_norm` (sans accents ni article).
@@ -177,8 +177,11 @@ Pas de framework web, pas de build Node pour l'app, pas de CDN.
   aujourd'hui.
 - Santé (`/health`) : services vérifiés en direct (`upstream.CheckAll`, chargés en différé par HTMX, alertes
   `/api/v3/health` de Sonarr/Radarr hors indexeurs), section **Trackers** séparée (`upstream.CheckTrackers`,
-  `/health/trackers` en différé : `/api/v3/indexer` + `/indexerstatus`, en échec d'abord, alertes `Indexer*` ; champs
-  `fields` des indexeurs jamais décodés ni capturés, ils contiennent des clés), derniers passages et historique de `sync_runs`, écarts de données
+  `/health/trackers` en différé : `/api/v3/indexer` ; **Sonarr/Radarr n'ont pas d'API d'état des indexeurs**
+  (`/indexerstatus` = Prowlarr) : « en échec » = nom cité par l'alerte `IndexerStatusCheck` /
+  `IndexerLongTermStatusCheck` (« …: A, B », nom exact entre séparateurs, indépendant de la langue ; sans nom = tous) ;
+  en échec d'abord, alertes `Indexer*` ; champs `fields` des indexeurs jamais décodés ni capturés, ils contiennent des
+  clés), derniers passages et historique de `sync_runs`, écarts de données
   (`store.DataHealth`).
 - Webhook Tautulli (`POST /webhooks/tautulli`, seule route sans session) : 404 sans secret, `X-Hangarr-Token` comparé
   en temps constant, corps ignoré, 60 req/min/IP, puis `syncer.RequestHistorySync` (anti-rebond 30 s, historique seul,
@@ -186,8 +189,8 @@ Pas de framework web, pas de build Node pour l'app, pas de CDN.
   Configuration (affiché une seule fois).
 - `internal/images` : proxy MediaCover (`poster-500.jpg`) → cache disque `DATA_DIR/cache/img`, ETag, sémaphore (4),
   toute image réduite avant mise en cache (`resize.go`, bibliothèque standard, filtre boîte, JPEG q85) : affiches
-  500 px, fonds **1280 px** de large, quelle que soit la source (décision utilisateur) ; plus de 50 Mpx refusé (bombe de
-  décompression), format non décodable (WebP) servi tel quel ; noms de fichiers versionnés (`cacheVersion`), anciennes
+  500 px, fonds **1280 px** de large, quelle que soit la source (décision utilisateur) ; plus de 25 Mpx refusé (bombe de
+  décompression), un seul décodage à la fois (limite mémoire du pod), format non décodable (WebP) servi tel quel ; noms de fichiers versionnés (`cacheVersion`), anciennes
   versions supprimées au démarrage. Volume : 5 Gi par défaut dans le manifeste (10 Gi pour une grosse bibliothèque),
   singleflight, repli `remoteUrl` https, placeholder SVG. Pas de JS supplémentaire côté client. Éléments Plex seul :
   `/img/plex/{ratingKey}/{poster|fanart}` (clé vérifiée en base), `/photo/:/transcode` (500×750 / 1280×720) puis

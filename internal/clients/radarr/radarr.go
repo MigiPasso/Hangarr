@@ -191,8 +191,3 @@ func (c *Client) Calendar(ctx context.Context, start, end time.Time) ([]Calendar
 func (c *Client) Indexers(ctx context.Context) ([]sonarr.Indexer, error) {
 	return sonarr.Indexers(ctx, c.HTTP)
 }
-
-// IndexerStatuses lists the instance's failing indexers.
-func (c *Client) IndexerStatuses(ctx context.Context) ([]sonarr.IndexerStatus, error) {
-	return sonarr.IndexerStatuses(ctx, c.HTTP)
-}

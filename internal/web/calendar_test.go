@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"hangarr/internal/clients/radarr"
+	"hangarr/internal/clients/sonarr"
 	"hangarr/internal/i18n"
 	"hangarr/internal/upstream"
 )
@@ -219,5 +220,34 @@ func TestNewCalendarDay(t *testing.T) {
 	}
 	if d := newCalendarDay(fr, today.AddDate(0, 0, 1), today); d.Rel != "Demain" || d.Label != "Demain" {
 		t.Errorf("tomorrow: %+v", d)
+	}
+}
+
+// A season released at once keeps both its premiere and its finale, in
+// episode order, whatever the order of the API.
+func TestSeasonDropNotes(t *testing.T) {
+	var eps []sonarr.CalendarEpisode
+	if err := json.Unmarshal([]byte(`[
+		{"seriesId":7,"seasonNumber":2,"episodeNumber":3,"airDateUtc":"2026-11-02T08:00:00Z","finaleType":"season","series":{"title":"X"}},
+		{"seriesId":7,"seasonNumber":2,"episodeNumber":1,"airDateUtc":"2026-11-02T08:00:00Z","series":{"title":"X"}},
+		{"seriesId":7,"seasonNumber":2,"episodeNumber":2,"airDateUtc":"2026-11-02T08:00:00Z","series":{"title":"X"}}]`), &eps); err != nil {
+		t.Fatal(err)
+	}
+	got := seriesEntries(i18n.For(i18n.EN), eps, time.UTC)
+	if len(got) != 1 || got[0].What != "S02E01–E03" || strings.Join(got[0].Notes, "|") != "Season premiere|Season finale" {
+		t.Fatalf("%+v", got)
+	}
+}
+
+// Period tabs in increasing order; 3 months stays the default.
+func TestCalendarRangeTabs(t *testing.T) {
+	e := newLibEnv(t, 0)
+	r := e.do(e.c, "GET", "/calendar", nil, nil)
+	m30, m90, y1 := strings.Index(r.body, ">30 jours</a>"), strings.Index(r.body, ">3 mois</a>"), strings.Index(r.body, ">1 an</a>")
+	if m30 < 0 || m90 < m30 || y1 < m90 {
+		t.Errorf("tabs order: 30 days %d, 3 months %d, 1 year %d", m30, m90, y1)
+	}
+	if !strings.Contains(r.body, `days=90&amp;size=25" aria-current="page">3 mois`) {
+		t.Error("3 months by default")
 	}
 }

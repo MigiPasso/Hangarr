@@ -5,7 +5,6 @@ import (
 	"sort"
 	"strings"
 	"sync"
-	"time"
 
 	"hangarr/internal/clients/sonarr"
 	"hangarr/internal/i18n"
@@ -17,13 +16,9 @@ type Tracker struct {
 	Protocol string // usenet | torrent
 	RSS      bool
 	Search   bool // automatic or interactive search
-	// DisabledUntil is set while the instance skips the indexer after
-	// failures.
-	DisabledUntil *time.Time
+	// Failing: the instance currently skips the indexer after failures.
+	Failing bool
 }
-
-// Failing reports whether the instance currently skips the indexer after failures.
-func (t Tracker) Failing() bool { return t.DisabledUntil != nil }
 
 // Enabled reports whether the indexer is used at all (RSS or search).
 func (t Tracker) Enabled() bool { return t.RSS || t.Search }
@@ -41,12 +36,15 @@ type TrackerStatus struct {
 // indexerReader is what Sonarr and Radarr clients share for the trackers.
 type indexerReader interface {
 	Indexers(context.Context) ([]sonarr.Indexer, error)
-	IndexerStatuses(context.Context) ([]sonarr.IndexerStatus, error)
 }
 
 // CheckTrackers reads the indexers of Sonarr and Radarr in parallel, failing
 // ones first; each service is bounded by CheckTimeout.
-func CheckTrackers(ctx context.Context, c *Clients, l i18n.Localizer, now time.Time) []TrackerStatus {
+//
+// Sonarr and Radarr have no API for the state of their indexers (that is
+// Prowlarr's /indexerstatus): the failing ones are read from their health
+// checks, whose message lists them ("…: A, B").
+func CheckTrackers(ctx context.Context, c *Clients, l i18n.Localizer) []TrackerStatus {
 	svcs := []struct {
 		name string
 		r    indexerReader
@@ -73,40 +71,54 @@ func CheckTrackers(ctx context.Context, c *Clients, l i18n.Localizer, now time.T
 				st.Error = Describe(l, err)
 				return
 			}
-			statuses, _ := s.r.IndexerStatuses(cctx) // optional: no status means no failure
-			st.Trackers = trackers(indexers, statuses, now)
 			for _, a := range healthAlerts(ctx, c, s.name) {
 				if IsIndexerAlert(a) {
 					st.Alerts = append(st.Alerts, a)
 				}
 			}
+			st.Trackers = trackers(indexers, st.Alerts)
 		})
 	}
 	wg.Wait()
 	return out
 }
 
-// trackers joins the indexers and their statuses: failing first, then
-// enabled ones, then by name.
-func trackers(indexers []sonarr.Indexer, statuses []sonarr.IndexerStatus, now time.Time) []Tracker {
-	byID := map[int64]sonarr.IndexerStatus{}
-	for _, s := range statuses {
-		byID[s.IndexerID] = s
-	}
+// failureChecks are the health checks of indexers skipped after failures
+// (now, and for more than 6 hours); their message ends with the names.
+var failureChecks = map[string]bool{"IndexerStatusCheck": true, "IndexerLongTermStatusCheck": true}
+
+// trackers marks the indexers named by a failure check: failing first, then
+// enabled ones, then by name. A failure check that contains no indexer name
+// at all is the "all indexers are unavailable" variant: every enabled one is
+// failing. A name found but not recognized as a list item (unexpected
+// separator) marks nothing: better a missed failure than false ones.
+func trackers(indexers []sonarr.Indexer, alerts []sonarr.HealthCheck) []Tracker {
 	out := make([]Tracker, 0, len(indexers))
 	for _, ix := range indexers {
-		t := Tracker{Name: ix.Name, Protocol: ix.Protocol, RSS: ix.EnableRss,
-			Search: ix.EnableAutomaticSearch || ix.EnableInteractiveSearch}
-		if s, ok := byID[ix.ID]; ok && s.DisabledTill.After(now) {
-			until := s.DisabledTill.Time
-			t.DisabledUntil = &until
+		out = append(out, Tracker{Name: ix.Name, Protocol: ix.Protocol, RSS: ix.EnableRss,
+			Search: ix.EnableAutomaticSearch || ix.EnableInteractiveSearch})
+	}
+	for _, a := range alerts {
+		if !failureChecks[a.Source] {
+			continue
 		}
-		out = append(out, t)
+		mentioned := false
+		for i := range out {
+			if namedIn(a.Message, out[i].Name) {
+				out[i].Failing = true
+			}
+			mentioned = mentioned || (out[i].Name != "" && strings.Contains(a.Message, out[i].Name))
+		}
+		if !mentioned {
+			for i := range out {
+				out[i].Failing = out[i].Failing || out[i].Enabled()
+			}
+		}
 	}
 	sort.SliceStable(out, func(i, j int) bool {
 		a, b := out[i], out[j]
-		if a.Failing() != b.Failing() {
-			return a.Failing()
+		if a.Failing != b.Failing {
+			return a.Failing
 		}
 		if a.Enabled() != b.Enabled() {
 			return a.Enabled()
@@ -114,4 +126,29 @@ func trackers(indexers []sonarr.Indexer, statuses []sonarr.IndexerStatus, now ti
 		return strings.ToLower(a.Name) < strings.ToLower(b.Name)
 	})
 	return out
+}
+
+// namedIn reports whether name is one of the items of the list that ends msg
+// ("Indexers unavailable due to failures: A, B"): the exact name, after a
+// colon (ASCII or full-width, any spacing) or ", ", and before ", ", a final
+// period or the end, so "Orion" never matches "Orion - S".
+func namedIn(msg, name string) bool {
+	if name == "" {
+		return false
+	}
+	for i := 0; ; {
+		j := strings.Index(msg[i:], name)
+		if j < 0 {
+			return false
+		}
+		start, end := i+j, i+j+len(name)
+		head := strings.TrimRight(msg[:start], " ")
+		before := strings.HasSuffix(head, ":") || strings.HasSuffix(head, "：") || strings.HasSuffix(msg[:start], ", ")
+		rest := msg[end:]
+		after := rest == "" || rest == "." || rest == "。" || strings.HasPrefix(rest, ", ")
+		if before && after {
+			return true
+		}
+		i = start + 1
+	}
 }
