@@ -15,12 +15,12 @@ import (
 	"testing"
 	"time"
 
-	"cleanarr/internal/actions"
-	"cleanarr/internal/config"
-	"cleanarr/internal/images"
-	"cleanarr/internal/mockarr"
-	"cleanarr/internal/syncer"
-	"cleanarr/internal/upstream"
+	"hangarr/internal/actions"
+	"hangarr/internal/config"
+	"hangarr/internal/images"
+	"hangarr/internal/mockarr"
+	"hangarr/internal/syncer"
+	"hangarr/internal/upstream"
 )
 
 type libEnv struct {

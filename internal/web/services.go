@@ -6,8 +6,8 @@ import (
 	"slices"
 	"time"
 
-	"cleanarr/internal/store"
-	"cleanarr/internal/upstream"
+	"hangarr/internal/store"
+	"hangarr/internal/upstream"
 )
 
 // serviceForm is one section of the Configuration page.

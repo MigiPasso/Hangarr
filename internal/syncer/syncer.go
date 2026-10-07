@@ -19,14 +19,14 @@ import (
 
 	"golang.org/x/sync/errgroup"
 
-	"cleanarr/internal/clients/plex"
-	"cleanarr/internal/clients/radarr"
-	"cleanarr/internal/clients/sonarr"
-	"cleanarr/internal/clients/tautulli"
-	"cleanarr/internal/matching"
-	"cleanarr/internal/scoring"
-	"cleanarr/internal/store"
-	"cleanarr/internal/upstream"
+	"hangarr/internal/clients/plex"
+	"hangarr/internal/clients/radarr"
+	"hangarr/internal/clients/sonarr"
+	"hangarr/internal/clients/tautulli"
+	"hangarr/internal/matching"
+	"hangarr/internal/scoring"
+	"hangarr/internal/store"
+	"hangarr/internal/upstream"
 )
 
 // Source names, as stored in sync_runs.

@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"cleanarr/internal/secretbox"
+	"hangarr/internal/secretbox"
 )
 
 // History sources (HISTORY_SOURCE). auto resolves to merged when Tautulli
@@ -54,6 +54,9 @@ type Config struct {
 	// MasterKey encrypts the credentials saved from the UI (nil: saving
 	// credentials from the UI is refused).
 	MasterKey []byte
+	// Deprecations are notices about settings from Cleanarr (the former
+	// name) still in use; logged at startup.
+	Deprecations []string
 
 	SyncTime               string // default daily sync time "HH:MM" (overridable in the UI)
 	DryRun                 bool
@@ -285,10 +288,21 @@ func Load(lookup LookupFunc, readFile ReadFileFunc) (*Config, error) {
 		l.fail("HISTORY_SOURCE: expected auto, merged, tautulli or plex, got %q", c.HistorySource)
 	}
 
-	if mk := l.secret("CLEANARR_MASTER_KEY"); mk != "" {
+	// CLEANARR_MASTER_KEY(_FILE): the name before the rename to Hangarr,
+	// still read when the new one is not set.
+	name, mk := "HANGARR_MASTER_KEY", l.secret("HANGARR_MASTER_KEY")
+	if legacy := l.secret("CLEANARR_MASTER_KEY"); legacy != "" {
+		if mk == "" {
+			name, mk = "CLEANARR_MASTER_KEY", legacy
+			c.Deprecations = append(c.Deprecations, "CLEANARR_MASTER_KEY(_FILE) is deprecated: rename it HANGARR_MASTER_KEY(_FILE)")
+		} else {
+			c.Deprecations = append(c.Deprecations, "CLEANARR_MASTER_KEY(_FILE) is ignored: HANGARR_MASTER_KEY(_FILE) is set")
+		}
+	}
+	if mk != "" {
 		key, err := secretbox.ParseKey(mk)
 		if err != nil {
-			l.fail("CLEANARR_MASTER_KEY: %w", err)
+			l.fail("%s: %w", name, err)
 		}
 		c.MasterKey = key
 	}

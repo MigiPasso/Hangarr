@@ -1,11 +1,16 @@
-# CLAUDE.md : conventions cleanarr
+# CLAUDE.md : conventions hangarr
 
 `SPEC.md` est la spécification de référence (Go + HTMX, croise Plex / Tautulli / Sonarr / Radarr).
 **Prowlarr est hors périmètre** (décision utilisateur) : aucun client, aucune config, aucune page ; ignorer SPEC §3.3,
 la partie Prowlarr de §7.7 et `PROWLARR_*` de §10.
 **Pas de « lectures en cours »** (décision utilisateur) : ignorer `get_activity` (SPEC §3.5) et le bloc « En cours de
 lecture » du Dashboard (§7.1).
-L'application s'appelle **Cleanarr** (affichage) ; dépôt, binaire, module Go, image et préfixe des variables : `cleanarr` / `CLEANARR_` (renommée depuis « arrstats », décision utilisateur ; aucune compatibilité gardée, rien n'était déployé).
+L'application s'appelle **Hangarr** (affichage) ; dépôt, binaire, module Go, image et préfixe des variables : `hangarr` / `HANGARR_`
+(décision utilisateur : « tour de contrôle » de la stack *arr, plus seulement du nettoyage). Anciens noms : « arrstats »
+(rien de gardé) puis **Cleanarr**, qui était déployé : compatibilité gardée et testée (`CLEANARR_MASTER_KEY(_FILE)` lue
+si `HANGARR_*` absente, avec avertissement ; `cleanarr.db` renommée au démarrage, `store.renameLegacyDB` ; en-tête
+`X-Cleanarr-Token` accepté) ; procédure de migration : `docs/deploiement.md` §11. Ne pas retirer ces replis sans
+accord. Migration 0006 : mentionne encore Cleanarr (jamais modifier une migration livrée).
 
 ## Règle n°1 : tout passe par Docker
 
@@ -25,7 +30,7 @@ Rien ne s'exécute sur la machine hôte en dehors de `docker`, `docker compose`,
 | Télécharger htmx / la liste de mots de passe | `make vendor-assets` |
 | Image runtime locale / multi-arch | `make image-load` / `make image` (`PUSH=1` pour pousser) |
 | Vérifier le déploiement Docker (`compose.yml`) | `make deploy-check` |
-| Lancer une sync dans l'app de dev | `make sync` (`cleanarr sync --once`) |
+| Lancer une sync dans l'app de dev | `make sync` (`hangarr sync --once`) |
 | Capturer de vraies réponses API (anonymisées) | `make capture-fixtures` (lit `.env`, écrit `testdata/captured/`) |
 | Réinitialiser le mot de passe admin (dev) | `make reset-admin` |
 | Tout supprimer (conteneurs, volumes, base de dev) | `make clean` |
@@ -52,7 +57,7 @@ Pas de framework web, pas de build Node pour l'app, pas de CDN.
 - Code, identifiants, commentaires, logs et CLI en **anglais**. Interface **bilingue, anglais par défaut** (décision
   utilisateur) : `internal/i18n`, clés = texte anglais (`{{t "Dashboard"}}`, `{{tn n "%d item" "%d items"}}`,
   `l.T(...)` / `l.N(...)` en Go, suffixe `|contexte` pour distinguer deux textes anglais identiques), catalogue
-  `internal/i18n/fr.go`, `TestFrenchCatalogComplete` vérifie chaque clé. Langue : cookie `cleanarr_lang` (lien EN / FR,
+  `internal/i18n/fr.go`, `TestFrenchCatalogComplete` vérifie chaque clé. Langue : cookie `hangarr_lang` (lien EN / FR,
   `GET /lang/{code}?next=` limité aux chemins locaux), sinon `DEFAULT_LANG` (`en`). Tests web et instances e2e en
   `DEFAULT_LANG=fr`. Nombres, tailles, dates et durées relatives via le `Localizer`. Titres dynamiques : `pageRaw`.
 - Aide contextuelle : explications courtes derrière un « i » (`{{template "info" (t "…")}}`, bulle CSS au survol et au
@@ -94,10 +99,12 @@ Pas de framework web, pas de build Node pour l'app, pas de CDN.
 
 ## Repères
 
-- `cmd/cleanarr` : `serve`, `sync --once`, `admin reset-password`, `master-key`, `backup [PATH]`, `healthcheck`, `version`.
+- `cmd/hangarr` : `serve`, `sync --once`, `admin reset-password`, `master-key`, `backup [PATH]`, `healthcheck`, `version`.
 - `internal/mockarr` (servi par `cmd/mockarr`) : faux upstreams (sonarr :8989, radarr :7878, plex :32400,
   tautulli :8181) depuis `testdata/`, appels destructeurs exposés sur `GET /_calls`, `POST /_reset`.
   Les tests d'intégration l'utilisent via `httptest`. `MOCK_SHIFT_DATES=true` recale l'historique sur aujourd'hui.
+  Dev seulement (`compose.dev.yml`) : `MOCK_DEV_EXTRAS` (catalogue `testdata/dev/`) et `MOCK_REAL_POSTERS` (vraies
+  affiches de `testdata/posters.json`, téléchargées par le mock) ; jamais dans les tests (pas d'Internet, comptes stables).
 - `testdata/` : scénario synthétique décrit dans `testdata/README.md` (les tests en dépendent) ;
   `testdata/captured/` : vraies réponses anonymisées, seulement vérifiées au décodage.
 - `internal/syncer` (et non `internal/sync`, pour ne pas masquer le paquet standard) : fetch parallèle, stockage,
@@ -127,7 +134,7 @@ Pas de framework web, pas de build Node pour l'app, pas de CDN.
 - Suppression via Plex (`actions.deleteFromPlex`, action `delete_plex`) : élément connu de Plex seul (plus dans
   Sonarr/Radarr, `plex_rating_key` présent) → `DELETE /library/metadata/{ratingKey}` (Plex supprime les fichiers ; refus
   401/403 = « Autoriser la suppression des médias » désactivé côté Plex, expliqué). Fiche seulement (pas en lot, pas de
-  saison), dry-run et titre à saisir pour une série respectés. Protection de ces éléments **dans Cleanarr seulement**
+  saison), dry-run et titre à saisir pour une série respectés. Protection de ces éléments **dans Hangarr seulement**
   (décision utilisateur) : colonne `media.protected_local` (migration 0006, jamais écrite par la sync), rien envoyé à
   Plex, appliquée même en dry-run, journalisée ; `protectedClause` et les templates (`.ProtectedLocal`) en tiennent compte.
 - Fiche détail : progression exacte via `GET /api/v3/episode?seriesId=` (appel live, 5 s max, repli approximatif).
@@ -154,10 +161,22 @@ Pas de framework web, pas de build Node pour l'app, pas de CDN.
   tag `PROTECTED_TAGS[0]` créé s'il manque (`POST /api/v3/tag`), retrait = tous les tags de protection, autres tags
   conservés, `PUT` de l'objet brut. Sans changement (déjà dans l'état demandé) : rien d'envoyé ni journalisé, mais copie
   locale des tags réalignée. Le mock enregistre aussi les `POST` dans `/_calls`.
+- À venir (`/calendar`, `internal/web/calendar.go`) : `GET /api/v3/calendar` de Sonarr (`includeSeries`) et Radarr,
+  `unmonitored=false`, lu en direct (8 s max par service, en parallèle), rien en base ; trois vues (bascule Liste / Grille / Calendrier) : liste ou grille d'affiches (`view=grid`, cartes
+  de la Bibliothèque en **un seul flux** : une tuile date (jour, numéro, mois, « dans N jours ») dans le flux avant les
+  cartes de chaque jour, pour des rangées pleines), paginées (période 30 /
+  90 (défaut) / 365 jours, `size` 10 / 25 (défaut) / 50 / 100 dans un petit `<select>` de la barre de pagination en bas, soumis par HTMX au
+  `change` ; `page`, liens qui gardent période et taille), ou vue mois (`view=month&month=2026-10`, semaines lundi en premier, mois précédent / suivant, pas de lien « ce mois-ci » (décision utilisateur) ; sous
+  760 px la grille devient la liste des jours qui ont des sorties). Épisodes d'une même saison le même jour regroupés (`S02E01–E03`), premières et finales (`finaleType`)
+  signalées ; une ligne par date de sortie Radarr (cinéma, numérique, physique), dates gardées telles quelles (jours,
+  pas d'heure). Lien vers la fiche si l'élément est déjà synchronisé. Le mock recale toujours `calendar.json` sur
+  aujourd'hui.
 - Santé (`/health`) : services vérifiés en direct (`upstream.CheckAll`, chargés en différé par HTMX, alertes
-  `/api/v3/health` de Sonarr/Radarr), derniers passages et historique de `sync_runs`, écarts de données
+  `/api/v3/health` de Sonarr/Radarr hors indexeurs), section **Trackers** séparée (`upstream.CheckTrackers`,
+  `/health/trackers` en différé : `/api/v3/indexer` + `/indexerstatus`, en échec d'abord, alertes `Indexer*` ; champs
+  `fields` des indexeurs jamais décodés ni capturés, ils contiennent des clés), derniers passages et historique de `sync_runs`, écarts de données
   (`store.DataHealth`).
-- Webhook Tautulli (`POST /webhooks/tautulli`, seule route sans session) : 404 sans secret, `X-Cleanarr-Token` comparé
+- Webhook Tautulli (`POST /webhooks/tautulli`, seule route sans session) : 404 sans secret, `X-Hangarr-Token` comparé
   en temps constant, corps ignoré, 60 req/min/IP, puis `syncer.RequestHistorySync` (anti-rebond 30 s, historique seul,
   partage le verrou de la sync complète). `LastSyncAt` ne compte que les sources de catalogue. Secret généré dans
   Configuration (affiché une seule fois).
@@ -170,21 +189,28 @@ Pas de framework web, pas de build Node pour l'app, pas de CDN.
   série dans le lot + `CONFIRM_BY_TYPING` → saisir le nombre d'éléments), `POST /batch/protect` (sans confirmation).
   `actions.DeleteBatch/ProtectBatch` : séquentiel, `Delete` normal par élément (`Confirmed`, `SkipPlexRefresh`), un seul
   rafraîchissement Plex par type à la fin, 100 éléments max, délai d'écriture prolongé (10 min). Rapport par élément dans la
-  modale `#confirm`, événement `cleanarr:batch-done` (cartes supprimées retirées, rechargement à la fermeture après protection).
-- Déploiement Docker : `compose.yml` (prod, projet `cleanarr`, volume `cleanarr-data`, durci comme k8s, `.env` facultatif),
+  modale `#confirm`, événement `hangarr:batch-done` (cartes supprimées retirées, rechargement à la fermeture après protection).
+- Déploiement Docker : `compose.yml` (prod, projet `hangarr`, volume `hangarr-data`, durci comme k8s, `.env` facultatif),
   `make deploy-check` = `compose.yml` tel quel + `deploy/compose.check.yml` (mock, sans port ni `.env`) + `deploy/check.sh`.
-  `cleanarr backup [PATH]` (`VACUUM INTO`, à chaud). Avertissement sur la page de connexion si HTTP avec `COOKIE_SECURE=true`
+  `hangarr backup [PATH]` (`VACUUM INTO`, à chaud). Avertissement sur la page de connexion si HTTP avec `COOKIE_SECURE=true`
   (hors localhost). Compose ≥ 2.24 (`env_file.required`, `!reset`).
+- Navigation : **menu latéral à gauche façon Sonarr** (`partials/nav.html`, templates `sidebar`, `topbar`) : Tableau de
+  bord, Bibliothèque (Séries, Films), À venir, Nettoyage, Stats, Système (Santé, Journal), Réglages (Général, Services,
+  Compte) ; une section n'affiche ses pages que si l'on y est, son titre mène à la première. Icônes SVG en ligne
+  (template `icon`). Réductible aux icônes (bouton, cookie `hangarr_sidebar=collapsed` lu par le serveur, pas de flash ;
+  libellés gardés pour les lecteurs d'écran) ; sous 800 px, panneau ☰ par-dessus la page (Échap, fond cliquable), sans
+  JS le menu s'affiche au-dessus de la page (`<html class="no-js">`, retiré par `app.js`). Barre du haut : sync, langue,
+  thème, déconnexion.
 - Thèmes clair / sombre : toutes les couleurs en variables `light-dark(clair, sombre)` dans `app.css` ; par défaut le
-  système, bouton (`data-theme-toggle`, `app.js`) → cookie `cleanarr_theme` lu par le serveur (`<html data-theme>`, pas de
+  système, bouton (`data-theme-toggle`, `app.js`) → cookie `hangarr_theme` lu par le serveur (`<html data-theme>`, pas de
   flash). Palette **graphite doux, légèrement bleuté** (identité propre, pas de crème/anthracite chaud façon Claude,
   décision utilisateur ; ni blanc ni noir purs, texte ~13:1, bordures discrètes). Boutons `--btn` au-dessus des cartes
   (visibles en sombre), `--on-accent` pour le texte sur fond accent/danger. Couleurs des graphiques validées pour les deux
   surfaces (validateur dataviz lancé dans Docker, surfaces `#f8f9fa` / `#1f2227`). Les pastilles
   posées sur les affiches restent sombres dans les deux thèmes.
-- Projets Compose : `cleanarr` = `compose.yml` (prod), `cleanarr-dev` = `compose.dev.yml`, `cleanarr-e2e`,
-  `cleanarr-deploy-check` : ne jamais leur donner le même nom (un `down` emporterait l'autre).
-- `make e2e` tourne dans le projet compose `cleanarr-e2e` (séparé) et lit le mot de passe initial dans les logs.
+- Projets Compose : `hangarr` = `compose.yml` (prod), `hangarr-dev` = `compose.dev.yml`, `hangarr-e2e`,
+  `hangarr-deploy-check` : ne jamais leur donner le même nom (un `down` emporterait l'autre).
+- `make e2e` tourne dans le projet compose `hangarr-e2e` (séparé) et lit le mot de passe initial dans les logs.
 
 ## Phase 6 : périmètre convenu avec l'utilisateur
 
@@ -192,16 +218,16 @@ En plus de SPEC §15.6 (Santé sans Prowlarr, webhook Tautulli, sélection en lo
 **pas d'export CSV**, décision utilisateur) :
 
 - **Déploiement** : Docker (`compose.yml`, `make deploy-check`) et Kubernetes en **manifests YAML simples, sans
-  kustomize** (décision utilisateur) : `deploy/kubernetes/cleanarr.yaml` (sans namespace imposé ; ConfigMap, PVC, Deployment,
+  kustomize** (décision utilisateur) : `deploy/kubernetes/hangarr.yaml` (sans namespace imposé ; ConfigMap, PVC, Deployment,
   Service), validé par kubeconform. Même image et mêmes invariants pour les deux (nonroot, rootfs en lecture seule,
   `/data` seul inscriptible, variantes `_FILE`) : ne rien introduire de spécifique à l'un des deux.
   Publication de l'image : GHCR via un workflow Forgejo Actions sur tag, **plus tard** (après la phase 6) ;
-  en attendant `make image PUSH=1 IMAGE=ghcr.io/<user>/cleanarr`.
+  en attendant `make image PUSH=1 IMAGE=ghcr.io/<user>/hangarr`.
 
 - **Configuration des services dans l'UI** (espace « Configuration ») : URL, URL publique, clé d'API / token de Sonarr,
   Radarr, Plex, Tautulli (+ secret du webhook), avec bouton « Tester la connexion ».
   - Secrets **chiffrés en base** (AES-256-GCM, nonce aléatoire par valeur). Clé maître **mode hybride** (décision
-    utilisateur) : `CLEANARR_MASTER_KEY` / `CLEANARR_MASTER_KEY_FILE` (secret Docker / Kubernetes) = mode recommandé ;
+    utilisateur) : `HANGARR_MASTER_KEY` / `HANGARR_MASTER_KEY_FILE` (secret Docker / Kubernetes) = mode recommandé ;
     sinon clé générée au premier démarrage dans `DATA_DIR/master.key` (0600), avec avertissement explicite dans l'UI
     (une sauvegarde du volume expose les secrets). Si une clé d'env apparaît alors que `master.key` existe : rechiffrement
     des secrets au démarrage puis suppression du fichier (rien à ressaisir).

@@ -8,13 +8,13 @@ import (
 	"strings"
 	"time"
 
-	"cleanarr/internal/auth"
-	"cleanarr/internal/store"
+	"hangarr/internal/auth"
+	"hangarr/internal/store"
 )
 
 const (
-	sessionCookie    = "cleanarr_session"
-	preSessionCookie = "cleanarr_presession"
+	sessionCookie    = "hangarr_session"
+	preSessionCookie = "hangarr_presession"
 	csrfHeader       = "X-CSRF-Token"
 	csrfField        = "csrf_token"
 )

@@ -19,7 +19,7 @@ func userClause(alias string, user int64) (string, []any) {
 }
 
 // protectedClause excludes media carrying one of the protection tags, or
-// protected in Cleanarr only.
+// protected in Hangarr only.
 func protectedClause(alias string, tags []string) (string, []any) {
 	local := " AND NOT " + alias + ".protected_local"
 	if len(tags) == 0 {

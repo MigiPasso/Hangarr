@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"time"
 
-	"cleanarr/internal/matching"
+	"hangarr/internal/matching"
 )
 
 // CatalogItem is a Sonarr series or Radarr movie to upsert.

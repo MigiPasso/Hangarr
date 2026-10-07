@@ -46,7 +46,7 @@ ARG VERSION=dev
 COPY . .
 RUN --mount=type=cache,target=/root/.cache/go-build \
     CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH \
-    go build -trimpath -ldflags "-s -w -X main.version=${VERSION}" -o /out/cleanarr ./cmd/cleanarr && \
+    go build -trimpath -ldflags "-s -w -X main.version=${VERSION}" -o /out/hangarr ./cmd/hangarr && \
     CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH \
     go build -trimpath -ldflags "-s -w" -o /out/mockarr ./cmd/mockarr && \
     mkdir -p /out/data
@@ -62,15 +62,15 @@ ENTRYPOINT ["/mockarr"]
 # --- runtime: what ships to Kubernetes --------------------------------------
 FROM gcr.io/distroless/static-debian12:nonroot AS runtime
 ARG VERSION=dev
-LABEL org.opencontainers.image.title="cleanarr" \
+LABEL org.opencontainers.image.title="hangarr" \
       org.opencontainers.image.description="Plex / Tautulli / Sonarr / Radarr watch statistics and cleanup" \
       org.opencontainers.image.version="${VERSION}"
-COPY --from=build /out/cleanarr /cleanarr
+COPY --from=build /out/hangarr /hangarr
 COPY --from=build --chown=65532:65532 /out/data /data
 USER 65532:65532
 ENV DATA_DIR=/data LISTEN_ADDR=:8080
 EXPOSE 8080
 VOLUME ["/data"]
-HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 CMD ["/cleanarr", "healthcheck"]
-ENTRYPOINT ["/cleanarr"]
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 CMD ["/hangarr", "healthcheck"]
+ENTRYPOINT ["/hangarr"]
 CMD ["serve"]

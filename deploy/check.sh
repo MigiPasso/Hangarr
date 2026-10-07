@@ -1,7 +1,7 @@
 #!/bin/sh
 # Smoke test of compose.yml (run by `make deploy-check` in the check container).
 set -eu
-base=http://cleanarr:8080
+base=http://hangarr:8080
 fail() { echo "FAIL: $*" >&2; exit 1; }
 code() { curl -s -o /dev/null -w '%{http_code}' "$@"; }
 

@@ -2,51 +2,51 @@
 #
 #   cp .env.example .env                  # optional settings (DRY_RUN, COOKIE_SECURE, TZ…)
 #   docker compose up -d --build          # first start, and updates from the sources
-#   docker compose logs cleanarr | grep -A4 "INITIAL ADMIN"     # initial admin password
+#   docker compose logs hangarr | grep -A4 "INITIAL ADMIN"     # initial admin password
 #
 # Then open http://<host>:8080 and configure Sonarr, Radarr, Plex and Tautulli in « Configuration ».
 # `make deploy-check` validates this file and smoke-tests it against fake upstreams.
-name: cleanarr
+name: hangarr
 
 services:
-  cleanarr:
-    image: ${CLEANARR_IMAGE:-cleanarr:local}
+  hangarr:
+    image: ${HANGARR_IMAGE:-hangarr:local}
     build:
       context: .
       target: runtime
-    container_name: cleanarr
+    container_name: hangarr
     restart: unless-stopped
     ports:
-      - "${CLEANARR_PORT:-8080}:8080"
+      - "${HANGARR_PORT:-8080}:8080"
     env_file:
       - path: .env
         required: false
     volumes:
       # The only writable path: database, image cache and, without
-      # CLEANARR_MASTER_KEY, the generated master key.
-      - cleanarr-data:/data
+      # HANGARR_MASTER_KEY, the generated master key.
+      - hangarr-data:/data
     # Same hardening as on Kubernetes.
     read_only: true
     user: "65532:65532"
     cap_drop: [ALL]
     security_opt: ["no-new-privileges:true"]
-    # Healthcheck: built into the image (`cleanarr healthcheck`).
+    # Healthcheck: built into the image (`hangarr healthcheck`).
 
     # --- Recommended: master key from a Docker secret, outside the data volume.
-    # Generate it once: docker run --rm cleanarr:local master-key > master.key
+    # Generate it once: docker run --rm hangarr:local master-key > master.key
     # then uncomment the three lines below and the « secrets » block at the end.
-    # secrets: [cleanarr_master_key]
+    # secrets: [hangarr_master_key]
     # environment:
-    #   CLEANARR_MASTER_KEY_FILE: /run/secrets/cleanarr_master_key
+    #   HANGARR_MASTER_KEY_FILE: /run/secrets/hangarr_master_key
 
     # --- Optional: join the network of your Sonarr/Radarr/Plex/Tautulli stack
     # to reach them by name (http://sonarr:8989) and let Tautulli call the
-    # webhook (http://cleanarr:8080/webhooks/tautulli). Uncomment with the
+    # webhook (http://hangarr:8080/webhooks/tautulli). Uncomment with the
     # « networks » block at the end.
     # networks: [default, arr]
 
 volumes:
-  cleanarr-data:
+  hangarr-data:
 
 # networks:
 #   arr:
@@ -54,5 +54,5 @@ volumes:
 #     name: arr_default        # `docker network ls` shows the name of your stack's network
 
 # secrets:
-#   cleanarr_master_key:
+#   hangarr_master_key:
 #     file: ./master.key

@@ -1,4 +1,4 @@
-// cleanarr: minimal client script (CSP script-src 'self', no eval).
+// hangarr: minimal client script (CSP script-src 'self', no eval).
 // Live password checklist: purely informative, the server stays the only
 // source of truth and the password is never sent while typing.
 (function () {
@@ -86,15 +86,15 @@
     setTimeout(function () { t.remove(); }, 6000);
   }
 
-  document.addEventListener("cleanarr:toast", function (e) { toast(e.detail.message, e.detail.level); });
+  document.addEventListener("hangarr:toast", function (e) { toast(e.detail.message, e.detail.level); });
 
   // Protection changed: reload the detail (modal or page) to show the new state.
-  document.addEventListener("cleanarr:changed", function (e) {
+  document.addEventListener("hangarr:changed", function (e) {
     var modal = document.getElementById("modal");
     if (modal && modal.open) { htmx.ajax("GET", e.detail.detailUrl, { target: "#modal-body" }); } else { location.reload(); }
   });
 
-  document.addEventListener("cleanarr:deleted", function (e) {
+  document.addEventListener("hangarr:deleted", function (e) {
     var d = e.detail;
     var confirm = document.getElementById("confirm");
     if (confirm && confirm.open) { confirm.close(); }
@@ -158,7 +158,7 @@
   document.addEventListener("DOMContentLoaded", update);
 
   var reloadOnClose = false;
-  document.addEventListener("cleanarr:batch-done", function (e) {
+  document.addEventListener("hangarr:batch-done", function (e) {
     (e.detail.deleted || []).forEach(function (id) {
       var el = document.getElementById("media-" + id);
       if (el) { el.remove(); }
@@ -185,7 +185,55 @@
       (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
     var next = current === "dark" ? "light" : "dark";
     root.setAttribute("data-theme", next);
-    document.cookie = "cleanarr_theme=" + next + "; Path=/; Max-Age=31536000; SameSite=Lax" +
+    document.cookie = "hangarr_theme=" + next + "; Path=/; Max-Age=31536000; SameSite=Lax" +
       (location.protocol === "https:" ? "; Secure" : "");
+  });
+})();
+
+// Sidebar: collapse to icons on wide screens (remembered in a cookie read by
+// the server, no flash), slide-in panel on small screens. Without JavaScript
+// the menu is simply shown above the page on small screens (.no-js).
+(function () {
+  "use strict";
+
+  document.documentElement.classList.remove("no-js");
+
+  function shell() { return document.querySelector(".shell"); }
+
+  function setOpen(open) {
+    var s = shell();
+    if (!s) { return; }
+    s.classList.toggle("is-open", open);
+    var backdrop = s.querySelector(".sidebar-backdrop");
+    if (backdrop) { backdrop.hidden = !open; }
+    var button = document.querySelector("[data-sidebar-open]");
+    if (button) { button.setAttribute("aria-expanded", open ? "true" : "false"); }
+    if (open) {
+      var first = s.querySelector(".sidebar a, .sidebar button");
+      if (first) { first.focus(); }
+    }
+  }
+
+  document.addEventListener("click", function (e) {
+    if (!e.target.closest) { return; }
+    if (e.target.closest("[data-sidebar-open]")) { setOpen(true); return; }
+    if (e.target.closest("[data-sidebar-close]")) { setOpen(false); return; }
+    if (e.target.closest("[data-sidebar-collapse]")) {
+      var s = shell();
+      if (!s) { return; }
+      if (window.matchMedia("(max-width: 800px)").matches) { setOpen(false); return; }
+      var collapsed = !s.classList.contains("is-collapsed");
+      s.classList.toggle("is-collapsed", collapsed);
+      document.cookie = "hangarr_sidebar=" + (collapsed ? "collapsed" : "open") +
+        "; Path=/; Max-Age=31536000; SameSite=Lax" + (location.protocol === "https:" ? "; Secure" : "");
+    }
+  });
+  document.addEventListener("keydown", function (e) {
+    var s = shell();
+    if (e.key === "Escape" && s && s.classList.contains("is-open")) {
+      setOpen(false);
+      var button = document.querySelector("[data-sidebar-open]");
+      if (button) { button.focus(); }
+    }
   });
 })();

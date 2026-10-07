@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"cleanarr/internal/auth"
-	"cleanarr/internal/store"
+	"hangarr/internal/auth"
+	"hangarr/internal/store"
 )
 
 func (s *Server) healthz(w http.ResponseWriter, _ *http.Request) {

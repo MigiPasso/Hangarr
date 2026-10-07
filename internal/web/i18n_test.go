@@ -11,10 +11,10 @@ import (
 	"strings"
 	"testing"
 
-	"cleanarr/internal/config"
-	"cleanarr/internal/i18n"
-	"cleanarr/internal/store"
-	"cleanarr/internal/upstream"
+	"hangarr/internal/config"
+	"hangarr/internal/i18n"
+	"hangarr/internal/store"
+	"hangarr/internal/upstream"
 )
 
 var (
@@ -116,6 +116,9 @@ func TestFrenchCatalogComplete(t *testing.T) {
 	for _, k := range append(append([]string{}, weekdayKeys...), monthKeys...) {
 		add(k, "weekday/month keys")
 	}
+	for _, k := range append(append(weekdayNames[:], releaseTypes[:]...), monthNames[:]...) {
+		add(k, "calendar keys")
+	}
 	for _, f := range upstream.Fields {
 		add(f.Label, "upstream.Fields")
 		add(f.Help, "upstream.Fields")
@@ -127,7 +130,7 @@ func TestFrenchCatalogComplete(t *testing.T) {
 		"The number typed does not match the number of items to delete.",
 		"Invalid time: hour 0 to 23, minute 0 to 59.",
 		"Expected an http(s) address, e.g. http://host:port.", "At least 32 characters.",
-		"Cannot save: no master key (CLEANARR_MASTER_KEY).", "Delete selection", "Protect selection",
+		"Cannot save: no master key (HANGARR_MASTER_KEY).", "Delete selection", "Protect selection",
 		store.NoGenre, store.Unknown} {
 		add(k, "Go literals")
 	}
@@ -145,7 +148,7 @@ func TestLanguageSwitch(t *testing.T) {
 	h := newHarness(t, func(c *config.Config) { c.DefaultLang = "en" })
 	c := h.client()
 	page := h.do(c, http.MethodGet, "/login", nil, nil)
-	if !strings.Contains(page.body, `<html lang="en">`) || !strings.Contains(page.body, ">Sign in</button>") ||
+	if !strings.Contains(page.body, `<html lang="en" class="no-js">`) || !strings.Contains(page.body, ">Sign in</button>") ||
 		!strings.Contains(page.body, `href="/lang/fr?next=%2flogin"`) {
 		t.Fatal("English by default, with a link to French")
 	}
@@ -154,7 +157,7 @@ func TestLanguageSwitch(t *testing.T) {
 		t.Fatalf("switch: %d %s", r.status, r.header.Get("Location"))
 	}
 	page = h.do(c, http.MethodGet, "/login", nil, nil)
-	if !strings.Contains(page.body, `<html lang="fr">`) || !strings.Contains(page.body, ">Se connecter</button>") {
+	if !strings.Contains(page.body, `<html lang="fr" class="no-js">`) || !strings.Contains(page.body, ">Se connecter</button>") {
 		t.Error("French after the switch (cookie)")
 	}
 	for _, next := range []string{"//evil.example", "https://evil.example/x", "/\\evil.example", "javascript:alert(1)", ""} {

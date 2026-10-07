@@ -22,7 +22,7 @@ import (
 
 	"golang.org/x/sync/singleflight"
 
-	"cleanarr/internal/clients/httpx"
+	"hangarr/internal/clients/httpx"
 )
 
 // Tunables.

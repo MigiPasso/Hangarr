@@ -1,0 +1,336 @@
+[
+  {
+    "id": 6,
+    "title": "Project Hail Mary",
+    "sortTitle": "project hail mary",
+    "sizeOnDisk": 0,
+    "status": "announced",
+    "overview": "",
+    "images": [
+      {
+        "coverType": "poster",
+        "url": "/MediaCover/6/poster.jpg"
+      }
+    ],
+    "year": 2026,
+    "hasFile": false,
+    "path": "/movies/Project Hail Mary (2026)",
+    "qualityProfileId": 4,
+    "monitored": true,
+    "runtime": 130,
+    "tmdbId": 687163,
+    "imdbId": "tt12042730",
+    "titleSlug": "687163",
+    "studio": "Amazon MGM Studios",
+    "genres": [
+      "Science Fiction",
+      "Adventure"
+    ],
+    "tags": [],
+    "added": "2026-08-20T10:00:00Z",
+    "ratings": {},
+    "inCinemas": "2026-11-10T00:00:00Z"
+  },
+  {
+    "id": 7,
+    "title": "Dune: Part Three",
+    "sortTitle": "dune: part three",
+    "sizeOnDisk": 0,
+    "status": "announced",
+    "overview": "",
+    "images": [
+      {
+        "coverType": "poster",
+        "url": "/MediaCover/7/poster.jpg"
+      }
+    ],
+    "year": 2026,
+    "hasFile": false,
+    "path": "/movies/Dune: Part Three (2026)",
+    "qualityProfileId": 4,
+    "monitored": true,
+    "runtime": 130,
+    "tmdbId": 1170608,
+    "imdbId": "tt31378509",
+    "titleSlug": "1170608",
+    "studio": "Legendary Pictures",
+    "genres": [
+      "Science Fiction",
+      "Adventure"
+    ],
+    "tags": [],
+    "added": "2026-08-20T10:00:00Z",
+    "ratings": {},
+    "inCinemas": "2026-12-10T00:00:00Z",
+    "digitalRelease": "2027-01-24T00:00:00Z",
+    "physicalRelease": "2027-02-18T00:00:00Z"
+  },
+  {
+    "id": 8,
+    "title": "Spider-Man: Brand New Day",
+    "sortTitle": "spider-man: brand new day",
+    "sizeOnDisk": 0,
+    "status": "announced",
+    "overview": "",
+    "images": [
+      {
+        "coverType": "poster",
+        "url": "/MediaCover/8/poster.jpg"
+      }
+    ],
+    "year": 2026,
+    "hasFile": false,
+    "path": "/movies/Spider-Man: Brand New Day (2026)",
+    "qualityProfileId": 4,
+    "monitored": true,
+    "runtime": 130,
+    "tmdbId": 969681,
+    "imdbId": "tt22084616",
+    "titleSlug": "969681",
+    "studio": "Marvel Studios",
+    "genres": [
+      "Action",
+      "Adventure"
+    ],
+    "tags": [],
+    "added": "2026-08-20T10:00:00Z",
+    "ratings": {},
+    "inCinemas": "2026-11-25T00:00:00Z"
+  },
+  {
+    "id": 9,
+    "title": "The Odyssey",
+    "sortTitle": "the odyssey",
+    "sizeOnDisk": 0,
+    "status": "announced",
+    "overview": "",
+    "images": [
+      {
+        "coverType": "poster",
+        "url": "/MediaCover/9/poster.jpg"
+      }
+    ],
+    "year": 2026,
+    "hasFile": false,
+    "path": "/movies/The Odyssey (2026)",
+    "qualityProfileId": 4,
+    "monitored": true,
+    "runtime": 130,
+    "tmdbId": 1368337,
+    "imdbId": "tt33764258",
+    "titleSlug": "1368337",
+    "studio": "Universal Pictures",
+    "genres": [
+      "Adventure",
+      "Fantasy"
+    ],
+    "tags": [],
+    "added": "2026-08-20T10:00:00Z",
+    "ratings": {},
+    "inCinemas": "2026-11-18T00:00:00Z"
+  },
+  {
+    "id": 10,
+    "title": "Wicked: For Good",
+    "sortTitle": "wicked: for good",
+    "sizeOnDisk": 0,
+    "status": "inCinemas",
+    "overview": "",
+    "images": [
+      {
+        "coverType": "poster",
+        "url": "/MediaCover/10/poster.jpg"
+      }
+    ],
+    "year": 2025,
+    "hasFile": false,
+    "path": "/movies/Wicked: For Good (2025)",
+    "qualityProfileId": 4,
+    "monitored": true,
+    "runtime": 130,
+    "tmdbId": 967941,
+    "imdbId": "tt19847976",
+    "titleSlug": "967941",
+    "studio": "Universal Pictures",
+    "genres": [
+      "Fantasy",
+      "Musical"
+    ],
+    "tags": [],
+    "added": "2026-08-20T10:00:00Z",
+    "ratings": {},
+    "inCinemas": "2026-08-22T00:00:00Z",
+    "digitalRelease": "2026-10-09T00:00:00Z",
+    "physicalRelease": "2026-10-31T00:00:00Z"
+  },
+  {
+    "id": 11,
+    "title": "Zootopia 2",
+    "sortTitle": "zootopia 2",
+    "sizeOnDisk": 0,
+    "status": "announced",
+    "overview": "",
+    "images": [
+      {
+        "coverType": "poster",
+        "url": "/MediaCover/11/poster.jpg"
+      }
+    ],
+    "year": 2025,
+    "hasFile": false,
+    "path": "/movies/Zootopia 2 (2025)",
+    "qualityProfileId": 4,
+    "monitored": true,
+    "runtime": 130,
+    "tmdbId": 1084242,
+    "imdbId": "tt26443597",
+    "titleSlug": "1084242",
+    "studio": "Walt Disney Animation Studios",
+    "genres": [
+      "Animation",
+      "Comedy"
+    ],
+    "tags": [],
+    "added": "2026-08-20T10:00:00Z",
+    "ratings": {},
+    "inCinemas": "2026-10-19T00:00:00Z",
+    "digitalRelease": "2026-12-15T00:00:00Z"
+  },
+  {
+    "id": 12,
+    "title": "Avengers: Doomsday",
+    "sortTitle": "avengers: doomsday",
+    "sizeOnDisk": 0,
+    "status": "announced",
+    "overview": "",
+    "images": [
+      {
+        "coverType": "poster",
+        "url": "/MediaCover/12/poster.jpg"
+      }
+    ],
+    "year": 2026,
+    "hasFile": false,
+    "path": "/movies/Avengers: Doomsday (2026)",
+    "qualityProfileId": 4,
+    "monitored": true,
+    "runtime": 130,
+    "tmdbId": 1003596,
+    "imdbId": "tt21357150",
+    "titleSlug": "1003596",
+    "studio": "Marvel Studios",
+    "genres": [
+      "Action",
+      "Science Fiction"
+    ],
+    "tags": [],
+    "added": "2026-08-20T10:00:00Z",
+    "ratings": {},
+    "inCinemas": "2026-12-20T00:00:00Z"
+  },
+  {
+    "id": 13,
+    "title": "Frankenstein",
+    "sortTitle": "frankenstein",
+    "sizeOnDisk": 0,
+    "status": "inCinemas",
+    "overview": "",
+    "images": [
+      {
+        "coverType": "poster",
+        "url": "/MediaCover/13/poster.jpg"
+      }
+    ],
+    "year": 2025,
+    "hasFile": false,
+    "path": "/movies/Frankenstein (2025)",
+    "qualityProfileId": 4,
+    "monitored": true,
+    "runtime": 130,
+    "tmdbId": 1062722,
+    "imdbId": "tt1312221",
+    "titleSlug": "1062722",
+    "studio": "Netflix",
+    "genres": [
+      "Drama",
+      "Horror"
+    ],
+    "tags": [],
+    "added": "2026-08-20T10:00:00Z",
+    "ratings": {},
+    "inCinemas": "2026-09-11T00:00:00Z",
+    "digitalRelease": "2026-10-04T00:00:00Z"
+  },
+  {
+    "id": 14,
+    "title": "The Running Man",
+    "sortTitle": "the running man",
+    "sizeOnDisk": 0,
+    "status": "inCinemas",
+    "overview": "",
+    "images": [
+      {
+        "coverType": "poster",
+        "url": "/MediaCover/14/poster.jpg"
+      }
+    ],
+    "year": 2025,
+    "hasFile": false,
+    "path": "/movies/The Running Man (2025)",
+    "qualityProfileId": 4,
+    "monitored": true,
+    "runtime": 130,
+    "tmdbId": 798645,
+    "imdbId": "tt14107334",
+    "titleSlug": "798645",
+    "studio": "Paramount Pictures",
+    "genres": [
+      "Action",
+      "Thriller"
+    ],
+    "tags": [],
+    "added": "2026-08-20T10:00:00Z",
+    "ratings": {},
+    "inCinemas": "2026-09-01T00:00:00Z",
+    "digitalRelease": "2026-10-26T00:00:00Z",
+    "physicalRelease": "2026-11-20T00:00:00Z"
+  },
+  {
+    "id": 15,
+    "title": "Superman",
+    "sortTitle": "superman",
+    "sizeOnDisk": 12000000000,
+    "status": "inCinemas",
+    "overview": "",
+    "images": [
+      {
+        "coverType": "poster",
+        "url": "/MediaCover/15/poster.jpg"
+      }
+    ],
+    "year": 2025,
+    "hasFile": true,
+    "path": "/movies/Superman (2025)",
+    "qualityProfileId": 4,
+    "monitored": true,
+    "runtime": 130,
+    "tmdbId": 1061474,
+    "imdbId": "tt5950044",
+    "titleSlug": "1061474",
+    "studio": "DC Studios",
+    "genres": [
+      "Action",
+      "Science Fiction"
+    ],
+    "tags": [],
+    "added": "2026-08-20T10:00:00Z",
+    "ratings": {},
+    "inCinemas": "2026-07-03T00:00:00Z",
+    "digitalRelease": "2026-08-22T00:00:00Z",
+    "physicalRelease": "2026-10-07T00:00:00Z",
+    "movieFile": {
+      "size": 12000000000,
+      "relativePath": "Superman (2025).mkv"
+    }
+  }
+]

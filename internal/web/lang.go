@@ -5,11 +5,11 @@ import (
 	"net/url"
 	"strings"
 
-	"cleanarr/internal/i18n"
+	"hangarr/internal/i18n"
 )
 
 // langCookie remembers the interface language chosen with the EN / FR link.
-const langCookie = "cleanarr_lang"
+const langCookie = "hangarr_lang"
 
 // loc returns the localizer of the request: the language cookie, otherwise
 // DEFAULT_LANG (English by default).

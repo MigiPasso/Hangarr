@@ -1,0 +1,130 @@
+{{define "content"}}{{$d := .Data}}
+<div id="calendar-page">
+<div class="section-head">
+  <div class="title-row"><h1>{{t "Upcoming"}}</h1>{{template "info" (t "Monitored episodes and movies, read live from Sonarr and Radarr.")}}</div>
+  <div class="cal-controls">
+    {{if eq $d.View "month"}}
+    <nav class="cal-nav" aria-label="{{t "Month"}}">
+      <a href="/calendar?view=month&amp;month={{$d.Prev}}" aria-label="{{t "Previous month"}}" title="{{t "Previous month"}}">‹</a>
+      <strong class="cal-month-label">{{$d.MonthLabel}}</strong>
+      <a href="/calendar?view=month&amp;month={{$d.Next}}" aria-label="{{t "Next month"}}" title="{{t "Next month"}}">›</a>
+    </nav>
+    {{else}}
+    <nav class="tabs tabs-small" aria-label="{{t "Period"}}">
+      {{range $d.Ranges}}<a href="{{calendarURL $d.View . $d.Size 1}}"{{if eq . $d.Days}} aria-current="page"{{end}}>{{if eq . 30}}{{t "30 days"}}{{else if eq . 90}}{{t "3 months"}}{{else}}{{t "1 year"}}{{end}}</a>{{end}}
+    </nav>
+    {{end}}
+    <span class="view-toggle" role="group" aria-label="{{t "View"}}">
+      <a href="{{calendarURL "list" $d.Days $d.Size 1}}"{{if eq $d.View "list"}} aria-current="true"{{end}}>{{t "List"}}</a>
+      <a href="{{calendarURL "grid" $d.Days $d.Size 1}}"{{if eq $d.View "grid"}} aria-current="true"{{end}}>{{t "Grid"}}</a>
+      <a href="/calendar?view=month"{{if eq $d.View "month"}} aria-current="true"{{end}}>{{t "Calendar"}}</a>
+    </span>
+  </div>
+</div>
+
+{{with $d.Failed}}<p class="alert alert-warning" role="status">{{t "Unreachable, releases missing: %s." (join . ", ")}} <a href="/health">{{t "Health"}}</a></p>{{end}}
+{{with $d.Unconfigured}}<p class="small muted">{{t "Not configured: %s." (join . ", ")}} <a href="/config">{{t "Configure the services"}}</a></p>{{end}}
+
+{{if eq $d.View "month"}}{{template "calendar_month" $d}}
+{{else if and $d.List (eq $d.View "grid")}}
+{{/* One continuous flow: a date tile, then that day's cards, then the next
+     date tile… so the rows are always full. */}}
+<div class="grid cal-flow">
+  {{range $d.List}}
+  <div class="cal-date" role="heading" aria-level="2" aria-label="{{.Label}}">
+    <span class="cal-date-wd" aria-hidden="true">{{.Weekday}}</span>
+    <span class="cal-date-num" aria-hidden="true">{{.Num}}</span>
+    <span class="cal-date-mo" aria-hidden="true">{{.Month}}</span>
+    {{with .Rel}}<span class="cal-date-rel" aria-hidden="true">{{.}}</span>{{end}}
+  </div>
+  {{range .Entries}}
+  <article class="media-card cal-card{{if .HasFile}} cal-done{{end}}">
+    {{if .MediaID}}<a class="card-link" href="{{mediaPath .Kind}}/{{.MediaID}}" hx-get="{{mediaPath .Kind}}/{{.MediaID}}" hx-target="#modal-body" aria-label="{{.Title}}">{{end}}
+    <div class="poster">
+      {{if .MediaID}}<img src="{{imgURL .Kind .ArrID "" "poster"}}" alt="" loading="lazy" decoding="async" width="200" height="300">{{else}}<div class="poster-fallback">{{.Title}}</div>{{end}}
+      <span class="badge state">{{.What}}</span>
+    </div>
+    <div class="media-meta">
+      <h3 title="{{.Title}}">{{.Title}}</h3>
+      <p class="small muted cal-parts">{{with .Time}}<span>{{.}}</span>{{end}}{{if gt .Count 1}}<span>{{tn .Count "%d episode" "%d episodes"}}</span>{{end}}{{with .Note}}<span>{{.}}</span>{{end}}{{if .HasFile}}<span>{{t "Downloaded|calendar"}}</span>{{end}}</p>
+    </div>
+    {{if .MediaID}}</a>{{end}}
+  </article>
+  {{end}}
+  {{end}}
+</div>
+{{template "calendar_pager" $d}}
+{{else if $d.List}}
+<div class="calendar">
+  {{range $d.List}}
+  <section class="card cal-day">
+    <h2>{{.Label}}</h2>
+    <ul class="recent">
+      {{range .Entries}}
+      <li>
+        {{if .MediaID}}<img src="{{imgURL .Kind .ArrID "" "poster"}}" alt="" width="36" height="54" loading="lazy" decoding="async">{{else}}<span class="thumb-fallback"></span>{{end}}
+        <div class="cal-entry">
+          <div>
+            {{if .MediaID}}<a href="{{mediaPath .Kind}}/{{.MediaID}}" hx-get="{{mediaPath .Kind}}/{{.MediaID}}" hx-target="#modal-body">{{.Title}}</a>{{else}}<span>{{.Title}}</span>{{end}}
+            {{with .Note}}<span class="badge">{{.}}</span>{{end}}
+            {{if .HasFile}}<span class="badge badge-muted">{{t "Downloaded|calendar"}}</span>{{end}}
+          </div>
+          <div class="small muted">
+            {{.What}}{{if gt .Count 1}} · {{tn .Count "%d episode" "%d episodes"}}{{end}}{{with .EpisodeTitle}} · {{.}}{{end}}
+          </div>
+        </div>
+        {{with .Time}}<time class="small muted cal-time">{{.}}</time>{{end}}
+      </li>
+      {{end}}
+    </ul>
+  </section>
+  {{end}}
+</div>
+{{template "calendar_pager" $d}}
+{{else if not $d.Failed}}
+<p class="muted">{{t "Nothing scheduled in this period."}}</p>
+{{end}}
+</div>
+{{end}}
+
+{{/* calendar_month: the weeks of a month, Monday first. On narrow screens
+     the grid becomes a list of the days that have releases. */}}
+{{define "calendar_month"}}
+<div class="card cal-month-card">
+  <table class="cal-month">
+    <caption class="visually-hidden">{{.MonthLabel}}</caption>
+    <thead><tr>{{range .Weekdays}}<th scope="col">{{.}}</th>{{end}}</tr></thead>
+    <tbody>
+    {{range .Weeks}}<tr>
+      {{range .}}<td class="{{if not .InMonth}}cal-out{{end}}{{if .Today}} cal-today{{end}}{{if .Past}} cal-past{{end}}{{if not .Entries}} cal-empty{{end}}"{{if .Today}} aria-current="date"{{end}}>
+        <span class="cal-daynum">{{.Day}}</span>
+        {{if .Entries}}<ul>
+          {{range .Entries}}<li class="cal-chip cal-{{.Kind}}{{if .HasFile}} cal-done{{end}}">
+            {{if .MediaID}}<a href="{{mediaPath .Kind}}/{{.MediaID}}" hx-get="{{mediaPath .Kind}}/{{.MediaID}}" hx-target="#modal-body">{{.Title}}</a>{{else}}<span>{{.Title}}</span>{{end}}
+            <span class="small muted">{{.What}}{{with .Time}} · {{.}}{{end}}</span>
+            {{with .Note}}<span class="small cal-note">{{.}}</span>{{end}}
+          </li>{{end}}
+        </ul>{{end}}
+      </td>{{end}}
+    </tr>{{end}}
+    </tbody>
+  </table>
+</div>
+{{end}}
+
+{{define "calendar_pager"}}{{$size := .Size}}
+<nav class="pager cal-pager" aria-label="{{t "Pages"}}">
+  {{with .PrevURL}}<a class="button" href="{{.}}" rel="prev">← {{t "Previous"}}</a>{{else}}<span></span>{{end}}
+  <form class="cal-size small muted" method="get" action="/calendar" hx-get="/calendar" hx-target="#calendar-page"
+        hx-select="#calendar-page" hx-swap="outerHTML" hx-push-url="true" hx-trigger="change">
+    <span>{{tn .Total "%d release" "%d releases"}}{{if gt .Pages 1}} · {{t "page %d of %d" .Page .Pages}}{{end}}</span>
+    <input type="hidden" name="days" value="{{.Days}}">
+    {{if eq .View "grid"}}<input type="hidden" name="view" value="grid">{{end}}
+    <label>{{t "Per page"}}
+      <select name="size">{{range .Sizes}}<option value="{{.}}"{{if eq . $size}} selected{{end}}>{{.}}</option>{{end}}</select>
+    </label>
+    <noscript><button type="submit" class="small">OK</button></noscript>
+  </form>
+  {{with .NextURL}}<a class="button" href="{{.}}" rel="next">{{t "Next|page"}} →</a>{{else}}<span></span>{{end}}
+</nav>
+{{end}}

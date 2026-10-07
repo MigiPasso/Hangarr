@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"log/slog"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -27,7 +28,10 @@ var migrationsFS embed.FS
 var ErrNotFound = errors.New("not found")
 
 // DBFileName is the SQLite file inside DATA_DIR.
-const DBFileName = "cleanarr.db"
+const DBFileName = "hangarr.db"
+
+// legacyDBFileName is the file of Cleanarr, the former name; Open renames it.
+const legacyDBFileName = "cleanarr.db"
 
 // Store wraps the database handle.
 type Store struct {
@@ -55,7 +59,32 @@ func Open(ctx context.Context, dataDir string) (*Store, error) {
 	if err := os.MkdirAll(dataDir, 0o700); err != nil {
 		return nil, fmt.Errorf("create data dir: %w", err)
 	}
+	if err := renameLegacyDB(dataDir); err != nil {
+		return nil, err
+	}
 	return OpenPath(ctx, filepath.Join(dataDir, DBFileName))
+}
+
+// renameLegacyDB renames cleanarr.db (and its WAL files) to hangarr.db when
+// only the old one exists. The WAL and shared-memory files move first: if the
+// process stops halfway, the next start finishes the job without losing
+// the journal.
+func renameLegacyDB(dataDir string) error {
+	newPath, oldPath := filepath.Join(dataDir, DBFileName), filepath.Join(dataDir, legacyDBFileName)
+	if _, err := os.Stat(newPath); err == nil {
+		return nil
+	}
+	if _, err := os.Stat(oldPath); err != nil {
+		return nil //nolint:nilerr // no legacy database: nothing to do
+	}
+	for _, suffix := range []string{"-wal", "-shm", ""} {
+		err := os.Rename(oldPath+suffix, newPath+suffix)
+		if err != nil && !errors.Is(err, os.ErrNotExist) {
+			return fmt.Errorf("rename %s to %s: %w", legacyDBFileName+suffix, DBFileName+suffix, err)
+		}
+	}
+	slog.Info("database renamed after the rename of Cleanarr to Hangarr", "from", legacyDBFileName, "to", DBFileName)
+	return nil
 }
 
 // OpenPath opens the database at path and applies migrations.

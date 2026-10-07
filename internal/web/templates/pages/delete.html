@@ -19,7 +19,7 @@
   <p>{{t "Space freed:"}} <strong>{{if $d.SizeBytes}}{{bytes $d.SizeBytes}}{{else}}{{t "none"}}{{end}}</strong>{{template "info" (t "If the files are deleted.")}}</p>
   {{end}}
   {{if $d.DryRun}}<p class="alert alert-warning">{{t "Simulation (DRY_RUN): logged, nothing deleted."}}</p>{{end}}
-  {{if $d.Protected}}<p class="alert alert-error">{{if $d.Plex}}{{t "Protected in Cleanarr: deletion will be refused."}}{{else}}{{t "Protected by a tag: deletion will be refused."}}{{end}}</p>{{end}}
+  {{if $d.Protected}}<p class="alert alert-error">{{if $d.Plex}}{{t "Protected in Hangarr: deletion will be refused."}}{{else}}{{t "Protected by a tag: deletion will be refused."}}{{end}}</p>{{end}}
   {{with $d.Error}}<p class="alert alert-error" role="alert">{{.}}</p>{{end}}
 
   {{if $d.Plex}}

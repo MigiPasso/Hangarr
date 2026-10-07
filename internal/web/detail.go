@@ -13,10 +13,10 @@ import (
 	"strings"
 	"time"
 
-	"cleanarr/internal/actions"
-	"cleanarr/internal/clients/sonarr"
-	"cleanarr/internal/i18n"
-	"cleanarr/internal/store"
+	"hangarr/internal/actions"
+	"hangarr/internal/clients/sonarr"
+	"hangarr/internal/i18n"
+	"hangarr/internal/store"
 )
 
 // historyLimit bounds the play history shown on the detail page.
@@ -205,11 +205,18 @@ func buildProgress(eps []sonarr.Episode, watches []store.EpisodeWatch, seasons [
 func (s *Server) links(ctx context.Context, m *store.Media) []link {
 	var out []link
 	up := s.Upstreams.Get()
-	if m.ArrID > 0 && m.TitleSlug != "" {
-		if m.Kind == "series" {
-			out = append(out, link{"Sonarr", up.SonarrWebURL() + "/series/" + url.PathEscape(m.TitleSlug)})
-		} else {
-			out = append(out, link{"Radarr", up.RadarrWebURL() + "/movie/" + url.PathEscape(m.TitleSlug)})
+	switch {
+	case m.ArrID <= 0:
+	case m.Kind == "series" && m.TitleSlug != "":
+		out = append(out, link{"Sonarr", up.SonarrWebURL() + "/series/" + url.PathEscape(m.TitleSlug)})
+	case m.Kind == "movie":
+		// Radarr's slug is the TMDB id (v4+); fall back to it when missing.
+		slug := m.TitleSlug
+		if slug == "" && m.TmdbID > 0 {
+			slug = strconv.FormatInt(m.TmdbID, 10)
+		}
+		if slug != "" {
+			out = append(out, link{"Radarr", up.RadarrWebURL() + "/movie/" + url.PathEscape(slug)})
 		}
 	}
 	if mid := s.Store.PlexMachineID(ctx); mid != "" && m.PlexRatingKey != "" {
@@ -258,7 +265,7 @@ func (s *Server) detail(kind string) http.HandlerFunc {
 		switch {
 		case s.Actions == nil:
 		case plexDeletable(m):
-			d.CanProtect = true // in Cleanarr only
+			d.CanProtect = true // in Hangarr only
 		case len(s.Config.ProtectedTags) > 0 && m.ArrID > 0:
 			d.CanProtect, d.ProtectTag = true, s.Config.ProtectedTags[0]
 		}
@@ -391,7 +398,7 @@ var actionErrors = []struct {
 	{actions.ErrNotFound, "Item not found."},
 	{actions.ErrNotDeletable, "Not managed by Sonarr/Radarr: cannot be deleted."},
 	{actions.ErrProtected, "Protected by a tag."},
-	{actions.ErrProtectedLocal, "Protected in Cleanarr."},
+	{actions.ErrProtectedLocal, "Protected in Hangarr."},
 	{actions.ErrConfirmMismatch, "The typed title does not match."},
 	{actions.ErrNoSuchSeason, "Season not found."},
 	{actions.ErrNotManaged, "Not managed by Sonarr/Radarr: cannot be protected."},
@@ -466,8 +473,8 @@ func (s *Server) deleteSubmit(kind string) http.HandlerFunc {
 			level = "info"
 		}
 		trigger := map[string]any{
-			"cleanarr:toast": map[string]any{"message": msg, "level": level},
-			"cleanarr:deleted": map[string]any{"mediaId": m.ID, "season": res.Season, "dryRun": res.DryRun,
+			"hangarr:toast": map[string]any{"message": msg, "level": level},
+			"hangarr:deleted": map[string]any{"mediaId": m.ID, "season": res.Season, "dryRun": res.DryRun,
 				"detailUrl": detailURL, "libraryUrl": kindPath(kind)},
 		}
 		w.Header().Set("HX-Trigger", asciiJSON(trigger))
@@ -573,7 +580,7 @@ func (s *Server) protectSubmit(kind string) http.HandlerFunc {
 		case res.Unchanged:
 			msg, level = l.T("“%s” is not protected.", res.Title), "info"
 		case res.Local && protect:
-			msg, level = l.T("“%s” is protected in Cleanarr: it can no longer be deleted. Plex is not changed.", res.Title), "success"
+			msg, level = l.T("“%s” is protected in Hangarr: it can no longer be deleted. Plex is not changed.", res.Title), "success"
 		case res.Local:
 			msg, level = l.T("“%s” is no longer protected.", res.Title), "success"
 		case res.DryRun && protect:
@@ -593,10 +600,10 @@ func (s *Server) protectSubmit(kind string) http.HandlerFunc {
 			http.Redirect(w, r, detailURL, http.StatusSeeOther)
 			return
 		}
-		trigger := map[string]any{"cleanarr:toast": map[string]any{"message": msg, "level": level}}
+		trigger := map[string]any{"hangarr:toast": map[string]any{"message": msg, "level": level}}
 		// Unchanged too: the local tags were realigned with Sonarr/Radarr.
 		if err == nil && (!res.DryRun || res.Unchanged) {
-			trigger["cleanarr:changed"] = map[string]any{"detailUrl": detailURL}
+			trigger["hangarr:changed"] = map[string]any{"detailUrl": detailURL}
 		}
 		w.Header().Set("HX-Trigger", asciiJSON(trigger))
 		w.Header().Set("HX-Reswap", "none")

@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"cleanarr/internal/clients/sonarr"
-	"cleanarr/internal/store"
+	"hangarr/internal/clients/sonarr"
+	"hangarr/internal/store"
 )
 
 func (e *libEnv) mediaID(kind, title string) string {
@@ -53,9 +53,12 @@ func TestDetailPage(t *testing.T) {
 	if !strings.Contains(sev.body, `disabled title="Protégé par un tag"`) {
 		t.Error("protected series: delete buttons must be disabled")
 	}
+	if inc := e.do(e.c, "GET", "/movies/"+e.mediaID("movie", "Inception"), nil, nil); !strings.Contains(inc.body, "/movie/27205\"") {
+		t.Error("Radarr link: /movie/{titleSlug}, the TMDB id")
+	}
 	vac := e.do(e.c, "GET", "/movies/"+e.mediaID("movie", "Vacances 2019"), nil, nil)
-	if !strings.Contains(vac.body, "/delete\"") || !strings.Contains(vac.body, "protégé dans Cleanarr uniquement") {
-		t.Error("plex_only item: deletion through Plex, protection in Cleanarr")
+	if !strings.Contains(vac.body, "/delete\"") || !strings.Contains(vac.body, "protégé dans Hangarr uniquement") {
+		t.Error("plex_only item: deletion through Plex, protection in Hangarr")
 	}
 }
 
@@ -152,7 +155,7 @@ func TestDeleteFlowDryRun(t *testing.T) {
 	r = e.do(e.c, "POST", "/series/"+id+"/delete", form, map[string]string{"HX-Request": "true", csrfHeader: tok})
 	trigger := r.header.Get("HX-Trigger")
 	if r.status != http.StatusOK || r.header.Get("HX-Reswap") != "none" ||
-		!strings.Contains(trigger, `"cleanarr:deleted"`) || !strings.Contains(trigger, `"dryRun":true`) {
+		!strings.Contains(trigger, `"hangarr:deleted"`) || !strings.Contains(trigger, `"dryRun":true`) {
 		t.Fatalf("dry run: %d %s", r.status, trigger)
 	}
 	for _, c := range trigger {
@@ -225,17 +228,17 @@ func TestProtectButton(t *testing.T) {
 		t.Error("protected series must offer « Ne plus protéger »")
 	}
 	tok := csrfFrom(t, page.body)
-	// Plex-only: protected in Cleanarr only, nothing sent; deletion is then refused.
+	// Plex-only: protected in Hangarr only, nothing sent; deletion is then refused.
 	vac := e.mediaID("movie", "Vacances 2019")
 	lp := e.do(e.c, "POST", "/movies/"+vac+"/protect", url.Values{"protect": {"1"}}, map[string]string{"HX-Request": "true", csrfHeader: tok})
-	if trig := lp.header.Get("HX-Trigger"); !strings.Contains(trig, "cleanarr:changed") || !strings.Contains(trig, "Cleanarr") {
+	if trig := lp.header.Get("HX-Trigger"); !strings.Contains(trig, "hangarr:changed") || !strings.Contains(trig, "Hangarr") {
 		t.Errorf("local protect: %d %s", lp.status, trig)
 	}
 	vp := e.do(e.c, "GET", "/movies/"+vac, nil, nil)
-	if !strings.Contains(vp.body, ">Ne plus protéger</button>") || !strings.Contains(vp.body, `disabled title="Protégé dans Cleanarr"`) {
+	if !strings.Contains(vp.body, ">Ne plus protéger</button>") || !strings.Contains(vp.body, `disabled title="Protégé dans Hangarr"`) {
 		t.Error("locally protected item: unprotect button, deletion disabled")
 	}
-	if d := e.do(e.c, "GET", "/movies/"+vac+"/delete", nil, nil); !strings.Contains(d.body, "Protégé dans Cleanarr : la suppression sera refusée.") {
+	if d := e.do(e.c, "GET", "/movies/"+vac+"/delete", nil, nil); !strings.Contains(d.body, "Protégé dans Hangarr : la suppression sera refusée.") {
 		t.Error("delete form must warn")
 	}
 	if lib := e.do(e.c, "GET", "/movies?view=table", nil, nil); !strings.Contains(lib.body, `<svg class="lock"`) {
@@ -250,7 +253,7 @@ func TestProtectButton(t *testing.T) {
 	r := e.do(e.c, "POST", "/series/"+bb+"/protect", url.Values{"csrf_token": {tok}, "protect": {"1"}},
 		map[string]string{"HX-Request": "true"})
 	trigger := r.header.Get("HX-Trigger")
-	if r.status != http.StatusOK || !strings.Contains(trigger, "cleanarr:changed") || !strings.Contains(trigger, `"success"`) {
+	if r.status != http.StatusOK || !strings.Contains(trigger, "hangarr:changed") || !strings.Contains(trigger, `"success"`) {
 		t.Fatalf("protect: %d %s", r.status, trigger)
 	}
 	page = e.do(e.c, "GET", "/series/"+bb, nil, nil)
@@ -274,7 +277,7 @@ func TestProtectDryRun(t *testing.T) {
 	r := e.do(e.c, "POST", "/series/"+bb+"/protect", url.Values{"csrf_token": {tok}, "protect": {"1"}},
 		map[string]string{"HX-Request": "true"})
 	trigger := r.header.Get("HX-Trigger")
-	if !strings.Contains(trigger, "Simulation") || strings.Contains(trigger, "cleanarr:changed") {
+	if !strings.Contains(trigger, "Simulation") || strings.Contains(trigger, "hangarr:changed") {
 		t.Errorf("dry-run: %s", trigger)
 	}
 }

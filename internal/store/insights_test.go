@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"cleanarr/internal/store"
+	"hangarr/internal/store"
 )
 
 const dayS = 24 * 60 * 60

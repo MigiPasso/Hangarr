@@ -11,6 +11,15 @@
 </section>
 
 <section class="card">
+  <div class="title-row"><h2>{{t "Trackers"}}</h2>{{template "info" (t "Indexers of Sonarr and Radarr, read live. Failing: skipped for a while by Sonarr/Radarr after errors (details there).")}}</div>
+  {{if $d.Trackers}}{{template "health_trackers" $d.Trackers}}{{else}}
+  <div id="health-trackers" hx-get="/health/trackers" hx-trigger="load" hx-swap="outerHTML">
+    <p class="muted"><span class="spinner" aria-hidden="true"></span> {{t "Checking the trackers…"}}</p>
+    <noscript><p><a href="/health/services">{{t "Check the services"}}</a></p></noscript>
+  </div>{{end}}
+</section>
+
+<section class="card">
   <h2>{{t "Synchronization"}}</h2>
   {{if $d.Latest}}
   <div class="table-wrap"><table class="table">
@@ -44,7 +53,7 @@
 <section class="card">
   <div class="title-row"><h2>{{t "Data"}}</h2>{{template "info" (t "Gaps between Plex and Sonarr/Radarr, from the last sync.")}}</div>
   <div class="health-grid">
-    {{template "health_list" list2 (t "In Plex, not in Sonarr/Radarr") (t "Cannot be deleted from Cleanarr.") $d.Data.PlexOnly}}
+    {{template "health_list" list2 (t "In Plex, not in Sonarr/Radarr") (t "Cannot be deleted from Hangarr.") $d.Data.PlexOnly}}
     {{template "health_list" list2 (t "In Sonarr/Radarr without files") (t "Monitored or waiting for a download.") $d.Data.NoFile}}
     {{template "health_list" list2 (t "In Sonarr/Radarr, missing from Plex") (t "Files Plex has not indexed: check the library path or scan.") $d.Data.NotInPlex}}
     {{template "health_list" list2 (t "Fuzzy matches") (t "Matched by title and year (no common TVDB, TMDB or IMDb ID): worth a check.") $d.Data.Fuzzy}}
@@ -89,5 +98,43 @@
   {{end}}
 </div>
 {{end}}
+
+{{define "health_trackers"}}
+<div id="health-trackers" class="health-trackers">
+  {{range .}}
+  <div class="health-service">
+    <div class="config-head"><h3>{{.Label}}</h3>{{if .Trackers}}<span class="small muted">{{tn (len .Trackers) "%d indexer" "%d indexers"}}</span>{{end}}</div>
+    {{if not .Configured}}<p class="small"><a href="/config">{{t "Configure"}}</a></p>
+    {{else if .Error}}<p class="small error-text">{{.Error}}</p>
+    {{else if not .Trackers}}<p class="small muted">{{t "No indexer."}}</p>
+    {{else}}
+    <div class="table-wrap"><table class="table trackers">
+      <thead><tr><th>{{t "Tracker"}}</th><th>{{t "Type"}}</th><th>{{t "RSS"}}</th><th>{{t "Search|indexer"}}</th><th>{{t "State"}}</th></tr></thead>
+      <tbody>
+      {{range .Trackers}}
+        <tr>
+          <td>{{.Name}}</td>
+          <td>{{if eq .Protocol "usenet"}}Usenet{{else if eq .Protocol "torrent"}}Torrent{{else}}{{.Protocol}}{{end}}</td>
+          <td>{{if .RSS}}{{t "Yes"}}{{else}}<span class="muted">{{t "No"}}</span>{{end}}</td>
+          <td>{{if .Search}}{{t "Yes"}}{{else}}<span class="muted">{{t "No"}}</span>{{end}}</td>
+          <td>{{if .Failing}}<span class="badge badge-error">{{t "Failing"}}</span>
+            {{else if not .Enabled}}<span class="badge badge-muted">{{t "Disabled"}}</span>
+            {{else}}<span class="badge badge-ok">OK</span>{{end}}</td>
+        </tr>
+      {{end}}
+      </tbody>
+    </table></div>
+    {{end}}
+    {{if .Alerts}}
+    <ul class="health-alerts">
+      {{range .Alerts}}<li class="{{if eq .Type "error"}}error-text{{else}}warn{{end}}">{{.Message}}{{with .WikiURL}} <a href="{{.}}" target="_blank" rel="noopener noreferrer">{{t "help"}} ↗</a>{{end}}</li>{{end}}
+    </ul>
+    {{end}}
+  </div>
+  {{end}}
+</div>
+{{end}}
+
+{{define "health_trackers_partial"}}{{template "health_trackers" .Data}}{{end}}
 
 {{define "health_services_partial"}}{{template "health_services" .Data}}{{end}}

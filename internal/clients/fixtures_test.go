@@ -9,14 +9,14 @@ import (
 	"strings"
 	"testing"
 
-	"cleanarr/internal/clients/plex"
-	"cleanarr/internal/clients/radarr"
-	"cleanarr/internal/clients/sonarr"
-	"cleanarr/internal/clients/tautulli"
+	"hangarr/internal/clients/plex"
+	"hangarr/internal/clients/radarr"
+	"hangarr/internal/clients/sonarr"
+	"hangarr/internal/clients/tautulli"
 )
 
 func fixtureDirs(t *testing.T) []string {
-	dirs := []string{"../../testdata"}
+	dirs := []string{"../../testdata", "../../testdata/dev"}
 	if _, err := os.Stat("../../testdata/captured"); err == nil {
 		dirs = append(dirs, "../../testdata/captured")
 	}
@@ -56,6 +56,22 @@ func TestSonarrRadarrFixtures(t *testing.T) {
 			for _, m := range movies {
 				if m.ID == 0 || m.Title == "" || m.TmdbID == 0 {
 					t.Errorf("%s: movie missing id/title/tmdbId: %+v", dir, m)
+				}
+			}
+		}
+		var episodes []sonarr.CalendarEpisode
+		if decode(t, filepath.Join(dir, "sonarr/calendar.json"), &episodes) {
+			for _, e := range episodes {
+				if e.SeriesID == 0 || e.AirDateUTC.IsZero() || e.Series == nil || e.Series.Title == "" {
+					t.Errorf("%s: calendar episode missing seriesId/airDateUtc/series: %+v", dir, e)
+				}
+			}
+		}
+		var releases []radarr.CalendarMovie
+		if decode(t, filepath.Join(dir, "radarr/calendar.json"), &releases) {
+			for _, m := range releases {
+				if m.ID == 0 || m.Title == "" || (m.InCinemas.IsZero() && m.DigitalRelease.IsZero() && m.PhysicalRelease.IsZero()) {
+					t.Errorf("%s: calendar movie missing id/title/release date: %+v", dir, m)
 				}
 			}
 		}

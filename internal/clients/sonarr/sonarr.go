@@ -9,8 +9,9 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"time"
 
-	"cleanarr/internal/clients/httpx"
+	"hangarr/internal/clients/httpx"
 )
 
 // Image is a poster/fanart/banner reference.
@@ -278,4 +279,61 @@ func (c *Client) Health(ctx context.Context) ([]HealthCheck, error) { return Hea
 func Health(ctx context.Context, h *httpx.Client) ([]HealthCheck, error) {
 	var out []HealthCheck
 	return out, h.JSON(ctx, httpx.Request{Path: "/api/v3/health"}, &out)
+}
+
+// CalendarEpisode is an entry of GET /api/v3/calendar (an episode with its
+// series when includeSeries=true).
+type CalendarEpisode struct {
+	Episode
+	FinaleType string  `json:"finaleType"` // series | season | midseason, Sonarr v4
+	Series     *Series `json:"series"`
+}
+
+// Calendar lists the episodes airing in [start, end), monitored ones only.
+func (c *Client) Calendar(ctx context.Context, start, end time.Time) ([]CalendarEpisode, error) {
+	var out []CalendarEpisode
+	q := url.Values{"start": {start.UTC().Format(time.RFC3339)}, "end": {end.UTC().Format(time.RFC3339)},
+		"unmonitored": {"false"}, "includeSeries": {"true"}}
+	return out, c.HTTP.JSON(ctx, httpx.Request{Path: "/api/v3/calendar", Query: q}, &out)
+}
+
+// Indexer is an entry of GET /api/v3/indexer (Sonarr and Radarr). Its
+// settings ("fields", with API keys) are deliberately not decoded.
+type Indexer struct {
+	ID                      int64  `json:"id"`
+	Name                    string `json:"name"`
+	Protocol                string `json:"protocol"` // usenet | torrent
+	EnableRss               bool   `json:"enableRss"`
+	EnableAutomaticSearch   bool   `json:"enableAutomaticSearch"`
+	EnableInteractiveSearch bool   `json:"enableInteractiveSearch"`
+	Priority                int    `json:"priority"`
+}
+
+// IndexerStatus is an entry of GET /api/v3/indexerstatus: an indexer that
+// failed recently, disabled until DisabledTill.
+type IndexerStatus struct {
+	IndexerID         int64      `json:"indexerId"`
+	InitialFailure    httpx.Time `json:"initialFailure"`
+	MostRecentFailure httpx.Time `json:"mostRecentFailure"`
+	DisabledTill      httpx.Time `json:"disabledTill"`
+}
+
+// Indexers lists the instance's indexers.
+func (c *Client) Indexers(ctx context.Context) ([]Indexer, error) { return Indexers(ctx, c.HTTP) }
+
+// IndexerStatuses lists the instance's failing indexers.
+func (c *Client) IndexerStatuses(ctx context.Context) ([]IndexerStatus, error) {
+	return IndexerStatuses(ctx, c.HTTP)
+}
+
+// Indexers lists the indexers of a Sonarr or Radarr instance.
+func Indexers(ctx context.Context, h *httpx.Client) ([]Indexer, error) {
+	var out []Indexer
+	return out, h.JSON(ctx, httpx.Request{Path: "/api/v3/indexer"}, &out)
+}
+
+// IndexerStatuses lists the failing indexers of a Sonarr or Radarr instance.
+func IndexerStatuses(ctx context.Context, h *httpx.Client) ([]IndexerStatus, error) {
+	var out []IndexerStatus
+	return out, h.JSON(ctx, httpx.Request{Path: "/api/v3/indexerstatus"}, &out)
 }

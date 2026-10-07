@@ -1,4 +1,4 @@
-// Command cleanarr serves the web UI and offers maintenance subcommands.
+// Command hangarr serves the web UI and offers maintenance subcommands.
 package main
 
 import (
@@ -20,30 +20,30 @@ import (
 	"time"
 	_ "time/tzdata" // distroless has no zoneinfo; TZ must work anyway
 
-	"cleanarr/internal/actions"
-	"cleanarr/internal/auth"
-	"cleanarr/internal/config"
-	"cleanarr/internal/images"
-	"cleanarr/internal/secretbox"
-	"cleanarr/internal/store"
-	"cleanarr/internal/syncer"
-	"cleanarr/internal/upstream"
-	"cleanarr/internal/web"
+	"hangarr/internal/actions"
+	"hangarr/internal/auth"
+	"hangarr/internal/config"
+	"hangarr/internal/images"
+	"hangarr/internal/secretbox"
+	"hangarr/internal/store"
+	"hangarr/internal/syncer"
+	"hangarr/internal/upstream"
+	"hangarr/internal/web"
 )
 
 // version is set at build time with -ldflags "-X main.version=...".
 var version = "dev"
 
-const usage = `Usage: cleanarr <command>
+const usage = `Usage: hangarr <command>
 
 Commands:
   serve                                  start the web server (default)
   sync --once                            run one synchronization and print a summary
   admin reset-password [--username NAME] print a new temporary password for an account
   healthcheck                            exit 0 if the local server answers /healthz
-  master-key                             print a new random master key (CLEANARR_MASTER_KEY)
+  master-key                             print a new random master key (HANGARR_MASTER_KEY)
   backup [PATH]                          consistent copy of the database, safe while serving
-                                         (default: DATA_DIR/backups/cleanarr-YYYYMMDD-HHMMSS.db)
+                                         (default: DATA_DIR/backups/hangarr-YYYYMMDD-HHMMSS.db)
   version                                print the version
 `
 
@@ -105,7 +105,10 @@ func serve() error {
 	}
 	log := newLogger(cfg, os.Stdout)
 	slog.SetDefault(log)
-	log.Info("starting cleanarr", "version", version, "dry_run", cfg.DryRun, "master_key", cfg.MasterKey != nil)
+	log.Info("starting hangarr", "version", version, "dry_run", cfg.DryRun, "master_key", cfg.MasterKey != nil)
+	for _, d := range cfg.Deprecations {
+		log.Warn(d)
+	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, os.Interrupt)
 	defer stop()
@@ -230,7 +233,7 @@ func janitor(ctx context.Context, log *slog.Logger, svc *auth.Service, sweep fun
 
 func admin(args []string) error {
 	if len(args) == 0 || args[0] != "reset-password" {
-		return errors.New("usage: cleanarr admin reset-password [--username NAME]")
+		return errors.New("usage: hangarr admin reset-password [--username NAME]")
 	}
 	cfg, err := loadConfig()
 	if err != nil {
@@ -318,13 +321,13 @@ func newSyncer(cfg *config.Config, st *store.Store, reg *upstream.Registry, log 
 // backup writes a consistent copy of the database (VACUUM INTO).
 func backup(args []string) error {
 	if len(args) > 1 {
-		return errors.New("usage: cleanarr backup [PATH]")
+		return errors.New("usage: hangarr backup [PATH]")
 	}
 	cfg, err := loadConfig()
 	if err != nil {
 		return err
 	}
-	path := filepath.Join(cfg.DataDir, "backups", "cleanarr-"+time.Now().Format("20060102-150405")+".db")
+	path := filepath.Join(cfg.DataDir, "backups", "hangarr-"+time.Now().Format("20060102-150405")+".db")
 	if len(args) == 1 {
 		path = args[0]
 	}
@@ -346,7 +349,7 @@ func backup(args []string) error {
 		fmt.Fprintf(os.Stderr, "note: the saved credentials are encrypted with %s; keep it with the backup.\n",
 			filepath.Join(cfg.DataDir, upstream.KeyFileName))
 	} else {
-		fmt.Fprintln(os.Stderr, "note: the saved credentials are encrypted with CLEANARR_MASTER_KEY; keep the key to restore them.")
+		fmt.Fprintln(os.Stderr, "note: the saved credentials are encrypted with HANGARR_MASTER_KEY; keep the key to restore them.")
 	}
 	return nil
 }
@@ -370,7 +373,7 @@ func syncOnce(args []string) error {
 		return err
 	}
 	if !*once {
-		return errors.New("usage: cleanarr sync --once")
+		return errors.New("usage: hangarr sync --once")
 	}
 	cfg, err := loadConfig()
 	if err != nil {

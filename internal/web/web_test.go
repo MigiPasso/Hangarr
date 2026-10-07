@@ -15,10 +15,10 @@ import (
 	"testing"
 	"time"
 
-	"cleanarr/internal/auth"
-	"cleanarr/internal/config"
-	"cleanarr/internal/i18n"
-	"cleanarr/internal/store"
+	"hangarr/internal/auth"
+	"hangarr/internal/config"
+	"hangarr/internal/i18n"
+	"hangarr/internal/store"
 )
 
 var (
@@ -419,7 +419,7 @@ func TestInsecureCookieWarning(t *testing.T) {
 		"lan over http":     {"192.168.1.10:8080", "", true},
 		"localhost":         {"localhost:8080", "", false},
 		"loopback v6":       {"[::1]:8080", "", false},
-		"behind https":      {"cleanarr.example.org", "https", false},
+		"behind https":      {"hangarr.example.org", "https", false},
 		"lan without port":  {"nas.lan", "", true},
 		"loopback v4 plain": {"127.0.0.1", "", false},
 	}
@@ -467,11 +467,11 @@ func TestThemeCookie(t *testing.T) {
 	h := newHarness(t, nil)
 	c := h.client()
 	page := h.do(c, "GET", "/login", nil, nil)
-	if !strings.Contains(page.body, `<html lang="fr">`) || !strings.Contains(page.body, "data-theme-toggle") {
+	if !strings.Contains(page.body, `<html lang="fr" class="no-js">`) || !strings.Contains(page.body, "data-theme-toggle") {
 		t.Fatal("default: follow the system, button in the footer")
 	}
-	for value, want := range map[string]string{"dark": `data-theme="dark"`, "light": `data-theme="light"`, "evil\"><x": `<html lang="fr">`} {
-		r := h.do(c, "GET", "/login", nil, map[string]string{"Cookie": "cleanarr_theme=" + url.QueryEscape(value)})
+	for value, want := range map[string]string{"dark": `data-theme="dark"`, "light": `data-theme="light"`, "evil\"><x": `<html lang="fr" class="no-js">`} {
+		r := h.do(c, "GET", "/login", nil, map[string]string{"Cookie": "hangarr_theme=" + url.QueryEscape(value)})
 		if !strings.Contains(r.body, want) {
 			t.Errorf("cookie %q: missing %s", value, want)
 		}
@@ -479,5 +479,32 @@ func TestThemeCookie(t *testing.T) {
 	logged := h.loggedIn()
 	if r := h.do(logged, "GET", "/", nil, nil); strings.Count(r.body, "data-theme-toggle") != 1 {
 		t.Error("one theme button in the navigation bar when logged in")
+	}
+}
+
+func TestSidebar(t *testing.T) {
+	h := newHarness(t, nil)
+	c := h.loggedIn()
+	r := h.do(c, "GET", "/health", nil, nil)
+	for _, want := range []string{`<aside id="sidebar" class="sidebar"`, `<div class="shell">`,
+		`class="side-link is-active" href="/health" title="Système"`, `<a href="/health" aria-current="page">Santé</a>`,
+		`<a href="/journal">Journal</a>`, `title="Bibliothèque"`} {
+		if !strings.Contains(r.body, want) {
+			t.Errorf("missing %q", want)
+		}
+	}
+	// Only the open section lists its pages.
+	if strings.Contains(r.body, `<a href="/movies"`) || strings.Contains(r.body, `<a href="/account"`) {
+		t.Error("closed sections must not list their pages")
+	}
+	if r := h.do(c, "GET", "/account", nil, nil); !strings.Contains(r.body, `<a href="/account" aria-current="page">Compte</a>`) ||
+		!strings.Contains(r.body, `<a href="/config">Configuration</a>`) {
+		t.Error("Settings section: General, Services, Account")
+	}
+	for value, want := range map[string]bool{"collapsed": true, "open": false, "x": false} {
+		r := h.do(c, "GET", "/", nil, map[string]string{"Cookie": "hangarr_sidebar=" + value})
+		if got := strings.Contains(r.body, `<div class="shell is-collapsed">`); got != want {
+			t.Errorf("cookie %q: collapsed %v", value, got)
+		}
 	}
 }

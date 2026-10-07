@@ -1,6 +1,6 @@
 // Package secretbox encrypts the service credentials stored in the database
 // with AES-256-GCM. The master key lives outside the data volume
-// (CLEANARR_MASTER_KEY or CLEANARR_MASTER_KEY_FILE): a copy of the database
+// (HANGARR_MASTER_KEY or HANGARR_MASTER_KEY_FILE): a copy of the database
 // alone does not reveal the credentials.
 package secretbox
 

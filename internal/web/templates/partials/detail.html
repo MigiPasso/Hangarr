@@ -39,11 +39,11 @@
           <button type="submit">{{t "Protect"}}</button>
           {{end}}
         </form>
-        {{if $m.ArrID}}{{template "info" (t "Adds or removes the “%s” tag in Sonarr/Radarr. Protected items are never proposed nor deleted." $d.ProtectTag)}}{{else}}{{template "info" (t "Not in Sonarr/Radarr: protected in Cleanarr only, Plex is not changed. Protected items cannot be deleted.")}}{{end}}
+        {{if $m.ArrID}}{{template "info" (t "Adds or removes the “%s” tag in Sonarr/Radarr. Protected items are never proposed nor deleted." $d.ProtectTag)}}{{else}}{{template "info" (t "Not in Sonarr/Radarr: protected in Hangarr only, Plex is not changed. Protected items cannot be deleted.")}}{{end}}
         {{end}}
         {{if $d.Deletable}}
         <button type="button" class="danger" hx-get="{{$d.Path}}/{{$m.ID}}/delete" hx-target="#confirm-body"
-                {{if $d.Protected}}disabled title="{{if $m.ArrID}}{{t "Protected by a tag"}}{{else}}{{t "Protected in Cleanarr"}}{{end}}"{{end}}>{{if eq $m.Kind "series"}}{{t "Delete series"}}{{else}}{{t "Delete movie"}}{{end}}</button>
+                {{if $d.Protected}}disabled title="{{if $m.ArrID}}{{t "Protected by a tag"}}{{else}}{{t "Protected in Hangarr"}}{{end}}"{{end}}>{{if eq $m.Kind "series"}}{{t "Delete series"}}{{else}}{{t "Delete movie"}}{{end}}</button>
         {{end}}
       </p>
     </div>

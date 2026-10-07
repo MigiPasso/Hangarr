@@ -7,7 +7,7 @@ import (
 	"math"
 	"strings"
 
-	"cleanarr/internal/i18n"
+	"hangarr/internal/i18n"
 )
 
 // Server-side SVG charts: no JavaScript, CSP-safe (colors come from CSS

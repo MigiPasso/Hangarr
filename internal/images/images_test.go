@@ -9,7 +9,7 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"cleanarr/internal/clients/httpx"
+	"hangarr/internal/clients/httpx"
 )
 
 func TestRemoteRedirectToPlainHTTPRefused(t *testing.T) {

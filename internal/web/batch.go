@@ -9,8 +9,8 @@ import (
 	"strings"
 	"time"
 
-	"cleanarr/internal/actions"
-	"cleanarr/internal/store"
+	"hangarr/internal/actions"
+	"hangarr/internal/store"
 )
 
 // batchTimeout bounds a batch request (items are processed one by one).
@@ -249,7 +249,7 @@ func (s *Server) batchTrigger(w http.ResponseWriter, msg string, d *batchData, d
 		deleted = []int64{}
 	}
 	w.Header().Set("HX-Trigger", asciiJSON(map[string]any{
-		"cleanarr:toast":      map[string]any{"message": msg, "level": level},
-		"cleanarr:batch-done": map[string]any{"deleted": deleted, "reload": reload},
+		"hangarr:toast":      map[string]any{"message": msg, "level": level},
+		"hangarr:batch-done": map[string]any{"deleted": deleted, "reload": reload},
 	}))
 }

@@ -8,7 +8,9 @@ endpoints:
 | `sonarr/series.json`, `tag.json`, `qualityprofile.json` | `GET /api/v3/series`, `/tag`, `/qualityprofile` |
 | `sonarr/diskspace.json`, `radarr/diskspace.json` | `GET /api/v3/diskspace` |
 | `sonarr/health.json`, `radarr/health.json` | `GET /api/v3/health` (Sonarr: one indexer warning) |
+| `*/indexer.json`, `*/indexerstatus.json` | `GET /api/v3/indexer`, `/indexerstatus` (Sonarr: NZBgeek failing, dates moved to today; Radarr: YTS disabled) |
 | `radarr/movie.json`, `tag.json`, `qualityprofile.json` | `GET /api/v3/movie`, `/tag`, `/qualityprofile` |
+| `sonarr/calendar.json`, `radarr/calendar.json` | `GET /api/v3/calendar?start=…&end=…` (dates recalées sur aujourd'hui) |
 | `plex/sections.json` | `GET /library/sections` |
 | `plex/section-<key>-type-<n>.json` | `GET /library/sections/<key>/all?type=<n>&includeGuids=1` |
 | `plex/accounts.json`, `plex/history.json` | `GET /accounts`, `GET /status/sessions/history/all` |
@@ -26,7 +28,23 @@ Hand-written from the API documentation, timestamps anchored on **2026-10-01T00:
 - Arcane, Avatar: in Sonarr/Radarr only; Home Videos, Vacances 2019: in Plex only;
 - Inception: watched by bob, and by alice under an old rating key (555) → resolved by title + year;
 - Dune: two sessions with the same `reference_id` → one play, in progress; Interstellar: abandoned; Tenet: never;
+- calendar (always moved so that the anchor is today, filtered by `start`/`end`): Severance S02E01 (+2 days),
+  S02E02, S02E10 (season finale, +65) and S03E01 (+120); Shōgun S02E01–E03 the same day (+20); Pluribus (not in
+  the catalog, series premiere, +5); Avatar: Fire and Ash in cinemas (+10), digital (+100), physical (+130);
+  Project Hail Mary (not in the catalog, +40); one past episode (−3 days) that must not show; plus, for volume, the
+  rest of Severance season 2 and about ten series and nine movies not in the catalog (weekly shows and anime, whole
+  seasons released at once, an episode airing today, releases up to +130 days);
 - Lost: deleted from the library → orphan history row; plus a music track and a live session, both ignored.
+
+## Dev extras (`testdata/dev/`, `posters.json`)
+
+For `make dev` only (`compose.dev.yml`), never used by the tests:
+
+- `MOCK_DEV_EXTRAS=true`: `dev/sonarr/series.json` and `dev/radarr/movie.json` are added to the catalog (the series
+  and movies of the calendars, so that they sync and get a detail page);
+- `MOCK_REAL_POSTERS=true`: `mediacover` serves the real posters listed in `posters.json` (`"sonarr/3"` → URL;
+  TVmaze for series and anime, IMDb for movies), downloaded once by the mock and kept in memory. Only URLs are
+  committed, never the images.
 
 ## Real captures (`testdata/captured/`)
 

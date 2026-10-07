@@ -94,14 +94,14 @@ test("a movie known by Plex only is deleted through Plex", async ({ page, reques
   await expect(page.getByRole("row", { name: /Vacances 2019/ })).toContainText("Supprimé via Plex");
 });
 
-test("a series known by Plex only is protected in Cleanarr only", async ({ page, request }) => {
+test("a series known by Plex only is protected in Hangarr only", async ({ page, request }) => {
   await login(page, username, newPassword);
   await request.post(`${mockURL}/_reset`);
   await page.goto("/series");
   await page.locator(".media-card", { hasText: "Home Videos" }).click();
   const modal = page.locator("#modal");
   await modal.getByRole("button", { name: "Protéger", exact: true }).click();
-  await expect(page.locator(".toast")).toContainText("« Home Videos » est protégé dans Cleanarr");
+  await expect(page.locator(".toast")).toContainText("« Home Videos » est protégé dans Hangarr");
   await expect(modal.getByRole("button", { name: "Ne plus protéger" })).toBeVisible();
   await expect(modal.getByRole("button", { name: "Supprimer la série" })).toBeDisabled();
 

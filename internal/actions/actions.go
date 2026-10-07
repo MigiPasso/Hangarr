@@ -13,11 +13,11 @@ import (
 	"strings"
 	"time"
 
-	"cleanarr/internal/clients/httpx"
-	"cleanarr/internal/clients/plex"
-	"cleanarr/internal/clients/sonarr"
-	"cleanarr/internal/store"
-	"cleanarr/internal/upstream"
+	"hangarr/internal/clients/httpx"
+	"hangarr/internal/clients/plex"
+	"hangarr/internal/clients/sonarr"
+	"hangarr/internal/store"
+	"hangarr/internal/upstream"
 )
 
 // Action names stored in action_log.
@@ -34,7 +34,7 @@ var (
 	ErrUnconfigured    = errors.New("service not configured")
 	ErrNotDeletable    = errors.New("not managed by Sonarr/Radarr: cannot be deleted")
 	ErrProtected       = errors.New("protected by a tag")
-	ErrProtectedLocal  = errors.New("protected in Cleanarr")
+	ErrProtectedLocal  = errors.New("protected in Hangarr")
 	ErrConfirmMismatch = errors.New("the typed title does not match")
 	ErrNoSuchSeason    = errors.New("season not found")
 	// ErrUnmonitorAfterDelete: the season files were deleted but the season
@@ -225,7 +225,7 @@ func (s *Service) journal(ctx context.Context, m *store.Media, req Request, res 
 
 // deleteFromPlex deletes an item that only Plex still knows (removed from
 // Sonarr/Radarr, or never managed): Plex deletes it with its files. No
-// Sonarr/Radarr tag applies, but the item may be protected in Cleanarr.
+// Sonarr/Radarr tag applies, but the item may be protected in Hangarr.
 // Whole series still need the typed title.
 func (s *Service) deleteFromPlex(ctx context.Context, up *upstream.Clients, m *store.Media, req Request) (*Result, error) {
 	if m.Kind == "series" && s.ConfirmByTyping && !req.Confirmed &&
