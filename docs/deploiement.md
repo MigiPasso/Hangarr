@@ -415,19 +415,125 @@ Une fois Hangarr vérifié : `docker volume rm cleanarr_cleanarr-data`.
 
 ### Kubernetes
 
-Le manifeste s'appelle maintenant `deploy/kubernetes/hangarr.yaml` et ses objets `hangarr*`. Le plus simple :
-**garder le PVC et le secret existants**.
+Principe : copier les données de l'ancien PVC `cleanarr-data` dans le nouveau `hangarr-data`, avec **la même clé
+maître**, puis déployer `hangarr.yaml` tel quel. L'ancien PVC n'est touché qu'à la fin, une fois Hangarr vérifié :
+jusque-là, retour arrière immédiat. Les commandes supposent le namespace `arr` ; adaptez `-n`.
 
-1. Arrêter l'ancienne version, **sans supprimer le PVC ni le secret** (une seule réplique à la fois, SQLite) :
+**0. Prérequis.** L'image `ghcr.io/<user>/hangarr:<version>` est publiée ([2](#2-publier-limage-sur-ghcr)) et
+renseignée dans `hangarr.yaml` (`image:`), comme vous l'aviez fait pour Cleanarr.
 
-   ```sh
-   kubectl -n arr delete deploy/cleanarr svc/cleanarr cm/cleanarr-config
-   ```
+**1. Avec Argo CD : couper la synchronisation automatique** de l'application Cleanarr (UI : *App details › Sync
+policy › Disable auto-sync*, ou `argocd app set <app> --sync-policy none`). Sinon, dès que l'application suivra
+`hangarr.yaml`, Argo CD supprimerait (*prune*) l'ancien PVC, donc vos données.
 
-2. Dans `hangarr.yaml` : supprimer le bloc `PersistentVolumeClaim` `hangarr-data`, puis mettre
-   `claimName: cleanarr-data` et `secretName: cleanarr-master-key` dans les volumes du Deployment.
-3. Appliquer `hangarr.yaml`. Adapter l'Ingress ou le nom d'hôte Tailscale s'ils citaient `cleanarr`, et l'URL du
-   webhook dans Tautulli : `http://hangarr.<ns>.svc.cluster.local:8080/webhooks/tautulli`.
+**2. Sauvegarde** (copie cohérente dans `/data/backups/`, sur le PVC lui-même, copiée avec le reste) :
+
+```sh
+kubectl -n arr exec deploy/cleanarr -- /cleanarr backup
+```
+
+**3. Même clé maître, nouveau nom de secret.** Indispensable : avec une autre clé, les clés d'API enregistrées
+seraient illisibles.
+
+```sh
+kubectl -n arr create secret generic hangarr-master-key --from-literal=master-key="$(
+  kubectl -n arr get secret cleanarr-master-key -o jsonpath='{.data.master-key}' | base64 -d)"
+```
+
+**4. Arrêter Cleanarr** (une seule application à la fois sur la base SQLite) :
+
+```sh
+kubectl -n arr scale deploy/cleanarr --replicas=0
+kubectl -n arr wait --for=delete pod -l app.kubernetes.io/name=cleanarr --timeout=60s
+```
+
+**5. Créer le nouveau PVC et y copier les données.** Même taille et même `storageClassName` que dans
+`hangarr.yaml`. Le pod de copie respecte le profil `restricted` (utilisateur 65532, celui de l'application) :
+
+```sh
+kubectl -n arr apply -f - <<'YAML'
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: hangarr-data
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: 1Gi
+  # storageClassName: <votre-storage-class>
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: hangarr-migrate
+spec:
+  restartPolicy: Never
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 65532
+    runAsGroup: 65532
+    fsGroup: 65532
+    seccompProfile: { type: RuntimeDefault }
+  containers:
+    - name: copy
+      image: busybox:1.36
+      command: ["sh", "-c", "cp -a /from/. /to/ && ls -la /to"]
+      securityContext:
+        allowPrivilegeEscalation: false
+        capabilities: { drop: [ALL] }
+      volumeMounts:
+        - { name: from, mountPath: /from, readOnly: true }
+        - { name: to, mountPath: /to }
+  volumes:
+    - name: from
+      persistentVolumeClaim: { claimName: cleanarr-data, readOnly: true }
+    - name: to
+      persistentVolumeClaim: { claimName: hangarr-data }
+YAML
+kubectl -n arr wait --for=jsonpath='{.status.phase}'=Succeeded pod/hangarr-migrate --timeout=180s
+kubectl -n arr logs pod/hangarr-migrate        # doit lister cleanarr.db (et master.key / cache s'il y en a)
+kubectl -n arr delete pod/hangarr-migrate
+```
+
+**6. Déployer Hangarr.**
+
+- Avec Argo CD : dans l'application, remplacer l'URL du dépôt (`…/<owner>/cleanarr.git` → `…/<owner>/Hangarr.git`,
+  l'ancienne ne répond plus) et le chemin (`deploy/kubernetes/cleanarr.yaml` → `deploy/kubernetes/hangarr.yaml`),
+  puis synchroniser **sans** *prune* pour l'instant.
+- Sans Argo CD : `kubectl -n arr apply -f deploy/kubernetes/hangarr.yaml`.
+
+**7. Vérifier**, avant de supprimer quoi que ce soit :
+
+```sh
+kubectl -n arr logs deploy/hangarr | grep -iE "renamed|INITIAL ADMIN|deprecated"
+```
+
+- attendu : `database renamed after the rename of Cleanarr to Hangarr` ;
+- **`INITIAL ADMIN` ne doit pas apparaître** : sinon Hangarr est parti sur un volume vide (copie ratée), revenir en
+  arrière (ci-dessous) et recommencer l'étape 5 ;
+- connexion avec votre mot de passe habituel (les cookies ont changé : une reconnexion), page Configuration : les
+  services sont là, « Tester la connexion » répond.
+
+**8. Adapter ce qui citait `cleanarr`** : l'Ingress ou le nom d'hôte Tailscale (annotation
+`tailscale.com/hostname` du Service), et dans Tautulli l'URL du webhook
+(`http://hangarr.<ns>.svc.cluster.local:8080/webhooks/tautulli`) ainsi que l'en-tête, `X-Hangarr-Token`.
+
+**9. Nettoyer**, une fois satisfait : réactiver la synchronisation automatique d'Argo CD (le *prune* supprimera alors
+les objets `cleanarr*` qui ne sont plus dans le manifeste), ou à la main :
+
+```sh
+kubectl -n arr delete deploy/cleanarr svc/cleanarr cm/cleanarr-config secret/cleanarr-master-key pvc/cleanarr-data
+```
+
+**Retour arrière** (tant que l'étape 9 n'est pas faite) : l'ancien PVC n'a pas été modifié.
+
+```sh
+kubectl -n arr scale deploy/hangarr --replicas=0
+kubectl -n arr scale deploy/cleanarr --replicas=1
+```
+
+(avec Argo CD, remettre d'abord l'ancienne configuration de l'application, sans quoi elle ramènerait Hangarr).
 
 ### Dépôt et image
 
