@@ -256,6 +256,38 @@ func validURL(v string) bool {
 	return err == nil && (u.Scheme == "http" || u.Scheme == "https") && u.Host != "" && u.User == nil
 }
 
+// appSections are Sonarr/Radarr pages that take a sub-path (/movie/27205,
+// /settings/general…).
+var appSections = map[string]bool{"movie": true, "series": true, "settings": true, "system": true,
+	"activity": true, "wanted": true, "calendar": true, "add": true}
+
+// pageOfTheApp reports whether a public URL points to a page of the
+// application instead of the application itself (a copied address bar:
+// https://radarr…/login): links are built by appending to it, so they would
+// open that page. A base path (https://host/radarr) is fine.
+func pageOfTheApp(svc, raw string) bool {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return false
+	}
+	if u.RawQuery != "" || u.Fragment != "" {
+		return true
+	}
+	segs := strings.Split(strings.Trim(strings.ToLower(u.Path), "/"), "/")
+	switch last := segs[len(segs)-1]; {
+	case last == "login" || last == "logout" || last == "index.html":
+		return true
+	case svc == Plex && last == "web":
+		return true
+	}
+	for i := 0; i+1 < len(segs); i++ {
+		if appSections[segs[i]] {
+			return true
+		}
+	}
+	return false
+}
+
 // keptCredentials refuses to send a kept credential (empty field: keep the
 // current value) to another server: when the API address of svc moves to
 // another origin (scheme, host or port), its credentials must be typed
@@ -319,6 +351,8 @@ func (m *Manager) apply(svc string, saved Values, broken map[string]bool, in Inp
 			switch {
 			case v != "" && !validURL(v):
 				verr[f.Key] = "Expected an http(s) address, e.g. http://host:port."
+			case v != "" && strings.HasSuffix(f.Key, ".public_url") && pageOfTheApp(svc, v):
+				verr[f.Key] = "This is the address of a page (/login, /movie/…): keep only the address of the application."
 			case v == saved[f.Key] && (v != "" || !has):
 			case v == "":
 				del, changed = append(del, key), append(changed, f.Key)

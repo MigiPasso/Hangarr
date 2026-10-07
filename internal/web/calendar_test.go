@@ -13,9 +13,34 @@ import (
 	"hangarr/internal/upstream"
 )
 
+// live is the HTMX request that loads the releases into the page.
+func (e *libEnv) live(path string) resp {
+	return e.do(e.c, "GET", path, nil, map[string]string{"HX-Request": "true"})
+}
+
+// The page comes at once, without asking Sonarr/Radarr; the releases load
+// by HTMX, or with live=1 without JavaScript.
+func TestCalendarLoadsLater(t *testing.T) {
+	e := newLibEnv(t, 0)
+	r := e.do(e.c, "GET", "/calendar?view=grid&size=50", nil, nil)
+	for _, want := range []string{`hx-get="/calendar?live=1&amp;size=50&amp;view=grid" hx-trigger="load"`, "Lecture de Sonarr et Radarr…",
+		`<noscript><p><a href="/calendar?live=1&amp;size=50&amp;view=grid">`, `aria-current="true">Grille`} {
+		if !strings.Contains(r.body, want) {
+			t.Errorf("first load: missing %q", want)
+		}
+	}
+	if e.mock.Hits("sonarr:calendar") != 0 || e.mock.Hits("radarr:calendar") != 0 {
+		t.Error("the first load must not wait for Sonarr/Radarr")
+	}
+	if noJS := e.do(e.c, "GET", "/calendar?live=1&size=50&view=grid", nil, nil); !strings.Contains(noJS.body, `class="media-card cal-card`) ||
+		strings.Contains(noJS.body, `hx-trigger="load"`) {
+		t.Error("live=1: the releases without JavaScript")
+	}
+}
+
 func TestCalendarPage(t *testing.T) {
 	e := newLibEnv(t, 0)
-	r := e.do(e.c, "GET", "/calendar?size=100", nil, nil)
+	r := e.live("/calendar?size=100")
 	if r.status != http.StatusOK {
 		t.Fatalf("status %d", r.status)
 	}
@@ -51,7 +76,7 @@ func TestCalendarPage(t *testing.T) {
 	}
 
 	// Last page of the year: the latest releases.
-	year := e.do(e.c, "GET", "/calendar?days=365&size=100&page=999", nil, nil)
+	year := e.live("/calendar?days=365&size=100&page=999")
 	for _, want := range []string{"The Lexington Letter", "S03E08", "Sortie physique", `days=365&amp;size=100" aria-current="page"`,
 		`rel="prev"`, "page 2 sur 2"} {
 		if !strings.Contains(year.body, want) {
@@ -61,15 +86,15 @@ func TestCalendarPage(t *testing.T) {
 	if strings.Contains(year.body, `rel="next"`) {
 		t.Error("last page: no next link")
 	}
-	if odd := e.do(e.c, "GET", "/calendar?days=7&size=7", nil, nil); !strings.Contains(odd.body, `days=90&amp;size=25" aria-current="page"`) {
+	if odd := e.live("/calendar?days=7&size=7"); !strings.Contains(odd.body, `days=90&amp;size=25" aria-current="page"`) {
 		t.Error("unknown range and size: 90 days, 25 per page expected")
 	}
 }
 
 func TestCalendarPages(t *testing.T) {
 	e := newLibEnv(t, 0)
-	first := e.do(e.c, "GET", "/calendar?size=10", nil, nil)
-	for _, want := range []string{`<option value="10" selected>10</option>`, "page 1 sur", `href="/calendar?days=90&amp;size=10&amp;page=2" rel="next"`,
+	first := e.live("/calendar?size=10")
+	for _, want := range []string{`<option value="10" selected>10</option>`, "page 1 sur", `href="/calendar?days=90&amp;page=2&amp;size=10" rel="next"`,
 		"Hello, Ms. Cobel"} {
 		if !strings.Contains(first.body, want) {
 			t.Errorf("page 1: missing %q", want)
@@ -78,7 +103,7 @@ func TestCalendarPages(t *testing.T) {
 	if strings.Contains(first.body, `rel="prev"`) || strings.Count(first.body, `class="cal-entry"`) != 10 {
 		t.Errorf("page 1: 10 entries and no previous link expected")
 	}
-	second := e.do(e.c, "GET", "/calendar?size=10&page=2", nil, nil)
+	second := e.live("/calendar?size=10&page=2")
 	if !strings.Contains(second.body, "page 2 sur") || !strings.Contains(second.body, `href="/calendar?days=90&amp;size=10" rel="prev"`) ||
 		strings.Contains(second.body, "Hello, Ms. Cobel") {
 		t.Error("page 2: next entries and a link back to page 1 expected")
@@ -86,7 +111,7 @@ func TestCalendarPages(t *testing.T) {
 	if strings.Contains(first.body, "Ce mois-ci") {
 		t.Error("no This month link")
 	}
-	if def := e.do(e.c, "GET", "/calendar", nil, nil); !strings.Contains(def.body, `<option value="25" selected>25</option>`) {
+	if def := e.live("/calendar"); !strings.Contains(def.body, `<option value="25" selected>25</option>`) {
 		t.Error("25 per page by default")
 	}
 }
@@ -96,7 +121,7 @@ func TestCalendarUnavailable(t *testing.T) {
 	v := upstream.TestValues(map[string]string{"sonarr": "http://127.0.0.1:1"}, "k")
 	delete(v, upstream.RadarrURL)
 	e.srv.Upstreams.Set(upstream.Build(v, "auto"))
-	r := e.do(e.c, "GET", "/calendar", nil, nil)
+	r := e.live("/calendar")
 	if r.status != http.StatusOK {
 		t.Fatalf("status %d", r.status)
 	}
@@ -134,7 +159,7 @@ func TestCalendarMonthView(t *testing.T) {
 	loc := e.srv.Config.Location
 	shogun := time.Now().In(loc).AddDate(0, 0, 20) // Shōgun S02E01–E03, see testdata/README.md
 	month := shogun.Format("2006-01")
-	r := e.do(e.c, "GET", "/calendar?view=month&month="+month, nil, nil)
+	r := e.live("/calendar?view=month&month=" + month)
 	if r.status != http.StatusOK {
 		t.Fatalf("status %d", r.status)
 	}
@@ -145,7 +170,7 @@ func TestCalendarMonthView(t *testing.T) {
 			t.Errorf("missing %q", want)
 		}
 	}
-	if odd := e.do(e.c, "GET", "/calendar?view=month&month=nope", nil, nil); !strings.Contains(odd.body, `aria-current="date"`) {
+	if odd := e.live("/calendar?view=month&month=nope"); !strings.Contains(odd.body, `aria-current="date"`) {
 		t.Error("invalid month: the current month (with today) expected")
 	}
 }
@@ -184,21 +209,21 @@ func TestCalendarWeeks(t *testing.T) {
 
 func TestCalendarGridView(t *testing.T) {
 	e := newLibEnv(t, 0)
-	r := e.do(e.c, "GET", "/calendar?view=grid&size=100", nil, nil)
+	r := e.live("/calendar?view=grid&size=100")
 	if r.status != http.StatusOK {
 		t.Fatalf("status %d", r.status)
 	}
 	for _, want := range []string{`<article class="media-card cal-card`, `<div class="grid cal-flow">`, `role="heading" aria-level="2"`,
-		`<span class="cal-date-num" aria-hidden="true">`, `href="/calendar?view=grid&amp;days=90&amp;size=100" aria-current="true">Grille`,
+		`<span class="cal-date-num" aria-hidden="true">`, `href="/calendar?days=90&amp;size=100&amp;view=grid" aria-current="true">Grille`,
 		`<span class="badge state">S02E01–E03</span>`, `<div class="poster-fallback">Pluribus</div>`, `src="/img/series/3/poster"`,
 		`<input type="hidden" name="view" value="grid">`, `<option value="100" selected>100</option>`,
-		`href="/calendar?view=grid&amp;days=365&amp;size=100"`} {
+		`href="/calendar?days=365&amp;size=100&amp;view=grid"`} {
 		if !strings.Contains(r.body, want) {
 			t.Errorf("missing %q", want)
 		}
 	}
-	page2 := e.do(e.c, "GET", "/calendar?view=grid&size=10", nil, nil)
-	if !strings.Contains(page2.body, `href="/calendar?view=grid&amp;days=90&amp;size=10&amp;page=2" rel="next"`) {
+	page2 := e.live("/calendar?view=grid&size=10")
+	if !strings.Contains(page2.body, `href="/calendar?days=90&amp;page=2&amp;size=10&amp;view=grid" rel="next"`) {
 		t.Error("grid pages keep the view")
 	}
 }
@@ -242,7 +267,7 @@ func TestSeasonDropNotes(t *testing.T) {
 // Period tabs in increasing order; 3 months stays the default.
 func TestCalendarRangeTabs(t *testing.T) {
 	e := newLibEnv(t, 0)
-	r := e.do(e.c, "GET", "/calendar", nil, nil)
+	r := e.live("/calendar")
 	m30, m90, y1 := strings.Index(r.body, ">30 jours</a>"), strings.Index(r.body, ">3 mois</a>"), strings.Index(r.body, ">1 an</a>")
 	if m30 < 0 || m90 < m30 || y1 < m90 {
 		t.Errorf("tabs order: 30 days %d, 3 months %d, 1 year %d", m30, m90, y1)

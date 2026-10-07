@@ -118,7 +118,7 @@ test("upcoming lists monitored releases by date, by page", async ({ page }) => {
   await expect(page).toHaveURL(/size=10/);
   await expect(page.locator(".cal-day li")).toHaveCount(10);
   await page.getByRole("link", { name: "Suivant" }).click();
-  await expect(page).toHaveURL(/size=10&page=2/);
+  await expect(page).toHaveURL(/page=2&size=10/);
   await expect(page.locator(".calendar")).not.toContainText("Hello, Ms. Cobel");
   await page.getByRole("link", { name: "1 an" }).click();
   await expect(page).toHaveURL(/days=365&size=10$/);
@@ -148,7 +148,8 @@ test("upcoming month view", async ({ page }) => {
 test("upcoming grid view keeps the page size", async ({ page }) => {
   await page.goto("/calendar?size=50");
   await page.getByRole("group", { name: "Affichage" }).getByRole("link", { name: "Grille" }).click();
-  await expect(page).toHaveURL(/view=grid.*size=50/);
+  await expect(page).toHaveURL(/size=50/);
+  await expect(page).toHaveURL(/view=grid/);
   await expect(page.locator(".cal-card")).toHaveCount(50);
   // One flow: a date tile before each day's cards.
   await expect(page.locator(".cal-flow > .cal-date").first()).toBeVisible();
@@ -157,6 +158,16 @@ test("upcoming grid view keeps the page size", async ({ page }) => {
   await page.getByLabel("Par page").selectOption("10");
   await expect(page).toHaveURL(/view=grid/);
   await expect(page.locator(".cal-card")).toHaveCount(10);
+});
+
+test("a section loaded later shows an error instead of spinning forever", async ({ page }) => {
+  await page.route("**/health/trackers", (route) => route.fulfill({ status: 500, body: "boom" }));
+  await page.goto("/health");
+  const trackers = page.locator("#health-trackers");
+  await expect(trackers.getByRole("alert")).toContainText("Le chargement a échoué.");
+  await expect(trackers.getByRole("link", { name: "Réessayer" })).toBeVisible();
+  // The other section is not affected.
+  await expect(page.locator("#health-services .badge-ok")).toHaveCount(4);
 });
 
 test("sidebar collapses to icons and slides in on small screens", async ({ page }) => {
@@ -173,8 +184,18 @@ test("sidebar collapses to icons and slides in on small screens", async ({ page 
 
   await page.setViewportSize({ width: 390, height: 800 });
   await expect(sidebar).not.toBeInViewport();
-  await page.getByRole("button", { name: "Ouvrir le menu" }).click();
+  const open = page.getByRole("button", { name: "Ouvrir le menu" });
+  await open.click();
   await expect(sidebar).toBeInViewport();
+  // Small screens: a close button (not "collapse"), the page behind is inert.
+  await expect(page.getByRole("button", { name: "Réduire le menu" })).toBeHidden();
+  await expect(page.locator(".shell-main")).toHaveJSProperty("inert", true);
+  await page.getByRole("button", { name: "Fermer le menu" }).click();
+  await expect(sidebar).not.toBeInViewport();
+  await expect(open).toBeFocused();
+  await expect(page.locator(".shell-main")).toHaveJSProperty("inert", false);
+  await open.click();
   await page.keyboard.press("Escape");
   await expect(sidebar).not.toBeInViewport();
+  await expect(open).toBeFocused();
 });

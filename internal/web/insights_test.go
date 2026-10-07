@@ -157,6 +157,10 @@ func TestHealthPage(t *testing.T) {
 		!strings.Contains(r.body, "<td>NZBgeek</td>") {
 		t.Error("no-JS page must include the checked services and trackers")
 	}
+	// Services and trackers (twice) share the health alerts: one call each.
+	if s, r := e.mock.Hits("sonarr:health"), e.mock.Hits("radarr:health"); s != 1 || r != 1 {
+		t.Errorf("health calls: sonarr %d, radarr %d, want 1 each", s, r)
+	}
 }
 
 func TestCleanupSortableHeaders(t *testing.T) {

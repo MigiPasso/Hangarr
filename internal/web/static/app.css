@@ -91,10 +91,11 @@ h2 { font-size: 1.15rem; margin: 0 0 calc(var(--space) * .75); }
 .logo { width: 1.6rem; height: 1.6rem; flex: none; }
 .logo .logo-bg { fill: var(--accent); }
 .logo .logo-fg { stroke: var(--on-accent); }
-.sidebar-collapse, .sidebar-open { display: inline-grid; place-items: center; padding: .35rem; border: 0;
+.sidebar-collapse, .sidebar-open, .sidebar-close { display: inline-grid; place-items: center; padding: .35rem; border: 0;
   background: none; color: var(--muted); border-radius: 6px; cursor: pointer; }
-.sidebar-collapse:hover, .sidebar-open:hover { color: var(--text); background: var(--btn); }
-.sidebar-collapse svg, .sidebar-open svg { width: 1.1rem; height: 1.1rem; }
+.sidebar-collapse:hover, .sidebar-open:hover, .sidebar-close:hover { color: var(--text); background: var(--btn); }
+.sidebar-collapse svg, .sidebar-open svg, .sidebar-close svg { width: 1.1rem; height: 1.1rem; }
+.sidebar-close { display: none; }
 
 .side-nav ul { list-style: none; margin: 0; padding: 0; }
 .side-nav > ul { padding: .5rem 0; }
@@ -606,7 +607,8 @@ h1 .info, h2 .info, h3 .info { vertical-align: .25em; }
   .is-collapsed .side-sub { display: block; }
   .is-collapsed .sidebar-head { flex-direction: row; padding: .7rem .6rem .7rem .9rem; }
   .is-collapsed .side-link { justify-content: flex-start; padding: .6rem 1rem; }
-  .sidebar-collapse svg { transform: none; }
+  .sidebar-collapse { display: none; } /* small screens: the panel closes, it does not collapse */
+  .sidebar-close { display: inline-grid; }
   .sidebar-open, .topbar-brand { display: inline-flex; }
   .topbar { padding: .5rem .75rem; gap: .5rem; }
   .nav-end { gap: .6rem; }
@@ -614,7 +616,7 @@ h1 .info, h2 .info, h3 .info { vertical-align: .25em; }
   /* Without JavaScript: the menu above the page. */
   .no-js .sidebar { position: static; transform: none; width: 100%; height: auto; box-shadow: none; }
   .no-js .shell { flex-direction: column; }
-  .no-js .sidebar-open { display: none; }
+  .no-js .sidebar-open, .no-js .sidebar-close { display: none; }
 }
 @media (prefers-reduced-motion: reduce) { .sidebar { transition: none; } }
 

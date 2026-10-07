@@ -4,7 +4,7 @@
 <section class="card">
   <h2>{{t "Services|health"}}</h2>
   {{if $d.Services}}{{template "health_services" $d.Services}}{{else}}
-  <div id="health-services" hx-get="/health/services" hx-trigger="load" hx-swap="outerHTML">
+  <div id="health-services" hx-get="/health/services" hx-trigger="load" hx-swap="outerHTML" {{template "load_error"}}>
     <p class="muted"><span class="spinner" aria-hidden="true"></span> {{t "Checking the services…"}}</p>
     <noscript><p><a href="/health/services">{{t "Check the services"}}</a></p></noscript>
   </div>{{end}}
@@ -13,7 +13,7 @@
 <section class="card">
   <div class="title-row"><h2>{{t "Trackers"}}</h2>{{template "info" (t "Indexers of Sonarr and Radarr, read live. Failing: skipped for a while by Sonarr/Radarr after errors (details there).")}}</div>
   {{if $d.Trackers}}{{template "health_trackers" $d.Trackers}}{{else}}
-  <div id="health-trackers" hx-get="/health/trackers" hx-trigger="load" hx-swap="outerHTML">
+  <div id="health-trackers" hx-get="/health/trackers" hx-trigger="load" hx-swap="outerHTML" {{template "load_error"}}>
     <p class="muted"><span class="spinner" aria-hidden="true"></span> {{t "Checking the trackers…"}}</p>
     <noscript><p><a href="/health/services">{{t "Check the services"}}</a></p></noscript>
   </div>{{end}}

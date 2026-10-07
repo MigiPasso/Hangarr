@@ -92,6 +92,8 @@ Pas de framework web, pas de build Node pour l'app, pas de CDN.
 - Requêtes sortantes : clients amont via `httpx` uniquement (redirections suivies seulement vers le même hôte,
   `httpx.SameHostOnly`, sinon la clé partirait ailleurs) ; images distantes : https seulement, redirections https, 3 max.
   Jamais `http.DefaultClient` pour un appel authentifié.
+- URL publiques : refusées si c'est une page de l'appli (`/login`, `/movie/…`, requête ou ancre ; Plex `/web`),
+  `upstream.pageOfTheApp` ; un préfixe (`https://hôte/radarr`) reste accepté.
 - Identifiants conservés (champ vide) : jamais envoyés à une autre origine. Si l'URL d'API d'un service change de
   schéma, d'hôte ou de port, ses identifiants doivent être ressaisis (enregistrement **et** test de connexion,
   `Manager.keptCredentials`) ; identifiant défini par l'environnement → adresse aussi par l'environnement. Sinon une
@@ -166,7 +168,9 @@ Pas de framework web, pas de build Node pour l'app, pas de CDN.
   conservés, `PUT` de l'objet brut. Sans changement (déjà dans l'état demandé) : rien d'envoyé ni journalisé, mais copie
   locale des tags réalignée. Le mock enregistre aussi les `POST` dans `/_calls`.
 - À venir (`/calendar`, `internal/web/calendar.go`) : `GET /api/v3/calendar` de Sonarr (`includeSeries`) et Radarr,
-  `unmonitored=false`, lu en direct (8 s max par service, en parallèle), rien en base ; trois vues (bascule Liste / Grille / Calendrier) : liste ou grille d'affiches (`view=grid`, cartes
+  `unmonitored=false`, lu en direct (8 s max par service, en parallèle), rien en base ; page envoyée tout de suite,
+  sorties chargées par HTMX (`hx-trigger="load"`, `hx-select="#calendar-page"`), `live=1` sans JS (tests : en-tête
+  `HX-Request`) ; URL construites par `url.Values` (paramètres triés) ; trois vues (bascule Liste / Grille / Calendrier) : liste ou grille d'affiches (`view=grid`, cartes
   de la Bibliothèque en **un seul flux** : une tuile date (jour, numéro, mois, « dans N jours ») dans le flux avant les
   cartes de chaque jour, pour des rangées pleines), paginées (période 30 /
   90 (défaut) / 365 jours, `size` 10 / 25 (défaut) / 50 / 100 dans un petit `<select>` de la barre de pagination en bas, soumis par HTMX au
@@ -176,7 +180,8 @@ Pas de framework web, pas de build Node pour l'app, pas de CDN.
   pas d'heure). Lien vers la fiche si l'élément est déjà synchronisé. Le mock recale toujours `calendar.json` sur
   aujourd'hui.
 - Santé (`/health`) : services vérifiés en direct (`upstream.CheckAll`, chargés en différé par HTMX, alertes
-  `/api/v3/health` de Sonarr/Radarr hors indexeurs), section **Trackers** séparée (`upstream.CheckTrackers`,
+  `/api/v3/health` de Sonarr/Radarr hors indexeurs, partagées entre les deux sections : singleflight + 15 s par
+  instantané de clients), section **Trackers** séparée (`upstream.CheckTrackers`,
   `/health/trackers` en différé : `/api/v3/indexer` ; **Sonarr/Radarr n'ont pas d'API d'état des indexeurs**
   (`/indexerstatus` = Prowlarr) : « en échec » = nom cité par l'alerte `IndexerStatusCheck` /
   `IndexerLongTermStatusCheck` (« …: A, B », nom exact entre séparateurs, indépendant de la langue ; sans nom = tous) ;
@@ -210,7 +215,8 @@ Pas de framework web, pas de build Node pour l'app, pas de CDN.
   Compte) ; une section n'affiche ses pages que si l'on y est, son titre mène à la première. Icônes SVG en ligne
   (template `icon`). Réductible aux icônes (bouton, cookie `hangarr_sidebar=collapsed` lu par le serveur, pas de flash ;
   libellés gardés pour les lecteurs d'écran) ; sous 800 px, panneau ☰ par-dessus la page (Échap, fond cliquable), sans
-  JS le menu s'affiche au-dessus de la page (`<html class="no-js">`, retiré par `app.js`). Barre du haut : sync, langue,
+  JS le menu s'affiche au-dessus de la page (`<html class="no-js">`, retiré par `app.js`) ; sur mobile, bouton « Fermer »
+  (pas « Réduire »), reste de la page `inert` pendant l'ouverture, focus rendu au ☰. Barre du haut : sync, langue,
   thème, déconnexion.
 - Thèmes clair / sombre : toutes les couleurs en variables `light-dark(clair, sombre)` dans `app.css` ; par défaut le
   système, bouton (`data-theme-toggle`, `app.js`) → cookie `hangarr_theme` lu par le serveur (`<html data-theme>`, pas de
