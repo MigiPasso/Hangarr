@@ -81,6 +81,10 @@ func TestShrink(t *testing.T) {
 	if _, err := shrink(bombPNG(t, 20000, 20000), MaxFanartWidth); !errors.Is(err, errTooLarge) {
 		t.Errorf("decompression bomb: %v", err)
 	}
+	// 30 Mpx: above the limit; 4K (8.3 Mpx) stays well under it.
+	if _, err := shrink(bombPNG(t, 7500, 4000), MaxFanartWidth); !errors.Is(err, errTooLarge) {
+		t.Errorf("30 Mpx must be refused: %v", err)
+	}
 }
 
 // bombPNG is a tiny PNG declaring w×h pixels (only its header is valid).

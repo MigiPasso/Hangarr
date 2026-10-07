@@ -16,12 +16,18 @@ const (
 	MaxPosterWidth = 500
 	MaxFanartWidth = 1280
 	// maxPixels refuses to decode larger images: a small file may declare
-	// huge dimensions (decompression bomb).
-	maxPixels   = 50_000_000
+	// huge dimensions (decompression bomb). 25 Mpx (6K) is far above real
+	// posters and fanarts (8 Mpx for 4K) and needs about 140 MB to decode.
+	maxPixels   = 25_000_000
 	jpegQuality = 85
 )
 
 var errTooLarge = errors.New("image dimensions too large")
+
+// decoding serializes the decode-and-resize step: one full-size image in
+// memory at a time, whatever the number of downloads in flight, so the pod
+// stays well under its 512 MiB limit.
+var decoding = make(chan struct{}, 1)
 
 func maxWidth(variant string) int {
 	if variant == "fanart" {
@@ -44,6 +50,8 @@ func shrink(b []byte, w int) ([]byte, error) {
 	if cfg.Width <= w {
 		return b, nil
 	}
+	decoding <- struct{}{}
+	defer func() { <-decoding }()
 	src, _, err := image.Decode(bytes.NewReader(b))
 	if err != nil {
 		return b, nil //nolint:nilerr // truncated or odd file: served as is, like before

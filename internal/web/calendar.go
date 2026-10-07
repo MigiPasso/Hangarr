@@ -16,9 +16,11 @@ import (
 	"hangarr/internal/i18n"
 )
 
-// calendarRanges are the periods offered on the Upcoming page (days); the
-// first one is the default.
-var calendarRanges = []int{90, 30, 365}
+// calendarRanges are the periods offered on the Upcoming page (days), in the
+// order of the tabs; calendarDefaultDays is the default one.
+var calendarRanges = []int{30, 90, 365}
+
+const calendarDefaultDays = 90
 
 // calendarPageSizes are the page sizes of the list; the second is the default.
 var calendarPageSizes = []int{10, 25, 50, 100}
@@ -35,14 +37,15 @@ type calendarEntry struct {
 	Title   string
 	// What is released: "S02E01", "S02E01–E03" or a movie release type.
 	What         string
-	EpisodeTitle string // single episode only
-	Count        int    // episodes in the group
-	Time         string // local air time, "" for movies (dates only)
-	Note         string // premiere / finale (translated)
+	EpisodeTitle string   // single episode only
+	Count        int      // episodes in the group
+	Time         string   // local air time, "" for movies (dates only)
+	Notes        []string // premiere, finale (translated), in episode order
 	HasFile      bool
 	at           time.Time
 	season       int
 	episodes     []int
+	notes        map[int]string // episode number -> note, while grouping
 }
 
 type calendarDay struct {
@@ -95,7 +98,7 @@ func (s *Server) calendar(w http.ResponseWriter, r *http.Request) {
 	l := s.loc(r)
 	loc := s.Config.Location
 	q := r.URL.Query()
-	d := calendarData{View: "list", Days: calendarRanges[0], Ranges: calendarRanges,
+	d := calendarData{View: "list", Days: calendarDefaultDays, Ranges: calendarRanges,
 		Size: calendarPageSizes[1], Sizes: calendarPageSizes, Page: 1}
 	if n, err := strconv.Atoi(q.Get("days")); err == nil && slices.Contains(calendarRanges, n) {
 		d.Days = n
@@ -270,13 +273,23 @@ func seriesEntries(l i18n.Localizer, episodes []sonarr.CalendarEpisode, loc *tim
 		g.episodes = append(g.episodes, e.EpisodeNumber)
 		g.EpisodeTitle = e.Title
 		g.HasFile = g.HasFile && e.HasFile
-		if n := episodeNote(l, e); n != "" && g.Note == "" {
-			g.Note = n
+		if n := episodeNote(l, e); n != "" {
+			if g.notes == nil {
+				g.notes = map[int]string{}
+			}
+			g.notes[e.EpisodeNumber] = n
 		}
 	}
 	for i := range out {
 		g := &out[i]
 		sort.Ints(g.episodes)
+		// Premiere and finale of a season released at once: both, in
+		// episode order.
+		for _, ep := range g.episodes {
+			if n := g.notes[ep]; n != "" && !slices.Contains(g.Notes, n) {
+				g.Notes = append(g.Notes, n)
+			}
+		}
 		g.Count = len(g.episodes)
 		g.Time = g.at.Format("15:04")
 		g.What = episodeLabel(g.season, g.episodes[0])

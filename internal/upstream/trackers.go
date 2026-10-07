@@ -88,8 +88,10 @@ func CheckTrackers(ctx context.Context, c *Clients, l i18n.Localizer) []TrackerS
 var failureChecks = map[string]bool{"IndexerStatusCheck": true, "IndexerLongTermStatusCheck": true}
 
 // trackers marks the indexers named by a failure check: failing first, then
-// enabled ones, then by name. A failure check naming none of them is the
-// "all indexers are unavailable" variant: every enabled one is failing.
+// enabled ones, then by name. A failure check that contains no indexer name
+// at all is the "all indexers are unavailable" variant: every enabled one is
+// failing. A name found but not recognized as a list item (unexpected
+// separator) marks nothing: better a missed failure than false ones.
 func trackers(indexers []sonarr.Indexer, alerts []sonarr.HealthCheck) []Tracker {
 	out := make([]Tracker, 0, len(indexers))
 	for _, ix := range indexers {
@@ -100,13 +102,14 @@ func trackers(indexers []sonarr.Indexer, alerts []sonarr.HealthCheck) []Tracker 
 		if !failureChecks[a.Source] {
 			continue
 		}
-		named := false
+		mentioned := false
 		for i := range out {
 			if namedIn(a.Message, out[i].Name) {
-				out[i].Failing, named = true, true
+				out[i].Failing = true
 			}
+			mentioned = mentioned || (out[i].Name != "" && strings.Contains(a.Message, out[i].Name))
 		}
-		if !named {
+		if !mentioned {
 			for i := range out {
 				out[i].Failing = out[i].Failing || out[i].Enabled()
 			}
@@ -126,8 +129,9 @@ func trackers(indexers []sonarr.Indexer, alerts []sonarr.HealthCheck) []Tracker 
 }
 
 // namedIn reports whether name is one of the items of the list that ends msg
-// ("Indexers unavailable due to failures: A, B"): the exact name, between
-// ": " or ", " and ", " or the end, so "Orion" never matches "Orion - S".
+// ("Indexers unavailable due to failures: A, B"): the exact name, after a
+// colon (ASCII or full-width, any spacing) or ", ", and before ", ", a final
+// period or the end, so "Orion" never matches "Orion - S".
 func namedIn(msg, name string) bool {
 	if name == "" {
 		return false
@@ -138,8 +142,10 @@ func namedIn(msg, name string) bool {
 			return false
 		}
 		start, end := i+j, i+j+len(name)
-		before := strings.HasSuffix(msg[:start], ": ") || strings.HasSuffix(msg[:start], ", ")
-		after := end == len(msg) || strings.HasPrefix(msg[end:], ", ") || strings.HasPrefix(msg[end:], ".")
+		head := strings.TrimRight(msg[:start], " ")
+		before := strings.HasSuffix(head, ":") || strings.HasSuffix(head, "：") || strings.HasSuffix(msg[:start], ", ")
+		rest := msg[end:]
+		after := rest == "" || rest == "." || rest == "。" || strings.HasPrefix(rest, ", ")
 		if before && after {
 			return true
 		}

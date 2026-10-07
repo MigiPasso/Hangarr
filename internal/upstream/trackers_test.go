@@ -43,6 +43,12 @@ func TestTrackersFromHealthChecks(t *testing.T) {
 			"Kestrel - S (Prowlarr) | Nimbus (Prowlarr) | Orion | Orion - S (Prowlarr)"},
 		{"other checks ignored", []sonarr.HealthCheck{{Source: "IndexerRssCheck",
 			Message: "No indexers available with RSS sync enabled: Orion"}}, ""},
+		// Full-width colon without space (Chinese interface).
+		{"full-width colon", []sonarr.HealthCheck{{Source: "IndexerStatusCheck",
+			Message: "由于故障，索引器不可用：Kestrel - S (Prowlarr)"}}, "Kestrel - S (Prowlarr)"},
+		// A name is there but not as a list item: never "all failing".
+		{"unrecognized list", []sonarr.HealthCheck{{Source: "IndexerStatusCheck",
+			Message: "Indexers unavailable (Orion - S (Prowlarr)) due to failures"}}, ""},
 	}
 	for _, c := range cases {
 		got := trackers(indexers, c.alerts)
