@@ -2,8 +2,10 @@ package web
 
 import (
 	"errors"
+	"maps"
 	"net/http"
 	"slices"
+	"strings"
 	"time"
 
 	"hangarr/internal/store"
@@ -178,7 +180,12 @@ func (s *Server) configTest(w http.ResponseWriter, r *http.Request) {
 	var verr upstream.ValidationError
 	switch {
 	case errors.As(err, &verr):
-		res.Message = l.T("Expected an http(s) address, e.g. http://host:port.")
+		// Invalid URL, or a kept credential that would go to a new address.
+		msgs := make([]string, 0, len(verr))
+		for _, k := range slices.Sorted(maps.Keys(verr)) {
+			msgs = append(msgs, l.T(verr[k]))
+		}
+		res.Message = strings.Join(msgs, " ")
 	case err != nil:
 		res.Message = upstream.Describe(l, err)
 		s.Log.Info("connection test failed", "service", svc, "err", err)
@@ -202,6 +209,9 @@ func (s *Server) configTest(w http.ResponseWriter, r *http.Request) {
 	for i := range forms {
 		if forms[i].Service == svc {
 			forms[i].Test = &res
+			if verr != nil {
+				forms[i].Errors = verr
+			}
 		}
 	}
 	s.render(w, r, http.StatusOK, "config", "", s.page(r, "Services", "config", s.configData(forms)))

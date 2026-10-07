@@ -55,7 +55,7 @@ func selectedIDs(r *http.Request) ([]int64, error) {
 	for _, v := range r.PostForm["ids"] {
 		id, err := strconv.ParseInt(strings.TrimSpace(v), 10, 64)
 		if err != nil || id <= 0 {
-			return nil, errors.New("identifiant invalide")
+			return nil, errors.New("invalid id")
 		}
 		if !slices.Contains(ids, id) {
 			ids = append(ids, id)
@@ -83,7 +83,7 @@ func (s *Server) classify(r *http.Request, ids []int64, protectAction bool) (*ba
 		switch {
 		case m.ArrID == 0:
 			e.Reason = "in Plex only"
-		case isProtected(m.Tags, s.Config.ProtectedTags):
+		case store.HasProtectedTag(m.Tags, s.Config.ProtectedTags):
 			e.Reason = "already protected"
 			if !protectAction {
 				e.Reason = "protected by a tag"

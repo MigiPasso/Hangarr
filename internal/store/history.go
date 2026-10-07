@@ -132,15 +132,50 @@ func (s *Store) StartSyncRun(ctx context.Context, source string, now time.Time) 
 	return res.LastInsertId()
 }
 
-// FinishSyncRun records the outcome of a source sync.
+// ErrSyncInterrupted marks a source sync stopped before its end (shutdown
+// during the sync, or the process killed): status "interrupted".
+var ErrSyncInterrupted = errors.New("interrupted")
+
+// FinishSyncRun records the outcome of a source sync. A canceled context
+// (shutdown) records the run as interrupted, not failed.
 func (s *Store) FinishSyncRun(ctx context.Context, id int64, now time.Time, items int, runErr error) error {
 	status, msg := "success", sql.NullString{}
-	if runErr != nil {
+	switch {
+	case errors.Is(runErr, ErrSyncInterrupted), errors.Is(runErr, context.Canceled):
+		status, msg = "interrupted", sql.NullString{String: ErrSyncInterrupted.Error(), Valid: true}
+	case runErr != nil:
 		status, msg = "error", sql.NullString{String: runErr.Error(), Valid: true}
 	}
 	_, err := s.db.ExecContext(ctx, `UPDATE sync_runs SET finished_at = ?, status = ?, items = ?, error = ?
 		WHERE id = ?`, now.Unix(), status, items, msg, id)
 	return err
+}
+
+// InterruptUnfinishedSyncRuns closes the runs left "running" by a previous
+// process (killed during a sync): they would show as running forever. Call
+// it at startup, before any sync.
+func (s *Store) InterruptUnfinishedSyncRuns(ctx context.Context, now time.Time) (int64, error) {
+	res, err := s.db.ExecContext(ctx, `UPDATE sync_runs SET finished_at = ?, status = 'interrupted', error = ?
+		WHERE finished_at IS NULL`, now.Unix(), ErrSyncInterrupted.Error())
+	if err != nil {
+		return 0, err
+	}
+	return res.RowsAffected()
+}
+
+// SyncRunRetention is how long sync_runs rows are kept: each sync adds one
+// per source, and the Tautulli webhook one or two per play.
+const SyncRunRetention = 90 * 24 * time.Hour
+
+// PruneSyncRuns deletes the finished runs started before before, except the
+// latest run of each source (Health page, last sync).
+func (s *Store) PruneSyncRuns(ctx context.Context, before time.Time) (int64, error) {
+	res, err := s.db.ExecContext(ctx, `DELETE FROM sync_runs WHERE started_at < ? AND finished_at IS NOT NULL
+		AND id NOT IN (SELECT MAX(id) FROM sync_runs GROUP BY source)`, before.Unix())
+	if err != nil {
+		return 0, err
+	}
+	return res.RowsAffected()
 }
 
 // SyncRun is a row of sync_runs.

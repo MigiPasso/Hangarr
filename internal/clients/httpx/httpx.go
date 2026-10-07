@@ -42,7 +42,8 @@ const maxRedirects = 5
 
 // SameHostOnly is the redirect policy of the upstream clients: Go forwards
 // custom headers (X-Api-Key, X-Plex-Token) to any redirect target, so a
-// redirect to another host is refused instead of leaking the credential.
+// redirect to another host is refused instead of leaking the credential, and
+// so is a downgrade from https to http (the credential would travel in clear).
 func SameHostOnly(req *http.Request, via []*http.Request) error {
 	if len(via) >= maxRedirects {
 		return fmt.Errorf("stopped after %d redirects", maxRedirects)
@@ -50,13 +51,22 @@ func SameHostOnly(req *http.Request, via []*http.Request) error {
 	if req.URL.Hostname() != via[0].URL.Hostname() {
 		return &RedirectError{Host: req.URL.Hostname()}
 	}
+	if via[0].URL.Scheme == "https" && req.URL.Scheme != "https" {
+		return &RedirectError{Host: req.URL.Hostname(), Downgrade: true}
+	}
 	return nil
 }
 
-// RedirectError is a refused redirect to another host.
-type RedirectError struct{ Host string }
+// RedirectError is a refused redirect to another host, or to plain http.
+type RedirectError struct {
+	Host      string
+	Downgrade bool // https to http on the same host
+}
 
 func (e *RedirectError) Error() string {
+	if e.Downgrade {
+		return fmt.Sprintf("redirect from https to http (%s) refused: check the URL", e.Host)
+	}
 	return fmt.Sprintf("redirect to another host (%s) refused: check the URL", e.Host)
 }
 

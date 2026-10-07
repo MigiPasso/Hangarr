@@ -9,7 +9,7 @@
      <details class="filters-panel" open>
       <summary class="filters-head">
         <h2>{{t "Filters"}}</h2>
-        {{if $d.Active}}<a class="small" href="{{$d.Path}}">{{t "Reset"}}</a>{{end}}
+        {{template "filters_reset" $d}}
       </summary>
 
       {{with $d.Facets}}{{if .Users}}
@@ -125,10 +125,7 @@
         <option value="asc"{{if not $d.Filter.Desc}} selected{{end}}>{{t "Ascending"}}</option>
         <option value="desc"{{if $d.Filter.Desc}} selected{{end}}>{{t "Descending"}}</option>
       </select>
-      <span class="view-toggle" role="group" aria-label="{{t "View"}}">
-        <a href="{{index $d.ViewURLs "grid"}}"{{if eq $d.View "grid"}} aria-current="true"{{end}}>{{t "Grid"}}</a>
-        <a href="{{index $d.ViewURLs "table"}}"{{if eq $d.View "table"}} aria-current="true"{{end}}>{{t "Table"}}</a>
-      </span>
+      {{template "view_toggle" $d}}
     </div>
   </form>
 

@@ -409,6 +409,46 @@ func TestConcurrentRunRejected(t *testing.T) {
 	}
 }
 
+// A sync stopped by the shutdown must not leave runs "running" forever, nor
+// count as the last sync (the startup catch-up must still run).
+func TestCanceledSyncClosesItsRuns(t *testing.T) {
+	e := newEnv(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	// Sonarr answers once the runs are open: the shutdown arrives then.
+	stopping := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		cancel()
+		<-r.Context().Done()
+	}))
+	t.Cleanup(stopping.Close)
+	urls := map[string]string{}
+	for k, v := range e.urls {
+		urls[k] = v
+	}
+	urls["sonarr"] = stopping.URL
+	e.s.Upstreams.Set(upstream.Build(upstream.TestValues(urls, key), "auto"))
+	if _, err := e.s.Run(ctx); err == nil {
+		t.Fatal("a canceled sync must fail")
+	}
+	if n := e.count(`SELECT COUNT(*) FROM sync_runs WHERE finished_at IS NULL`); n != 0 {
+		t.Errorf("%d runs left running", n)
+	}
+	if n := e.count(`SELECT COUNT(*) FROM sync_runs WHERE status = 'interrupted'`); n == 0 {
+		t.Error("the runs must be recorded as interrupted")
+	}
+	if last, err := e.store.LastSyncAt(context.Background()); err != nil || last != nil {
+		t.Errorf("an interrupted sync is not a sync: %v %v", last, err)
+	}
+
+	// A process killed during a sync leaves open runs: closed at startup.
+	if _, err := e.store.StartSyncRun(context.Background(), SourceSonarr, time.Unix(mockarr.Anchor, 0)); err != nil {
+		t.Fatal(err)
+	}
+	if n, err := e.store.InterruptUnfinishedSyncRuns(context.Background(), time.Unix(mockarr.Anchor, 0)); err != nil || n != 1 {
+		t.Errorf("interrupted %d runs: %v", n, err)
+	}
+}
+
 func TestHistorySyncDebounced(t *testing.T) {
 	e := newEnv(t)
 	e.run()

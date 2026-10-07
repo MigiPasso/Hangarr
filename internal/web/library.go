@@ -82,12 +82,16 @@ func atoi(v string) int {
 	return n
 }
 
+// maxNumber bounds the numeric filters: "Inf", "NaN" or 1e300 GB would
+// overflow the int64 bounds computed from them.
+const maxNumber = 1e9
+
 func atof(v string) float64 {
 	f, err := strconv.ParseFloat(strings.ReplaceAll(v, ",", "."), 64)
-	if err != nil || f < 0 {
+	if err != nil || !(f >= 0) { // NaN too
 		return 0
 	}
-	return f
+	return min(f, maxNumber)
 }
 
 // parseLibraryFilter reads filters from the query string. Unknown values are
@@ -207,6 +211,9 @@ type libraryData struct {
 	Active    bool // at least one filter set
 	More      bool // a filter of the « More filters » block is set (opens it)
 	Inactive  []int
+	// OOB: only #results is swapped (filter change), the view links and
+	// the reset link outside it are swapped out of band with the new filter.
+	OOB bool
 }
 
 func (s *Server) pageSize() int {
@@ -236,13 +243,15 @@ func (s *Server) library(kind, path, title string) http.HandlerFunc {
 		f.Limit, f.Offset = size+1, (page-1)*size
 		now := time.Now()
 
-		items, err := s.Store.Library(ctx, f, now, s.Config.AbandonDays)
+		res, err := s.Store.LibraryPage(ctx, f, now, s.Config.AbandonDays)
 		if err != nil {
 			s.serverError(w, r, err)
 			return
 		}
+		items := res.Items
 		values := filterValues(f)
-		data := libraryData{Kind: kind, Path: path, Filter: f, Values: values, Items: items, View: s.libraryView(w, r)}
+		data := libraryData{Kind: kind, Path: path, Filter: f, Values: values, Items: items, View: s.libraryView(w, r),
+			Count: res.Count, SizeBytes: res.SizeBytes}
 		if len(items) > size {
 			data.Items = items[:size]
 			next := filterValues(f)
@@ -254,10 +263,6 @@ func (s *Server) library(kind, path, title string) http.HandlerFunc {
 		// Infinite scroll: only the next batch of cards/rows.
 		if page > 1 {
 			s.render(w, r, http.StatusOK, "library", "library_items", s.page(r, title, kind, data))
-			return
-		}
-		if data.Count, data.SizeBytes, err = s.Store.LibrarySummary(ctx, f, now, s.Config.AbandonDays); err != nil {
-			s.serverError(w, r, err)
 			return
 		}
 		active := filterValues(f)
@@ -284,6 +289,7 @@ func (s *Server) library(kind, path, title string) http.HandlerFunc {
 		}
 		// Filter changes target #results; history restores need the full page.
 		if isHTMX(r) && r.Header.Get("HX-Target") == "results" && r.Header.Get("HX-History-Restore-Request") != "true" {
+			data.OOB = true
 			s.render(w, r, http.StatusOK, "library", "library_results", s.page(r, title, kind, data))
 			return
 		}

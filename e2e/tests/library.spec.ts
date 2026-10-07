@@ -68,6 +68,19 @@ test("table view is remembered", async ({ page }) => {
   await expect(cards(page)).toHaveCount(6);
 });
 
+test("switching the view keeps the filters chosen since the page loaded", async ({ page }) => {
+  await page.goto("/series");
+  await page.getByLabel("Qui ?").selectOption({ label: "Alice" });
+  await expect(page.locator(".summary")).toContainText("point de vue de Alice");
+  await page.getByRole("link", { name: "Tableau", exact: true }).click();
+  await expect(page.locator("table.library-table")).toBeVisible();
+  await expect(page).toHaveURL(/user=1001/);
+  await expect(page.getByLabel("Qui ?")).toHaveValue("1001");
+  await expect(page.locator(".summary")).toContainText("point de vue de Alice");
+  await page.getByRole("link", { name: "Grille" }).click();
+  await expect(page.getByLabel("Qui ?")).toHaveValue("1001");
+});
+
 test("manual sync", async ({ page }) => {
   await page.goto("/series");
   await page.getByRole("button", { name: "Synchroniser" }).click();

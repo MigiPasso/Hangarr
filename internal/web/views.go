@@ -14,6 +14,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"hangarr/internal/i18n"
@@ -114,7 +115,7 @@ func (v *views) funcs(l i18n.Localizer, loc *time.Location, protectedTags []stri
 		},
 		"bytes":      l.Bytes,
 		"stateLabel": func(it store.LibraryItem) string { return stateLabel(l, it) },
-		"protected":  func(tags []string) bool { return isProtected(tags, protectedTags) },
+		"protected":  func(tags []string) bool { return store.HasProtectedTag(tags, protectedTags) },
 		"has":        func(list []string, v string) bool { return slices.Contains(list, v) },
 		"hasID":      func(list []int64, v int64) bool { return slices.Contains(list, v) },
 		"list":       func(v ...string) []string { return v },
@@ -211,7 +212,7 @@ type pageData struct {
 	Session   *store.Session
 	DryRun    bool
 	Version   string
-	Sync      *syncView
+	sync      *lazySync // read through Sync()
 	// Missing lists the services the synchronization still needs (banner).
 	Missing []string
 	// OOB marks the banner and the sync status for an HTMX out-of-band swap.
@@ -225,6 +226,24 @@ type pageData struct {
 	Lang i18n.Lang
 	Path string
 	Data any
+}
+
+// lazySync computes the sync status at most once, and only when a template
+// shows it (layout, status partial): fragments such as the infinite scroll
+// or a filter change skip its work (LastSyncAt query until the first sync).
+type lazySync struct {
+	once sync.Once
+	get  func() *syncView
+	v    *syncView
+}
+
+// Sync is the sync status of the top bar, nil without a session.
+func (p pageData) Sync() *syncView {
+	if p.sync == nil {
+		return nil
+	}
+	p.sync.once.Do(func() { p.sync.v = p.sync.get() })
+	return p.sync.v
 }
 
 // sidebarCookie remembers the collapsed menu (set by app.js).
@@ -265,7 +284,7 @@ func (s *Server) pageRaw(r *http.Request, title, active string, data any) pageDa
 	if sess := sessionFrom(r); sess != nil {
 		pd.Session = sess
 		pd.CSRFToken = sess.CSRFToken
-		pd.Sync = s.syncStatus(r.Context())
+		pd.sync = &lazySync{get: func() *syncView { return s.syncStatus(r.Context()) }}
 		pd.Missing = s.Upstreams.Get().Missing
 	}
 	return pd
@@ -364,18 +383,6 @@ func imgURL(kind string, arrID int64, plexKey, variant string) string {
 		return fmt.Sprintf("/img/plex/%d/%s", n, variant)
 	}
 	return ""
-}
-
-// isProtected reports whether tags contain a PROTECTED_TAGS entry (case-insensitive).
-func isProtected(tags, protected []string) bool {
-	for _, t := range tags {
-		for _, p := range protected {
-			if strings.EqualFold(t, p) {
-				return true
-			}
-		}
-	}
-	return false
 }
 
 // pair is a value/label option for selects and checkbox lists.

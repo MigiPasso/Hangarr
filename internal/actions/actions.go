@@ -102,14 +102,7 @@ func isNotFound(err error) bool {
 }
 
 func (s *Service) protected(labels []string) bool {
-	for _, l := range labels {
-		for _, p := range s.ProtectedTags {
-			if strings.EqualFold(strings.TrimSpace(l), strings.TrimSpace(p)) {
-				return true
-			}
-		}
-	}
-	return false
+	return store.HasProtectedTag(labels, s.ProtectedTags)
 }
 
 // liveTags reads the item's current tags from Sonarr/Radarr; the local copy

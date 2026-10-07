@@ -95,6 +95,13 @@ func TestConfigPage(t *testing.T) {
 	if !strings.Contains(r.body, `id="test-plex"`) || !strings.Contains(r.body, "Injoignable") {
 		t.Errorf("test result: %s", r.body)
 	}
+	// Testing another host with the kept key: refused, with the reason (not
+	// "expected an http(s) address", the address is valid).
+	r = h.do(c, "POST", "/config/sonarr/test", url.Values{"csrf_token": {csrf}, "sonarr.url": {"http://elsewhere:8989"}},
+		map[string]string{"HX-Request": "true"})
+	if !strings.Contains(r.body, "L&#39;adresse a changé") || strings.Contains(r.body, "Adresse http(s) attendue") {
+		t.Errorf("kept credential test: %s", r.body)
+	}
 	if r := h.do(c, "POST", "/config/prowlarr", url.Values{"csrf_token": {csrf}}, nil); r.status != http.StatusNotFound {
 		t.Errorf("unknown service: %d", r.status)
 	}

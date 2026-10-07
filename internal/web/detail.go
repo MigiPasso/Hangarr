@@ -39,7 +39,8 @@ type userSeason struct {
 }
 
 type userProgress struct {
-	Name      string
+	UserID    int64
+	Name      string // "" when the account is unknown (shown as "User 12")
 	Seasons   []userSeason
 	Last      string // "S01E03" (series) of the last complete play
 	LastAt    int64
@@ -138,10 +139,7 @@ func buildProgress(eps []sonarr.Episode, watches []store.EpisodeWatch, seasons [
 	for _, w := range watches {
 		a := byUser[w.UserID]
 		if a == nil {
-			a = &acc{p: userProgress{Name: w.UserName}, watched: map[epKey]bool{}}
-			if a.p.Name == "" {
-				a.p.Name = "Utilisateur " + strconv.FormatInt(w.UserID, 10)
-			}
+			a = &acc{p: userProgress{UserID: w.UserID, Name: w.UserName}, watched: map[epKey]bool{}}
 			byUser[w.UserID] = a
 			order = append(order, w.UserID)
 		}
@@ -261,7 +259,7 @@ func (s *Server) detail(kind string) http.HandlerFunc {
 		}
 		ctx := r.Context()
 		d := detailData{M: m, Path: kindPath(kind), Links: s.links(ctx, m),
-			Protected: isProtected(m.Tags, s.Config.ProtectedTags) || m.ProtectedLocal, Deletable: plexDeletable(m) || m.ArrID > 0}
+			Protected: store.HasProtectedTag(m.Tags, s.Config.ProtectedTags) || m.ProtectedLocal, Deletable: plexDeletable(m) || m.ArrID > 0}
 		switch {
 		case s.Actions == nil:
 		case plexDeletable(m):
@@ -334,7 +332,7 @@ type deleteData struct {
 func (s *Server) deleteForm(r *http.Request, m *store.Media, season *int) (deleteData, error) {
 	d := deleteData{M: m, Path: kindPath(m.Kind), Plex: m.ArrID == 0, Season: season, SizeBytes: m.SizeBytes, DryRun: s.Config.DryRun,
 		ConfirmByTyping: s.Config.ConfirmByTyping && m.Kind == "series" && season == nil,
-		Protected:       isProtected(m.Tags, s.Config.ProtectedTags) || m.ProtectedLocal, DeleteFiles: true}
+		Protected:       store.HasProtectedTag(m.Tags, s.Config.ProtectedTags) || m.ProtectedLocal, DeleteFiles: true}
 	if season != nil {
 		seasons, err := s.Store.Seasons(r.Context(), m.ID)
 		if err != nil {

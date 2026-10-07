@@ -1,4 +1,6 @@
 {{define "library_results"}}{{$d := .Data}}
+{{/* Filter changes only swap #results: the links that carry the filters are swapped out of band. */}}
+{{if $d.OOB}}{{template "view_toggle" $d}}{{template "filters_reset" $d}}{{end}}
 <p class="summary">
   <strong>{{if eq $d.Kind "series"}}{{tn $d.Count "%d series" "%d series|many"}}{{else}}{{tn $d.Count "%d movie" "%d movies"}}{{end}}</strong>
   · {{bytes $d.SizeBytes}}
@@ -22,6 +24,13 @@
   <div class="grid">{{template "library_items" .}}</div>
 {{end}}
 {{end}}
+
+{{define "view_toggle"}}<span id="view-toggle" class="view-toggle" role="group" aria-label="{{t "View"}}"{{if .OOB}} hx-swap-oob="true"{{end}}>
+  <a href="{{index .ViewURLs "grid"}}"{{if eq .View "grid"}} aria-current="true"{{end}}>{{t "Grid"}}</a>
+  <a href="{{index .ViewURLs "table"}}"{{if eq .View "table"}} aria-current="true"{{end}}>{{t "Table"}}</a>
+</span>{{end}}
+
+{{define "filters_reset"}}<span id="filters-reset"{{if .OOB}} hx-swap-oob="true"{{end}}>{{if .Active}}<a class="small" href="{{.Path}}">{{t "Reset"}}</a>{{end}}</span>{{end}}
 
 {{define "library_items"}}{{$d := .Data}}
 {{if eq $d.View "table"}}

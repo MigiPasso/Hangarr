@@ -124,14 +124,18 @@ func libraryView(b *sqlBuilder, f LibraryFilter, now time.Time, abandonDays int)
 		return
 	}
 	recent := now.Unix() - int64(abandonDays)*day
-	b.add(`WITH up AS (
-			SELECT media_id, COUNT(DISTINCT `+playKey+`) AS plays,
-			  COUNT(DISTINCT CASE WHEN watched = 1 THEN `+playKey+` END) AS completed,
+	// ev reads the user's plays once, and only those of the listed kind
+	// (the costly part, see BenchmarkLibraryView); up and ue come from it.
+	b.add(`WITH ev AS MATERIALIZED (
+			SELECT media_id, `+playKey+` AS pk, watched, stopped_at, media_type, season_number, episode_number
+			FROM watch_events WHERE user_id = ? AND media_id IN (SELECT id FROM media WHERE kind = ?)),
+		up AS (
+			SELECT media_id, COUNT(DISTINCT pk) AS plays, COUNT(DISTINCT CASE WHEN watched = 1 THEN pk END) AS completed,
 			  MAX(stopped_at) AS last
-			FROM watch_events WHERE user_id = ? AND media_id IS NOT NULL GROUP BY media_id),
+			FROM ev GROUP BY media_id),
 		ue AS (
-			SELECT media_id, season_number, COUNT(DISTINCT episode_number) AS w FROM watch_events
-			WHERE user_id = ? AND watched = 1 AND media_type = 'episode' AND media_id IS NOT NULL AND season_number > 0
+			SELECT media_id, season_number, COUNT(DISTINCT episode_number) AS w FROM ev
+			WHERE watched = 1 AND media_type = 'episode' AND season_number > 0
 			GROUP BY media_id, season_number),
 		uw AS (
 			SELECT ue.media_id, SUM(ue.w) AS raw,
@@ -162,7 +166,7 @@ func libraryView(b *sqlBuilder, f LibraryFilter, now time.Time, abandonDays int)
 			  END AS eff_state
 			FROM media m LEFT JOIN up ON up.media_id = m.id LEFT JOIN uw ON uw.media_id = m.id
 			WHERE m.kind = ?)`,
-		f.User, f.User, f.User, recent, recent, f.Kind)
+		f.User, f.Kind, f.User, recent, recent, f.Kind)
 }
 
 // libraryWhere writes the WHERE clause (always starts with "WHERE 1 = 1").
@@ -222,14 +226,18 @@ func libraryWhere(b *sqlBuilder, f LibraryFilter, now time.Time) {
 	}
 }
 
-// LibraryQuery builds the paginated listing query (exported for tests).
+// LibraryQuery builds the paginated listing query (exported for tests). Its
+// last two columns are the number and total size of all the matching items
+// (window functions): the perspective of a user is costly to compute, the
+// count must not compute it a second time.
 func LibraryQuery(f LibraryFilter, now time.Time, abandonDays int) (string, []any) {
 	b := &sqlBuilder{}
 	libraryView(b, f, now, abandonDays)
 	b.add(` SELECT v.id, COALESCE(v.arr_id, 0), COALESCE(v.plex_rating_key, ''), v.kind, v.title, COALESCE(v.year, 0), v.eff_state, v.eff_plays,
 		v.distinct_viewers, v.eff_watched, COALESCE(v.downloaded_episodes, 0), COALESCE(v.total_episodes, 0),
 		v.eff_last, COALESCE(NULLIF(a.friendly_name, ''), a.username, ''), v.size_bytes, v.added_at,
-		COALESCE(v.rating, 0), v.tags, v.match_state, COALESCE(v.status, ''), v.protected_local
+		COALESCE(v.rating, 0), v.tags, v.match_state, COALESCE(v.status, ''), v.protected_local,
+		COUNT(*) OVER (), COALESCE(SUM(v.size_bytes) OVER (), 0)
 		FROM v LEFT JOIN plex_accounts a ON a.account_id = v.eff_last_by`)
 	libraryWhere(b, f, now)
 	col, ok := sortKeys[f.Sort]
@@ -249,41 +257,48 @@ func LibraryQuery(f LibraryFilter, now time.Time, abandonDays int) (string, []an
 	return b.sb.String(), b.args
 }
 
+// LibraryPage is one page of the library and the totals of the filter.
+type LibraryPage struct {
+	Items []LibraryItem
+	// Count and SizeBytes cover every matching item, not only this page
+	// (0 when the page is past the end).
+	Count     int
+	SizeBytes int64
+}
+
 // Library returns one page of items.
 func (s *Store) Library(ctx context.Context, f LibraryFilter, now time.Time, abandonDays int) ([]LibraryItem, error) {
+	p, err := s.LibraryPage(ctx, f, now, abandonDays)
+	if err != nil {
+		return nil, err
+	}
+	return p.Items, nil
+}
+
+// LibraryPage returns one page of items with the number and total size of
+// the matching items, in a single query.
+func (s *Store) LibraryPage(ctx context.Context, f LibraryFilter, now time.Time, abandonDays int) (*LibraryPage, error) {
 	query, args := LibraryQuery(f, now, abandonDays)
 	rows, err := s.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
 	defer func() { _ = rows.Close() }()
-	var out []LibraryItem
+	p := &LibraryPage{}
 	for rows.Next() {
 		var it LibraryItem
 		var last, added sql.NullInt64
 		var tags string
 		if err := rows.Scan(&it.ID, &it.ArrID, &it.PlexRatingKey, &it.Kind, &it.Title, &it.Year, &it.State, &it.Plays, &it.Viewers,
 			&it.WatchedEpisodes, &it.DownloadedEpisodes, &it.TotalEpisodes, &last, &it.LastViewedBy, &it.SizeBytes,
-			&added, &it.Rating, &tags, &it.MatchState, &it.Status, &it.ProtectedLocal); err != nil {
+			&added, &it.Rating, &tags, &it.MatchState, &it.Status, &it.ProtectedLocal, &p.Count, &p.SizeBytes); err != nil {
 			return nil, err
 		}
 		it.LastViewedAt, it.AddedAt = ptrInt(last), ptrInt(added)
 		_ = json.Unmarshal([]byte(tags), &it.Tags)
-		out = append(out, it)
+		p.Items = append(p.Items, it)
 	}
-	return out, rows.Err()
-}
-
-// LibrarySummary returns the number of matching items and their total size.
-func (s *Store) LibrarySummary(ctx context.Context, f LibraryFilter, now time.Time, abandonDays int) (int, int64, error) {
-	b := &sqlBuilder{}
-	libraryView(b, f, now, abandonDays)
-	b.add(` SELECT COUNT(*), COALESCE(SUM(v.size_bytes), 0) FROM v`)
-	libraryWhere(b, f, now)
-	var n int
-	var size int64
-	err := s.db.QueryRowContext(ctx, b.sb.String(), b.args...).Scan(&n, &size)
-	return n, size, err
+	return p, rows.Err()
 }
 
 // Account is a Plex user for filters and labels.
@@ -363,11 +378,12 @@ func (s *Store) Accounts(ctx context.Context) ([]Account, error) {
 
 // LastSyncAt returns the end of the most recent full sync, i.e. of a catalog
 // source: history-only syncs (Tautulli webhook) do not count, so that they
-// never hide a stale catalog from the startup catch-up.
+// never hide a stale catalog from the startup catch-up. Interrupted runs do
+// not count either.
 func (s *Store) LastSyncAt(ctx context.Context) (*int64, error) {
 	var v sql.NullInt64
 	err := s.db.QueryRowContext(ctx, `SELECT MAX(finished_at) FROM sync_runs
-		WHERE source IN ('sonarr', 'radarr', 'plex')`).Scan(&v)
+		WHERE source IN ('sonarr', 'radarr', 'plex') AND status <> 'interrupted'`).Scan(&v)
 	return ptrInt(v), err
 }
 

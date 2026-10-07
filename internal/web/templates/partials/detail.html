@@ -91,7 +91,7 @@
         <tbody>
         {{range $d.Users}}
           <tr>
-            <td>{{.Name}}</td>
+            <td>{{with .Name}}{{.}}{{else}}{{t "User %d" .UserID}}{{end}}</td>
             {{if eq $m.Kind "series"}}
             <td class="user-seasons">{{range .Seasons}}<span title="{{t "Season %d" .Number}}">S{{.Number}} {{.Watched}}/{{.Files}}</span>{{end}}</td>
             <td>{{with .Last}}{{.}}{{else}}<span class="muted">{{t "none"}}</span>{{end}}</td>
