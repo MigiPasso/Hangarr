@@ -2,7 +2,6 @@ package web
 
 import (
 	"net/http"
-	"time"
 
 	"hangarr/internal/store"
 	"hangarr/internal/upstream"
@@ -53,13 +52,13 @@ func (s *Server) healthServices(w http.ResponseWriter, r *http.Request) {
 		s.render(w, r, http.StatusOK, "health", "health_services_partial", s.page(r, "Health", "health", statuses))
 		return
 	}
-	s.renderHealth(w, r, healthData{Services: statuses, Trackers: upstream.CheckTrackers(r.Context(), up, l, time.Now())})
+	s.renderHealth(w, r, healthData{Services: statuses, Trackers: upstream.CheckTrackers(r.Context(), up, l)})
 }
 
 // healthTrackers reads the indexers of Sonarr and Radarr live (HTMX
 // fragment; without JavaScript, see healthServices).
 func (s *Server) healthTrackers(w http.ResponseWriter, r *http.Request) {
-	trackers := upstream.CheckTrackers(r.Context(), s.Upstreams.Get(), s.loc(r), time.Now())
+	trackers := upstream.CheckTrackers(r.Context(), s.Upstreams.Get(), s.loc(r))
 	if isHTMX(r) {
 		s.render(w, r, http.StatusOK, "health", "health_trackers_partial", s.page(r, "Health", "health", trackers))
 		return

@@ -8,7 +8,7 @@ endpoints:
 | `sonarr/series.json`, `tag.json`, `qualityprofile.json` | `GET /api/v3/series`, `/tag`, `/qualityprofile` |
 | `sonarr/diskspace.json`, `radarr/diskspace.json` | `GET /api/v3/diskspace` |
 | `sonarr/health.json`, `radarr/health.json` | `GET /api/v3/health` (Sonarr: one indexer warning) |
-| `*/indexer.json`, `*/indexerstatus.json` | `GET /api/v3/indexer`, `/indexerstatus` (Sonarr: NZBgeek failing, dates moved to today; Radarr: YTS disabled) |
+| `*/indexer.json` | `GET /api/v3/indexer` (Sonarr: NZBgeek named by the `IndexerStatusCheck` of `health.json`, hence failing; Radarr: YTS disabled) |
 | `radarr/movie.json`, `tag.json`, `qualityprofile.json` | `GET /api/v3/movie`, `/tag`, `/qualityprofile` |
 | `sonarr/calendar.json`, `radarr/calendar.json` | `GET /api/v3/calendar?start=…&end=…` (dates recalées sur aujourd'hui) |
 | `plex/sections.json` | `GET /library/sections` |

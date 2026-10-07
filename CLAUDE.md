@@ -177,8 +177,11 @@ Pas de framework web, pas de build Node pour l'app, pas de CDN.
   aujourd'hui.
 - Santé (`/health`) : services vérifiés en direct (`upstream.CheckAll`, chargés en différé par HTMX, alertes
   `/api/v3/health` de Sonarr/Radarr hors indexeurs), section **Trackers** séparée (`upstream.CheckTrackers`,
-  `/health/trackers` en différé : `/api/v3/indexer` + `/indexerstatus`, en échec d'abord, alertes `Indexer*` ; champs
-  `fields` des indexeurs jamais décodés ni capturés, ils contiennent des clés), derniers passages et historique de `sync_runs`, écarts de données
+  `/health/trackers` en différé : `/api/v3/indexer` ; **Sonarr/Radarr n'ont pas d'API d'état des indexeurs**
+  (`/indexerstatus` = Prowlarr) : « en échec » = nom cité par l'alerte `IndexerStatusCheck` /
+  `IndexerLongTermStatusCheck` (« …: A, B », nom exact entre séparateurs, indépendant de la langue ; sans nom = tous) ;
+  en échec d'abord, alertes `Indexer*` ; champs `fields` des indexeurs jamais décodés ni capturés, ils contiennent des
+  clés), derniers passages et historique de `sync_runs`, écarts de données
   (`store.DataHealth`).
 - Webhook Tautulli (`POST /webhooks/tautulli`, seule route sans session) : 404 sans secret, `X-Hangarr-Token` comparé
   en temps constant, corps ignoré, 60 req/min/IP, puis `syncer.RequestHistorySync` (anti-rebond 30 s, historique seul,
