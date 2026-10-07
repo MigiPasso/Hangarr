@@ -120,11 +120,19 @@ func (v *views) funcs(l i18n.Localizer, loc *time.Location, protectedTags []stri
 		"hasID":      func(list []int64, v int64) bool { return slices.Contains(list, v) },
 		"list":       func(v ...string) []string { return v },
 		"join":       strings.Join,
-		"pairs":      pairs,
-		"mediaPath":  kindPath,
-		"imgURL":     imgURL,
-		"hours":      l.Hours,
-		"share":      l.PctShort,
+		"lower":      strings.ToLower,
+		// initial is the first letter of a name, for an avatar ("?" if none).
+		"initial": func(name string) string {
+			for _, r := range strings.TrimSpace(name) {
+				return strings.ToUpper(string(r))
+			}
+			return "?"
+		},
+		"pairs":     pairs,
+		"mediaPath": kindPath,
+		"imgURL":    imgURL,
+		"hours":     l.Hours,
+		"share":     l.PctShort,
 		"pctOf": func(a, b int64) string {
 			if b <= 0 {
 				return l.PctShort(0)
@@ -135,6 +143,7 @@ func (v *views) funcs(l i18n.Localizer, loc *time.Location, protectedTags []stri
 		"dec":         func(f float64) string { return strconv.FormatFloat(f, 'f', -1, 64) },
 		"list2":       func(v ...any) []any { return v },
 		"inc":         func(i int) int { return i + 1 },
+		"minus":       func(a, b int) int { return a - b },
 		"abandonDays": func() int { return abandonDays },
 		"minutesOfHour": func() []int {
 			m := make([]int, 60)
@@ -220,6 +229,10 @@ type pageData struct {
 	// Theme is "light" or "dark" when chosen with the theme button, "" to
 	// follow the system.
 	Theme string
+	// Style is the interface style ("catppuccin", "lumen", "y2k"), "" for the standard one.
+	Style string
+	// Palette is the color palette of the Lumen style, "" for the default.
+	Palette string
 	// SidebarCollapsed keeps the menu reduced to its icons (button, cookie).
 	SidebarCollapsed bool
 	// Lang is the interface language; Path the current path (language links).
@@ -280,7 +293,7 @@ func (s *Server) page(r *http.Request, title, active string, data any) pageData 
 func (s *Server) pageRaw(r *http.Request, title, active string, data any) pageData {
 	l := s.loc(r)
 	pd := pageData{Title: title, Active: active, DryRun: s.Config.DryRun, Version: s.Version, Data: data,
-		Theme: themeFrom(r), SidebarCollapsed: sidebarCollapsed(r), Lang: l.Lang, Path: r.URL.Path}
+		Theme: themeFrom(r), Style: styleFrom(r), Palette: paletteFrom(r), SidebarCollapsed: sidebarCollapsed(r), Lang: l.Lang, Path: r.URL.Path}
 	if sess := sessionFrom(r); sess != nil {
 		pd.Session = sess
 		pd.CSRFToken = sess.CSRFToken
@@ -323,6 +336,9 @@ func (s *Server) static() http.Handler {
 	files := http.StripPrefix("/static/", http.FileServerFS(sub))
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		name := strings.TrimPrefix(path.Clean(r.URL.Path), "/static/")
+		if strings.HasSuffix(name, ".woff2") { // not in Go's built-in MIME table
+			w.Header().Set("Content-Type", "font/woff2")
+		}
 		if h, ok := s.views.assets[name]; ok && r.URL.Query().Get("v") == h {
 			w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
 		} else {

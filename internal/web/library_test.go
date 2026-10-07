@@ -314,13 +314,14 @@ func TestSettingsSyncTime(t *testing.T) {
 	}
 
 	// Several syncs a day.
-	if !strings.Contains(r.body, `<option value="24" selected>Une fois par jour</option>`) || strings.Contains(r.body, "Chaque jour à") {
+	if !strings.Contains(r.body, `<option value="24" selected>Une fois par jour</option>`) {
 		t.Error("default: once a day")
 	}
 	r = e.do(e.c, "POST", "/settings", url.Values{"csrf_token": {tok}, "sync_hour": {"6"}, "sync_minute": {"7"}, "sync_every": {"8"}},
 		map[string]string{"HX-Request": "true"})
+	// The next run follows the frequency; the list of the day's times is not shown.
 	if r.status != http.StatusOK || !strings.Contains(r.body, `<option value="8" selected>Toutes les 8 heures</option>`) ||
-		!strings.Contains(r.body, "Chaque jour à 06:07, 14:07, 22:07") {
+		strings.Contains(r.body, "14:07, 22:07") {
 		t.Fatalf("every 8 hours: %d %s", r.status, r.body)
 	}
 	if v, _ := e.srv.Store.Setting(context.Background(), "sync_every_hours", ""); v != "8" {

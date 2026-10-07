@@ -271,3 +271,58 @@
     }
   });
 })();
+
+// Sync ticker (scrolling text of the Y2K style): the status is swapped every
+// 2 s while a sync runs, which would restart the animation; a negative delay
+// keeps it going from where it was.
+(function () {
+  "use strict";
+
+  var start = 0;
+  function keepScrolling() {
+    var text = document.querySelector(".sync-ticker > span");
+    if (!text) { start = 0; return; }
+    if (!start) { start = Date.now(); }
+    text.style.animationDelay = (-(Date.now() - start) / 1000) + "s";
+  }
+  document.addEventListener("htmx:afterSwap", keepScrolling);
+  document.addEventListener("DOMContentLoaded", keepScrolling);
+})();
+
+// Steppers: the − / + buttons (data-step-by, aria-controls) change their
+// number field within its min / max; at a bound the button is disabled.
+(function () {
+  "use strict";
+
+  function sync(input) {
+    document.querySelectorAll('[data-step-by][aria-controls="' + CSS.escape(input.id) + '"]').forEach(function (b) {
+      var by = parseInt(b.getAttribute("data-step-by"), 10), v = Number(input.value);
+      b.disabled = (by < 0 && input.min !== "" && v <= Number(input.min)) ||
+        (by > 0 && input.max !== "" && v >= Number(input.max));
+    });
+  }
+  function syncAll() {
+    document.querySelectorAll("[data-step-by]").forEach(function (b) {
+      var input = document.getElementById(b.getAttribute("aria-controls"));
+      if (input) { sync(input); }
+    });
+  }
+
+  document.addEventListener("click", function (e) {
+    var b = e.target.closest && e.target.closest("[data-step-by]");
+    if (!b) { return; }
+    var input = document.getElementById(b.getAttribute("aria-controls"));
+    if (!input) { return; }
+    var min = input.min === "" ? -Infinity : Number(input.min);
+    var max = input.max === "" ? Infinity : Number(input.max);
+    var v = Number(input.value) || 0;
+    input.value = String(Math.min(max, Math.max(min, v + parseInt(b.getAttribute("data-step-by"), 10))));
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    input.dispatchEvent(new Event("change", { bubbles: true }));
+  });
+  document.addEventListener("input", function (e) {
+    if (e.target.id && document.querySelector('[data-step-by][aria-controls="' + CSS.escape(e.target.id) + '"]')) { sync(e.target); }
+  });
+  document.addEventListener("DOMContentLoaded", syncAll);
+  document.addEventListener("htmx:afterSwap", syncAll);
+})();

@@ -18,8 +18,17 @@ test("detail opens in a modal with seasons, viewers and history", async ({ page 
   await expect(modal.getByRole("heading", { name: /Breaking Bad/ })).toBeVisible();
   await expect(modal.getByRole("cell", { name: "Spéciaux" })).toBeVisible();
   await expect(modal.getByRole("heading", { name: "Progression par spectateur" })).toBeVisible();
-  await expect(modal.getByRole("row", { name: /Alice/ }).first()).toContainText("S02E03");
+  const alice = modal.locator(".viewer-row", { hasText: "Alice" });
+  await expect(alice).toContainText("S02E03");
+  // The seasons of a viewer open on demand.
+  await expect(alice.getByText("Saison 2")).toBeHidden();
+  await alice.locator("summary").click();
+  await expect(alice.getByText("Saison 2")).toBeVisible();
   await expect(modal.getByRole("link", { name: "Sonarr ↗" })).toHaveAttribute("href", /\/series\/breaking-bad$/);
+  // The poster keeps its 2:3 shape (not stretched to the height of the facts,
+  // which cropped and upscaled it).
+  const box = await modal.locator(".detail-poster").boundingBox();
+  expect(box && box.height / box.width).toBeCloseTo(1.5, 1);
 
   await modal.getByRole("button", { name: "Fermer" }).click();
   await expect(modal).toBeHidden();

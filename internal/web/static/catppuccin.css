@@ -1,0 +1,305 @@
+/* Hangarr: "Catppuccin" interface style (experimental). Light = Latte,
+   dark = Macchiato (official palette, catppuccin.com/palette). Conventions
+   of the Catppuccin ports: base for the page, mantle for the side and top
+   bars, surface0 for raised surfaces (Latte: the page is mantle so cards
+   stay lighter), mauve accent, lavender focus, blue + peach charts. Soft,
+   rounded, pastel, nearly flat; the 14-color "flavor" stripe and colored
+   tile figures as nods to the brand. On Latte, pastel yellow and green text
+   is mixed with the palette's text color to stay readable.
+   Loaded only when <html data-style="catppuccin"> (Settings > Interface
+   style). Font: Nunito (SIL OFL 1.1, static/fonts). */
+
+@font-face { font-family: "Nunito"; src: url("fonts/nunito-400.woff2") format("woff2");
+  font-weight: 400 500; font-style: normal; font-display: swap; }
+@font-face { font-family: "Nunito"; src: url("fonts/nunito-600.woff2") format("woff2");
+  font-weight: 600 700; font-style: normal; font-display: swap; }
+@font-face { font-family: "Nunito"; src: url("fonts/nunito-800.woff2") format("woff2");
+  font-weight: 800 900; font-style: normal; font-display: swap; }
+
+:root[data-style="catppuccin"] {
+  /* Palette: light-dark(Latte, Macchiato). */
+  --ctp-rosewater: light-dark(#dc8a78, #f4dbd6);
+  --ctp-flamingo: light-dark(#dd7878, #f0c6c6);
+  --ctp-pink: light-dark(color-mix(in srgb, #ea76cb 82%, #4c4f69), #f5bde6);
+  --ctp-mauve: light-dark(color-mix(in srgb, #8839ef 82%, #4c4f69), #c6a0f6);
+  --ctp-red: light-dark(color-mix(in srgb, #d20f39 82%, #4c4f69), #ed8796);
+  --ctp-maroon: light-dark(#e64553, #ee99a0);
+  --ctp-peach: light-dark(color-mix(in srgb, #fe640b 82%, #4c4f69), #f5a97f);
+  --ctp-yellow: light-dark(#df8e1d, #eed49f);
+  --ctp-green: light-dark(#40a02b, #a6da95);
+  --ctp-teal: light-dark(color-mix(in srgb, #179299 82%, #4c4f69), #8bd5ca);
+  --ctp-sky: light-dark(color-mix(in srgb, #04a5e5 82%, #4c4f69), #91d7e3);
+  --ctp-sapphire: light-dark(color-mix(in srgb, #209fb5 82%, #4c4f69), #7dc4e4);
+  --ctp-blue: light-dark(color-mix(in srgb, #1e66f5 82%, #4c4f69), #8aadf4);
+  --ctp-lavender: light-dark(color-mix(in srgb, #7287fd 82%, #4c4f69), #b7bdf8);
+  --ctp-text: light-dark(#4c4f69, #cad3f5);
+  --ctp-subtext1: light-dark(#5c5f77, #b8c0e0);
+  --ctp-subtext0: light-dark(#6c6f85, #a5adcb);
+  --ctp-overlay2: light-dark(#7c7f93, #939ab7);
+  --ctp-overlay1: light-dark(#8c8fa1, #8087a2);
+  --ctp-overlay0: light-dark(#9ca0b0, #6e738d);
+  --ctp-surface2: light-dark(#acb0be, #5b6078);
+  --ctp-surface1: light-dark(#bcc0cc, #494d64);
+  --ctp-surface0: light-dark(#ccd0da, #363a4f);
+  --ctp-base: light-dark(#eff1f5, #24273a);
+  --ctp-mantle: light-dark(#e6e9ef, #1e2030);
+  --ctp-crust: light-dark(#dce0e8, #181926);
+
+  --font: "Nunito", system-ui, sans-serif;
+  --radius: 12px;
+
+  /* Base tokens of app.css. */
+  --bg: light-dark(#dde1e8, #24273a);
+  --bg-elev: light-dark(#e6e9ef, #2b2e44);
+  --bg-input: light-dark(#eceef3, #1e2030);
+  --border: var(--ctp-surface0);
+  --text: var(--ctp-text);
+  --muted: var(--ctp-subtext0);
+  --accent: var(--ctp-mauve);
+  --accent-strong: light-dark(#6c1fd0, #dcc3fb);
+  --on-accent: light-dark(#ffffff, #181926);
+  --btn: light-dark(#eaedf2, #363a4f);
+  --btn-hover: var(--ctp-surface0);
+  --btn-border: var(--ctp-surface1);
+  --danger: var(--ctp-red);
+  --warning: light-dark(color-mix(in srgb, #df8e1d 62%, #4c4f69), #eed49f);
+  --success: light-dark(color-mix(in srgb, #40a02b 72%, #4c4f69), #a6da95);
+  --placeholder: var(--ctp-surface0);
+  --shadow: light-dark(rgba(76, 79, 105, .12), rgba(10, 11, 20, .45));
+  --overlay: light-dark(rgba(76, 79, 105, .8), rgba(24, 25, 38, .82));
+  --on-overlay: light-dark(#eff1f5, #cad3f5);
+  --amber: var(--ctp-peach);
+  --chart-1: var(--ctp-blue);
+  --chart-2: var(--ctp-peach);
+  --heat-0: var(--ctp-surface0);
+  /* Light = few sessions, dark = many: lavender to blue. */
+  --heat-1: light-dark(#d5ddfd, #dfe6fc);
+  --heat-2: light-dark(#a9b8fd, #b7bdf8);
+  --heat-3: light-dark(#7287fd, #8aadf4);
+  --heat-4: light-dark(#1e66f5, #6b8fe0);
+  --heat-5: light-dark(#1449b8, #4f72c9);
+  --bar: light-dark(#d5d9e1, #1e2030);
+  --flavors: linear-gradient(90deg, var(--ctp-rosewater), var(--ctp-flamingo), var(--ctp-pink), var(--ctp-mauve),
+    var(--ctp-red), var(--ctp-maroon), var(--ctp-peach), var(--ctp-yellow), var(--ctp-green), var(--ctp-teal),
+    var(--ctp-sky), var(--ctp-sapphire), var(--ctp-blue), var(--ctp-lavender));
+}
+
+:root[data-style="catppuccin"] {
+  scrollbar-color: var(--ctp-surface1) transparent;
+  ::selection { background: color-mix(in srgb, var(--ctp-mauve) 30%, transparent); }
+
+  body { font-family: var(--font); font-size: 15.5px; background: var(--bg); }
+  h1 { font-weight: 800; letter-spacing: -.02em; }
+  h2 { font-weight: 800; }
+  h3 { font-weight: 700; color: var(--ctp-subtext1); }
+  a { color: var(--ctp-blue); }
+  a:hover { color: var(--ctp-sapphire); }
+  .muted { color: var(--ctp-subtext0); }
+
+  /* --- surfaces: soft, rounded, nearly flat --- */
+  .card, .filters, .detail, .tile, .media-card, .toast, .batch-bar, .cal-month-card, .cal-date {
+    background: var(--bg-elev); border: 1px solid var(--ctp-surface0); border-radius: 16px;
+    box-shadow: 0 1px 2px var(--shadow), 0 8px 24px -16px var(--shadow);
+  }
+  .modal { background: var(--ctp-base); border: 1px solid var(--ctp-surface1); border-radius: 18px;
+    box-shadow: 0 30px 60px -20px rgba(0, 0, 0, .45); }
+  .modal::backdrop { background: light-dark(rgba(76, 79, 105, .35), rgba(17, 17, 27, .6)); }
+  .media-card { border-radius: 14px; transition: transform .15s ease, border-color .15s; }
+  .media-card:hover { border-color: var(--ctp-mauve); transform: translateY(-2px); }
+  .poster { border-radius: 13px 13px 0 0; }
+  .detail-poster { border-radius: 14px; border: 1px solid var(--ctp-surface1); }
+  .detail-hero { border-radius: 16px 16px 0 0; }
+
+  /* --- side and top bars: mantle, with the flavor stripe --- */
+  .sidebar { background: var(--bar); border-right: 1px solid var(--ctp-surface0); }
+  .sidebar-head { border-bottom: 0; position: relative; }
+  .sidebar-head::after { content: ""; position: absolute; left: .9rem; right: .9rem; bottom: 0; height: 3px;
+    border-radius: 3px; background: var(--flavors); opacity: .9; }
+  .brand { font-weight: 800; }
+  .logo .logo-bg { fill: var(--ctp-mauve); }
+  .logo .logo-fg { stroke: var(--ctp-crust); }
+  .side-link { margin: 2px 8px; padding: .55rem .8rem; border-left: 0; border-radius: 10px; color: var(--ctp-subtext1); font-weight: 600; }
+  .side-link:hover { background: var(--ctp-surface0); color: var(--ctp-text); }
+  .side-link[aria-current="page"], .side-link.is-active {
+    color: var(--ctp-mauve); background: color-mix(in srgb, var(--ctp-mauve) 15%, transparent); }
+  .side-sub { background: none; }
+  .side-sub a { margin: 0 8px; border-radius: 8px; padding-left: 2.6rem; color: var(--ctp-subtext0); }
+  .side-sub a:hover { background: var(--ctp-surface0); }
+  .side-sub a[aria-current="page"] { color: var(--ctp-mauve); }
+  .is-collapsed .side-link { margin: 2px 6px; padding: .6rem 0; }
+  .topbar { background: var(--bar); border-bottom: 1px solid var(--ctp-surface0); }
+
+  /* --- buttons --- */
+  button, .button { font-family: var(--font); font-weight: 700; border-radius: 10px;
+    background: var(--btn); border: 1px solid var(--ctp-surface1); color: var(--ctp-text); }
+  button:hover, .button:hover { background: var(--ctp-surface0); border-color: var(--ctp-surface2); }
+  button.primary { background: var(--ctp-mauve); border-color: var(--ctp-mauve); color: var(--on-accent); }
+  button.primary:hover { background: color-mix(in srgb, var(--ctp-mauve) 85%, var(--ctp-text)); border-color: transparent; }
+  button.danger { color: var(--ctp-red); border-color: color-mix(in srgb, var(--ctp-red) 45%, transparent); background: transparent; }
+  button.danger:hover { background: var(--ctp-red); color: var(--on-accent); }
+  button.danger-solid { background: var(--ctp-red); border-color: var(--ctp-red); color: var(--on-accent); }
+  button.link { background: none; border: 0; }
+  .theme-toggle, .lang-switch { border-radius: 10px; border-color: var(--ctp-surface1); background: var(--btn); }
+  .modal-close { border-radius: 10px; background: var(--ctp-surface0); color: var(--ctp-text); }
+  .modal-close:hover { background: var(--ctp-red); color: var(--on-accent); }
+
+  /* --- inputs: lavender focus --- */
+  input[type="text"], input[type="password"], input[type="url"], input[type="number"], input[type="search"], select {
+    background: var(--bg-input); color: var(--ctp-text); border: 1px solid var(--ctp-surface1); border-radius: 10px;
+    font-family: var(--font); }
+  input::placeholder { color: var(--ctp-overlay1); }
+  input:focus-visible, select:focus-visible { outline: none; border-color: var(--ctp-lavender);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--ctp-lavender) 30%, transparent); }
+  button:focus-visible, a:focus-visible { outline: 2px solid var(--ctp-lavender); outline-offset: 2px; }
+  input[type="checkbox"], input[type="radio"] { accent-color: var(--ctp-mauve); }
+
+  /* --- segmented switches and tabs --- */
+  .view-toggle, .style-switch { gap: 3px; padding: 3px; border: 1px solid var(--ctp-surface0); border-radius: 12px;
+    background: var(--ctp-mantle); }
+  .view-toggle a, .style-switch a { border-radius: 9px; border: 0; background: none; color: var(--ctp-subtext0); font-weight: 700; }
+  .view-toggle a:hover, .style-switch a:hover { color: var(--ctp-text); background: var(--ctp-surface0); }
+  .view-toggle a[aria-current="true"], .style-switch a[aria-current="true"] {
+    color: var(--ctp-mauve); background: color-mix(in srgb, var(--ctp-mauve) 16%, var(--bg-elev)); }
+  .tabs { border-bottom: 1px solid var(--ctp-surface0); }
+  .tabs a { font-weight: 700; color: var(--ctp-subtext0); border-radius: 8px 8px 0 0; }
+  .tabs a[aria-current="page"] { color: var(--ctp-mauve); border-bottom-color: var(--ctp-mauve); }
+
+  /* --- sync status --- */
+  .sync-status { padding: .2rem .25rem .2rem .7rem; border-radius: 12px; background: var(--ctp-base);
+    border: 1px solid var(--ctp-surface0); }
+  .spinner { border-color: var(--ctp-surface1); border-top-color: var(--ctp-mauve); }
+
+  /* --- tiles: each figure in a flavor color --- */
+  .tile-label { color: var(--ctp-subtext0); font-weight: 700; }
+  .tile-value { font-weight: 800; letter-spacing: -.02em; font-size: 1.8rem; }
+  .tiles > :nth-child(6n + 1) .tile-value { color: var(--ctp-blue); }
+  .tiles > :nth-child(6n + 2) .tile-value { color: var(--ctp-mauve); }
+  .tiles > :nth-child(6n + 3) .tile-value { color: var(--ctp-teal); }
+  .tiles > :nth-child(6n + 4) .tile-value { color: var(--ctp-peach); }
+  .tiles > :nth-child(6n + 5) .tile-value { color: light-dark(color-mix(in srgb, #40a02b 80%, #4c4f69), #a6da95); }
+  .tiles > :nth-child(6n + 6) .tile-value { color: var(--ctp-lavender); }
+  .tile-link:hover { border-color: var(--ctp-mauve); text-decoration: none; }
+
+  /* --- status pills --- */
+  .badge { border-radius: 999px; font-weight: 700; }
+  .badge.state { display: inline-flex; align-items: center; gap: .35rem; background: var(--overlay); color: var(--on-overlay); }
+  .badge.state::before { content: ""; width: 7px; height: 7px; border-radius: 50%; flex: none; background: var(--ctp-overlay1); }
+  .state-in_progress .badge.state::before, .badge.state.state-in_progress::before { background: #8aadf4; }
+  .state-completed .badge.state::before, .badge.state.state-completed::before { background: #a6da95; }
+  .state-abandoned .badge.state::before, .badge.state.state-abandoned::before { background: #f5a97f; }
+  .badge.state.state-never, :is(tr, .detail).state-never .badge.state {
+    background: color-mix(in srgb, var(--ctp-overlay1) 18%, transparent); color: var(--ctp-subtext0); }
+  .badge.state.state-in_progress, :is(tr, .detail).state-in_progress .badge.state {
+    background: color-mix(in srgb, var(--ctp-blue) 16%, transparent); color: var(--ctp-blue); }
+  .badge.state.state-in_progress::before, :is(tr, .detail).state-in_progress .badge.state::before { background: var(--ctp-blue); }
+  .badge.state.state-completed, :is(tr, .detail).state-completed .badge.state {
+    background: color-mix(in srgb, var(--ctp-green) 16%, transparent); color: var(--success); }
+  .badge.state.state-completed::before, :is(tr, .detail).state-completed .badge.state::before { background: var(--ctp-green); }
+  .badge.state.state-abandoned, :is(tr, .detail).state-abandoned .badge.state {
+    background: color-mix(in srgb, var(--ctp-peach) 16%, transparent); color: light-dark(color-mix(in srgb, #fe640b 75%, #4c4f69), #f5a97f); }
+  .badge.state.state-abandoned::before, :is(tr, .detail).state-abandoned .badge.state::before { background: var(--ctp-peach); }
+  .badge.state.state-never::before, :is(tr, .detail).state-never .badge.state::before { background: var(--ctp-overlay1); }
+  .badge-ok { background: color-mix(in srgb, var(--ctp-green) 16%, transparent); color: var(--success); }
+  .badge-error { background: color-mix(in srgb, var(--ctp-red) 14%, transparent); color: var(--ctp-red); }
+  .corner { color: var(--ctp-yellow); }
+  .library-table .lock { color: var(--ctp-peach); }
+
+  /* --- tables --- */
+  .table th { color: var(--ctp-subtext0); font-weight: 700; border-bottom: 1px solid var(--ctp-surface1); }
+  .table td { border-bottom: 1px solid var(--ctp-surface0); }
+  .table tbody tr:hover td { background: color-mix(in srgb, var(--ctp-surface0) 45%, transparent); }
+
+  /* --- meters --- */
+  meter, progress { height: .6rem; accent-color: var(--ctp-green); }
+  meter::-webkit-meter-bar { background: var(--ctp-surface0); border: 0; border-radius: 999px; }
+  meter::-webkit-meter-optimum-value { background: var(--ctp-green); border-radius: 999px; }
+  meter::-webkit-meter-suboptimum-value { background: var(--ctp-yellow); border-radius: 999px; }
+  meter::-webkit-meter-even-less-good-value { background: var(--ctp-red); border-radius: 999px; }
+
+  /* --- calendar --- */
+  .cal-date { border-color: color-mix(in srgb, var(--ctp-mauve) 35%, var(--ctp-surface0));
+    background: color-mix(in srgb, var(--ctp-mauve) 8%, var(--bg-elev)); }
+  .cal-date-num { color: var(--ctp-mauve); font-weight: 800; }
+  .cal-date-rel { color: var(--ctp-blue); }
+  .cal-today .cal-daynum { background: var(--ctp-mauve); color: var(--on-accent); }
+  .cal-chip { border-left-color: var(--ctp-blue); background: color-mix(in srgb, var(--ctp-blue) 12%, transparent); }
+  .cal-chip.cal-movie { border-left-color: var(--ctp-peach); background: color-mix(in srgb, var(--ctp-peach) 12%, transparent); }
+
+  /* --- banners, toasts, help --- */
+  .dry-run-banner { display: flex; justify-content: center; align-items: center; gap: .55rem; font-weight: 700;
+    background: color-mix(in srgb, var(--ctp-peach) 16%, var(--bar));
+    color: light-dark(color-mix(in srgb, #fe640b 70%, #4c4f69), #f5a97f);
+    border-bottom: 1px solid color-mix(in srgb, var(--ctp-peach) 40%, transparent); }
+  .dry-run-banner::before { content: ""; width: 8px; height: 8px; border-radius: 50%; flex: none; background: var(--ctp-peach);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--ctp-peach) 25%, transparent); }
+  .config-banner { background: color-mix(in srgb, var(--ctp-yellow) 18%, var(--ctp-base)); }
+  .toast-success { border-color: var(--ctp-green); }
+  .toast-info { border-color: var(--ctp-yellow); }
+  .toast-error { border-color: var(--ctp-red); }
+  .info { border-color: var(--ctp-surface2); color: var(--ctp-subtext0); }
+  .info::after { background: var(--ctp-crust); color: var(--ctp-text); border: 1px solid var(--ctp-surface1); border-radius: 10px;
+    font-family: var(--font); }
+  .batch-bar { border-color: var(--ctp-mauve); }
+}
+
+/* --- polish --- */
+:root[data-style="catppuccin"] {
+  /* Thin scrollbars (WebKit; Firefox uses scrollbar-color). */
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--ctp-surface1); border-radius: 10px; border: 2px solid var(--bg); }
+  ::-webkit-scrollbar-thumb:hover { background: var(--ctp-surface2); }
+
+  a, button, .button, .side-link, .side-sub a, .view-toggle a, .style-switch a, .tabs a, .tile, input, select {
+    transition: background-color .15s ease, color .15s ease, border-color .15s ease, box-shadow .15s ease; }
+
+  /* Detail backdrop: a pastel mauve-blue-teal wash under the images (seen
+     while they load, or when there is no artwork at all). */
+  .detail-hero { position: relative;
+    background: linear-gradient(120deg, color-mix(in srgb, var(--ctp-mauve) 45%, var(--ctp-base)),
+      color-mix(in srgb, var(--ctp-blue) 40%, var(--ctp-base)) 55%, color-mix(in srgb, var(--ctp-teal) 40%, var(--ctp-base))); }
+
+  /* Progress (seasons watched) and meters: rounded pastel bars. */
+  progress, meter { -webkit-appearance: none; appearance: none; height: .55rem; border: 0; border-radius: 999px;
+    background: var(--ctp-surface0); overflow: hidden; }
+  progress::-webkit-progress-bar { background: var(--ctp-surface0); border-radius: 999px; }
+  progress::-webkit-progress-value { background: var(--ctp-green); border-radius: 999px; }
+  progress::-moz-progress-bar { background: var(--ctp-green); border-radius: 999px; }
+  meter::-moz-meter-bar { background: var(--ctp-green); border-radius: 999px; }
+  meter:-moz-meter-sub-optimum::-moz-meter-bar { background: var(--ctp-yellow); }
+  meter:-moz-meter-sub-sub-optimum::-moz-meter-bar { background: var(--ctp-red); }
+
+  /* Tiles: a flavor stripe on top and a faint wash of the figure's color. */
+  .tiles > :nth-child(6n + 1) { --tile: var(--ctp-blue); }
+  .tiles > :nth-child(6n + 2) { --tile: var(--ctp-mauve); }
+  .tiles > :nth-child(6n + 3) { --tile: var(--ctp-teal); }
+  .tiles > :nth-child(6n + 4) { --tile: var(--ctp-peach); }
+  .tiles > :nth-child(6n + 5) { --tile: var(--ctp-green); }
+  .tiles > :nth-child(6n + 6) { --tile: var(--ctp-lavender); }
+  .tile { background: linear-gradient(180deg, color-mix(in srgb, var(--tile, var(--ctp-mauve)) 10%, var(--bg-elev)), var(--bg-elev) 60%);
+    box-shadow: inset 0 3px 0 color-mix(in srgb, var(--tile, var(--ctp-mauve)) 75%, transparent),
+      0 1px 2px var(--shadow), 0 8px 24px -16px var(--shadow); }
+  .tile-link:hover { border-color: color-mix(in srgb, var(--tile, var(--ctp-mauve)) 60%, transparent); }
+
+  /* Checkboxes and radios in the palette (mauve when checked). */
+  input[type="checkbox"], input[type="radio"] { -webkit-appearance: none; appearance: none; flex: none; margin: 0;
+    width: 1.05rem; height: 1.05rem; border: 1.5px solid var(--ctp-overlay0); background: var(--bg-input);
+    display: inline-grid; place-content: center; cursor: pointer; }
+  input[type="checkbox"] { border-radius: 5px; }
+  input[type="radio"] { border-radius: 50%; }
+  input[type="checkbox"]::before { content: ""; width: .55rem; height: .55rem; transform: scale(0);
+    transition: transform .12s ease; background: var(--on-accent);
+    clip-path: polygon(14% 44%, 0 65%, 50% 100%, 100% 16%, 80% 0%, 43% 62%); }
+  input[type="radio"]::before { content: ""; width: .45rem; height: .45rem; border-radius: 50%; transform: scale(0);
+    transition: transform .12s ease; background: var(--on-accent); }
+  input:is([type="checkbox"], [type="radio"]):checked { background: var(--ctp-mauve); border-color: var(--ctp-mauve); }
+  input:is([type="checkbox"], [type="radio"]):checked::before { transform: scale(1); }
+  input:is([type="checkbox"], [type="radio"]):hover { border-color: var(--ctp-mauve); }
+  input:is([type="checkbox"], [type="radio"]):focus-visible { outline: 2px solid var(--ctp-lavender); outline-offset: 2px; }
+  .select-box input { width: 1.1rem; height: 1.1rem; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root[data-style="catppuccin"] .media-card, :root[data-style="catppuccin"] :is(a, button, .button, .tile, input, select),
+  :root[data-style="catppuccin"] input::before { transition: none; }
+}

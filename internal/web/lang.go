@@ -3,6 +3,7 @@ package web
 import (
 	"net/http"
 	"net/url"
+	"slices"
 	"strings"
 
 	"hangarr/internal/i18n"
@@ -34,6 +35,64 @@ func localPath(next string) string {
 		return "/"
 	}
 	return u.RequestURI()
+}
+
+// styleCookie remembers the interface style chosen in Settings.
+const styleCookie = "hangarr_style"
+
+// styles are the optional interface styles (the standard one has no name).
+var styles = []string{"catppuccin", "lumen", "y2k"}
+
+func styleFrom(r *http.Request) string {
+	if c, err := r.Cookie(styleCookie); err == nil && slices.Contains(styles, c.Value) {
+		return c.Value
+	}
+	return ""
+}
+
+// paletteCookie remembers the color palette of the Lumen style.
+const paletteCookie = "hangarr_palette"
+
+// palettes are the optional Lumen palettes (the default, Aurora, has no name).
+var palettes = []string{"ocean", "ember", "jade"}
+
+func paletteFrom(r *http.Request) string {
+	if c, err := r.Cookie(paletteCookie); err == nil && slices.Contains(palettes, c.Value) {
+		return c.Value
+	}
+	return ""
+}
+
+// setPalette (GET /palette/{name}?next=/path) stores the Lumen palette
+// ("aurora" removes it) and goes back.
+func (s *Server) setPalette(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	switch {
+	case name == "aurora":
+		s.clearCookie(w, paletteCookie)
+	case slices.Contains(palettes, name):
+		s.setCookie(w, paletteCookie, name, "/", 365*24*60*60)
+	default:
+		http.NotFound(w, r)
+		return
+	}
+	http.Redirect(w, r, localPath(r.URL.Query().Get("next")), http.StatusSeeOther) //nolint:gosec // G710: sanitized by localPath
+}
+
+// setStyle (GET /style/{name}?next=/path) stores the interface style
+// ("standard" removes it) and goes back.
+func (s *Server) setStyle(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	switch {
+	case name == "standard":
+		s.clearCookie(w, styleCookie)
+	case slices.Contains(styles, name):
+		s.setCookie(w, styleCookie, name, "/", 365*24*60*60)
+	default:
+		http.NotFound(w, r)
+		return
+	}
+	http.Redirect(w, r, localPath(r.URL.Query().Get("next")), http.StatusSeeOther) //nolint:gosec // G710: sanitized by localPath
 }
 
 // setLang (GET /lang/{code}?next=/path) stores the language and goes back.

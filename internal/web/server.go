@@ -91,6 +91,8 @@ func (s *Server) Handler() http.Handler {
 
 	mux.HandleFunc("POST /webhooks/tautulli", s.tautulliWebhook)
 	mux.HandleFunc("GET /lang/{code}", s.setLang)
+	mux.HandleFunc("GET /style/{name}", s.setStyle)
+	mux.HandleFunc("GET /palette/{name}", s.setPalette)
 	mux.HandleFunc("GET /login", s.loginPage)
 	mux.HandleFunc("POST /login", s.loginSubmit)
 	mux.Handle("POST /logout", s.authed(s.logout, allowMustChange))

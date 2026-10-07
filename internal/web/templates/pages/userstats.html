@@ -7,9 +7,9 @@
     {{$d.Hours}}
     <p class="small muted">{{t "%s over the last 12 months." $d.TotalHours}}</p>
     <details class="data-table"><summary>{{t "Show data"}}</summary>
-      <table class="table compact"><thead><tr><th>{{t "Month"}}</th><th class="num">{{t "Hours"}}</th></tr></thead><tbody>
+      <div class="table-wrap"><table class="table compact"><thead><tr><th>{{t "Month"}}</th><th class="num">{{t "Hours"}}</th></tr></thead><tbody>
       {{range $d.MonthRows}}<tr><td>{{.Month}}</td><td class="num">{{.Hours}}</td></tr>{{end}}
-      </tbody></table>
+      </tbody></table></div>
     </details>
   </section>
 
@@ -24,9 +24,9 @@
   <section class="card">
     <h2>{{t "Favorite genres"}}</h2>
     {{if $d.Genres}}
-    <table class="table compact"><thead><tr><th>{{t "Genre"}}</th><th class="num">{{t "Share of plays"}}</th></tr></thead><tbody>
+    <div class="table-wrap"><table class="table compact"><thead><tr><th>{{t "Genre"}}</th><th class="num">{{t "Share of plays"}}</th></tr></thead><tbody>
       {{range $d.Genres}}<tr><td>{{label .Genre}}</td><td class="num">{{share .PlaysShare}}</td></tr>{{end}}
-    </tbody></table>
+    </tbody></table></div>
     {{else}}<p class="muted">{{t "No plays."}}</p>{{end}}
   </section>
 

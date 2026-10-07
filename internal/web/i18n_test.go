@@ -175,3 +175,49 @@ func TestLanguageSwitch(t *testing.T) {
 		t.Errorf("unknown language: %d", r.status)
 	}
 }
+
+func TestStyleSwitch(t *testing.T) {
+	h := newHarness(t, nil)
+	c := h.client()
+	page := h.do(c, http.MethodGet, "/login", nil, nil)
+	if strings.Contains(page.body, "data-style") || strings.Contains(page.body, "y2k.css") {
+		t.Fatal("standard style by default, without the Y2K stylesheet")
+	}
+	r := h.do(c, http.MethodGet, "/style/y2k?next=/login", nil, nil)
+	if r.status != http.StatusSeeOther || r.header.Get("Location") != "/login" {
+		t.Fatalf("switch: %d %s", r.status, r.header.Get("Location"))
+	}
+	page = h.do(c, http.MethodGet, "/login", nil, nil)
+	if !strings.Contains(page.body, `data-style="y2k"`) || !strings.Contains(page.body, `href="/static/y2k.css?v=`) {
+		t.Error("Y2K style after the switch (cookie)")
+	}
+	if f := h.do(c, http.MethodGet, "/static/fonts/chakra-petch-400.woff2", nil, nil); f.header.Get("Content-Type") != "font/woff2" {
+		t.Errorf("font served as %q", f.header.Get("Content-Type"))
+	}
+	h.do(c, http.MethodGet, "/style/lumen?next=/login", nil, nil)
+	if page = h.do(c, http.MethodGet, "/login", nil, nil); !strings.Contains(page.body, `data-style="lumen"`) ||
+		!strings.Contains(page.body, `href="/static/lumen.css?v=`) || strings.Contains(page.body, "y2k.css") {
+		t.Error("Lumen style: its stylesheet only")
+	}
+	h.do(c, http.MethodGet, "/palette/ember?next=/login", nil, nil)
+	if page = h.do(c, http.MethodGet, "/login", nil, nil); !strings.Contains(page.body, `data-style="lumen" data-palette="ember"`) {
+		t.Error("Lumen palette after the switch (cookie)")
+	}
+	h.do(c, http.MethodGet, "/palette/aurora?next=/login", nil, nil)
+	if page = h.do(c, http.MethodGet, "/login", nil, nil); strings.Contains(page.body, "data-palette") {
+		t.Error("back to the default palette")
+	}
+	if r := h.do(c, http.MethodGet, "/palette/bogus", nil, nil); r.status != http.StatusNotFound {
+		t.Errorf("unknown palette: %d", r.status)
+	}
+	h.do(c, http.MethodGet, "/style/standard?next=/login", nil, nil)
+	if page = h.do(c, http.MethodGet, "/login", nil, nil); strings.Contains(page.body, "data-style") {
+		t.Error("back to the standard style")
+	}
+	if r := h.do(c, http.MethodGet, "/style/y2k?next="+url.QueryEscape("//evil.example"), nil, nil); r.header.Get("Location") != "/" {
+		t.Errorf("next must stay local: %q", r.header.Get("Location"))
+	}
+	if r := h.do(c, http.MethodGet, "/style/bogus", nil, nil); r.status != http.StatusNotFound {
+		t.Errorf("unknown style: %d", r.status)
+	}
+}

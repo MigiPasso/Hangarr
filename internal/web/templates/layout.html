@@ -1,5 +1,5 @@
 {{define "layout"}}<!doctype html>
-<html lang="{{lang}}" class="no-js"{{with .Theme}} data-theme="{{.}}"{{end}}>
+<html lang="{{lang}}" class="no-js"{{with .Theme}} data-theme="{{.}}"{{end}}{{with .Style}} data-style="{{.}}"{{end}}{{with .Palette}} data-palette="{{.}}"{{end}}>
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -7,6 +7,7 @@
   <meta name="referrer" content="same-origin">
   <title>{{.Title}} · Hangarr</title>
   <link rel="stylesheet" href="{{asset "app.css"}}">
+  {{with .Style}}<link rel="stylesheet" href="{{asset (print . ".css")}}">{{end}}
   <script src="{{asset "htmx.min.js"}}" defer></script>
   <script src="{{asset "app.js"}}" defer></script>
 </head>

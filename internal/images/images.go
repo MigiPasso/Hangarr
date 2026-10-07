@@ -175,9 +175,10 @@ func (p *Proxy) ServeImage(w http.ResponseWriter, r *http.Request, kind string, 
 		return
 	}
 	if variant == "fanart" {
+		// Transparent: the detail page shows the blurred poster behind it.
 		w.Header().Set("Content-Type", "image/svg+xml")
 		w.Header().Set("Cache-Control", fmt.Sprintf("private, max-age=%d", int(MissTTL.Seconds())))
-		_, _ = w.Write([]byte(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 9"><rect width="16" height="9" fill="#2a2d33"/></svg>`))
+		_, _ = w.Write([]byte(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 9"/>`))
 		return
 	}
 	servePlaceholder(w, info.Title)

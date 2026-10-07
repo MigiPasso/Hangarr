@@ -93,7 +93,7 @@
 <div id="sync-status" class="sync-status"{{if $.OOB}} hx-swap-oob="true"{{end}}{{if .Running}} hx-get="/sync/status" hx-trigger="every 2s" hx-swap="outerHTML"{{end}}>
   {{if .Running}}
     <span class="spinner" aria-hidden="true"></span>
-    <span class="small">{{t "Syncing"}}{{with .Progress}}: {{tv . $.Sync.ProgressArgs}}{{end}}…</span>
+    <span class="small sync-ticker"><span>{{t "Syncing"}}{{with .Progress}}: {{tv . $.Sync.ProgressArgs}}{{end}}…</span></span>
   {{else}}
     <span class="small muted">
       {{if .LastAt}}{{t "Synced %s" (relptr .LastAt)}}{{else}}{{t "Never synced"}}{{end}}
