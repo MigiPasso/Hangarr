@@ -187,13 +187,22 @@ func TestLibraryPerspective(t *testing.T) {
 
 func TestLibrarySummaryAndFacets(t *testing.T) {
 	st := synced(t)
-	n, size, err := st.LibrarySummary(context.Background(), store.LibraryFilter{Kind: "series"}, now, 90)
-	if err != nil || n != 6 || size != 19_400_000_000 {
-		t.Fatalf("summary: n=%d size=%d err=%v", n, size, err)
+	// The totals cover every matching item, not only the page.
+	p, err := st.LibraryPage(context.Background(), store.LibraryFilter{Kind: "series", Limit: 2}, now, 90)
+	if err != nil || len(p.Items) != 2 || p.Count != 6 || p.SizeBytes != 19_400_000_000 {
+		t.Fatalf("summary: %d items, n=%d size=%d err=%v", len(p.Items), p.Count, p.SizeBytes, err)
 	}
-	n, _, _ = st.LibrarySummary(context.Background(), store.LibraryFilter{Kind: "movie", States: []string{"never"}}, now, 90)
-	if n != 3 {
-		t.Errorf("filtered summary: %d", n)
+	p, _ = st.LibraryPage(context.Background(), store.LibraryFilter{Kind: "movie", States: []string{"never"}}, now, 90)
+	if p.Count != 3 {
+		t.Errorf("filtered summary: %d", p.Count)
+	}
+	p, _ = st.LibraryPage(context.Background(), store.LibraryFilter{Kind: "series", User: 1001, States: []string{"completed"}}, now, 90)
+	if p.Count != len(p.Items) || p.Count == 0 {
+		t.Errorf("user summary: %d for %d items", p.Count, len(p.Items))
+	}
+	p, _ = st.LibraryPage(context.Background(), store.LibraryFilter{Kind: "series", Query: "no such title"}, now, 90)
+	if p.Count != 0 || p.SizeBytes != 0 || len(p.Items) != 0 {
+		t.Errorf("empty summary: %+v", p)
 	}
 	f, err := st.Facets(context.Background(), "series")
 	if err != nil {

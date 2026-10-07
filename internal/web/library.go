@@ -243,13 +243,15 @@ func (s *Server) library(kind, path, title string) http.HandlerFunc {
 		f.Limit, f.Offset = size+1, (page-1)*size
 		now := time.Now()
 
-		items, err := s.Store.Library(ctx, f, now, s.Config.AbandonDays)
+		res, err := s.Store.LibraryPage(ctx, f, now, s.Config.AbandonDays)
 		if err != nil {
 			s.serverError(w, r, err)
 			return
 		}
+		items := res.Items
 		values := filterValues(f)
-		data := libraryData{Kind: kind, Path: path, Filter: f, Values: values, Items: items, View: s.libraryView(w, r)}
+		data := libraryData{Kind: kind, Path: path, Filter: f, Values: values, Items: items, View: s.libraryView(w, r),
+			Count: res.Count, SizeBytes: res.SizeBytes}
 		if len(items) > size {
 			data.Items = items[:size]
 			next := filterValues(f)
@@ -261,10 +263,6 @@ func (s *Server) library(kind, path, title string) http.HandlerFunc {
 		// Infinite scroll: only the next batch of cards/rows.
 		if page > 1 {
 			s.render(w, r, http.StatusOK, "library", "library_items", s.page(r, title, kind, data))
-			return
-		}
-		if data.Count, data.SizeBytes, err = s.Store.LibrarySummary(ctx, f, now, s.Config.AbandonDays); err != nil {
-			s.serverError(w, r, err)
 			return
 		}
 		active := filterValues(f)
