@@ -168,3 +168,37 @@ func TestLegacyDatabaseRenamed(t *testing.T) {
 		t.Errorf("legacy file still there: %v", err)
 	}
 }
+
+func TestPruneSyncRunsKeepsTheLatestOfEachSource(t *testing.T) {
+	s := openTemp(t)
+	ctx := context.Background()
+	now := time.Unix(1_800_000_000, 0)
+	old := now.Add(-SyncRunRetention - time.Hour)
+	add := func(source string, at time.Time, finish bool) int64 {
+		id, err := s.StartSyncRun(ctx, source, at)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if finish {
+			if err := s.FinishSyncRun(ctx, id, at.Add(time.Minute), 1, nil); err != nil {
+				t.Fatal(err)
+			}
+		}
+		return id
+	}
+	add("sonarr", old, true)            // old: purged
+	add("sonarr", now, true)            // recent: kept
+	keptOld := add("radarr", old, true) // old but the latest radarr run: kept
+	running := add("plex", old, false)  // never finished: kept (closed at startup)
+	add("tautulli", old, true)          // old: purged
+	add("tautulli", now.Add(-time.Hour), true)
+	n, err := s.PruneSyncRuns(ctx, now.Add(-SyncRunRetention))
+	if err != nil || n != 2 {
+		t.Fatalf("pruned %d runs: %v", n, err)
+	}
+	var left int
+	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM sync_runs WHERE id IN (?, ?)`, keptOld, running).Scan(&left); err != nil || left != 2 {
+		t.Errorf("latest run per source and running run must stay: %d %v", left, err)
+	}
+}
+

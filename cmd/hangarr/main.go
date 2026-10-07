@@ -199,7 +199,7 @@ func serve() error {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		janitor(ctx, log, svc, func() { limiter.Sweep(); srv.SweepLimiters() })
+		janitor(ctx, log, svc, st, func() { limiter.Sweep(); srv.SweepLimiters() })
 	}()
 	wg.Add(1)
 	go func() {
@@ -218,8 +218,9 @@ func serve() error {
 	return nil
 }
 
-// janitor purges expired sessions and rate-limit entries until ctx ends.
-func janitor(ctx context.Context, log *slog.Logger, svc *auth.Service, sweep func()) {
+// janitor purges expired sessions, old sync runs and rate-limit entries
+// until ctx ends.
+func janitor(ctx context.Context, log *slog.Logger, svc *auth.Service, st *store.Store, sweep func()) {
 	t := time.NewTicker(10 * time.Minute)
 	defer t.Stop()
 	for {
@@ -227,6 +228,11 @@ func janitor(ctx context.Context, log *slog.Logger, svc *auth.Service, sweep fun
 			log.Error("session purge failed", "err", err)
 		} else if n > 0 {
 			log.Info("expired sessions purged", "count", n)
+		}
+		if n, err := st.PruneSyncRuns(ctx, time.Now().Add(-store.SyncRunRetention)); err != nil && ctx.Err() == nil {
+			log.Error("sync runs purge failed", "err", err)
+		} else if n > 0 {
+			log.Info("old sync runs purged", "count", n)
 		}
 		sweep()
 		select {

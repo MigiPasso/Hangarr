@@ -163,6 +163,21 @@ func (s *Store) InterruptUnfinishedSyncRuns(ctx context.Context, now time.Time) 
 	return res.RowsAffected()
 }
 
+// SyncRunRetention is how long sync_runs rows are kept: each sync adds one
+// per source, and the Tautulli webhook one or two per play.
+const SyncRunRetention = 90 * 24 * time.Hour
+
+// PruneSyncRuns deletes the finished runs started before before, except the
+// latest run of each source (Health page, last sync).
+func (s *Store) PruneSyncRuns(ctx context.Context, before time.Time) (int64, error) {
+	res, err := s.db.ExecContext(ctx, `DELETE FROM sync_runs WHERE started_at < ? AND finished_at IS NOT NULL
+		AND id NOT IN (SELECT MAX(id) FROM sync_runs GROUP BY source)`, before.Unix())
+	if err != nil {
+		return 0, err
+	}
+	return res.RowsAffected()
+}
+
 // SyncRun is a row of sync_runs.
 type SyncRun struct {
 	ID         int64

@@ -378,3 +378,18 @@ func TestLibraryPresentInFilter(t *testing.T) {
 	}
 }
 
+// The sync status is only computed when a template shows it, and once.
+func TestPageSyncStatusIsLazy(t *testing.T) {
+	calls := 0
+	pd := pageData{sync: &lazySync{get: func() *syncView { calls++; return &syncView{Running: true} }}}
+	if calls != 0 {
+		t.Fatal("computed before use")
+	}
+	first, second := pd.Sync(), pd.Sync()
+	if !first.Running || first != second || calls != 1 {
+		t.Errorf("computed %d times", calls)
+	}
+	if (pageData{}).Sync() != nil {
+		t.Error("no session: no sync status")
+	}
+}
