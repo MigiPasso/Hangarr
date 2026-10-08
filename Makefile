@@ -12,10 +12,11 @@ IMAGE        ?= hangarr
 PLATFORMS    ?= linux/amd64,linux/arm64
 BUILDER      ?= hangarr-builder
 HTMX_VERSION ?= 2.0.11
+ALPINE_VERSION ?= 3.22
 COMMON_PASSWORDS_URL ?= https://raw.githubusercontent.com/danielmiessler/SecLists/master/Passwords/Common-Credentials/10k-most-common.txt
 
 .DEFAULT_GOAL := help
-.PHONY: help dev dev-real down logs test lint e2e image image-load reset-admin clean deps vendor-assets deploy-check capture-fixtures sync
+.PHONY: help dev dev-real down logs test lint e2e image image-load reset-admin clean deps vendor-assets deploy-check capture-fixtures sync icons
 
 help: ## List targets
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-18s %s\n", $$1, $$2}'
@@ -111,3 +112,11 @@ capture-fixtures: ## Record anonymized responses of the real instances (.env) in
 
 sync: ## Run one synchronization in the running dev app and print a summary
 	$(COMPOSE) exec app hangarr sync --once
+
+icons: ## Render the PNG icons (tab fallback, apple-touch-icon) from static/favicon.svg (in a container)
+	docker run --rm -v "$(CURDIR)/internal/web/static:/s" -w /s alpine:$(ALPINE_VERSION) sh -c '\
+	  set -e; apk add --no-cache -q rsvg-convert; \
+	  rsvg-convert -w 32 -h 32 -o favicon-32.png favicon.svg; \
+	  rsvg-convert --page-width 180 --page-height 180 --left 22 --top 22 -w 136 -h 136 \
+	    --background-color "#eef0f2" -o apple-touch-icon.png favicon.svg; \
+	  chown $(shell id -u):$(shell id -g) favicon-32.png apple-touch-icon.png'

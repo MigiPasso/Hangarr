@@ -116,8 +116,7 @@
   .sidebar-head::after { content: ""; position: absolute; left: .9rem; right: .9rem; bottom: 0; height: 3px;
     border-radius: 3px; background: var(--flavors); opacity: .9; }
   .brand { font-weight: 800; }
-  .logo .logo-bg { fill: var(--ctp-mauve); }
-  .logo .logo-fg { stroke: var(--ctp-crust); }
+  .logo { --logo-h: var(--ctp-text); }
   .side-link { margin: 2px 8px; padding: .55rem .8rem; border-left: 0; border-radius: 10px; color: var(--ctp-subtext1); font-weight: 600; }
   .side-link:hover { background: var(--ctp-surface0); color: var(--ctp-text); }
   .side-link[aria-current="page"], .side-link.is-active {

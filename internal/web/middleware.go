@@ -181,7 +181,8 @@ func (s *Server) logRequests(next http.Handler) http.Handler {
 			"method", r.Method, "path", r.URL.Path, "status", rec.status,
 			"duration_ms", time.Since(start).Milliseconds(), "ip", s.clientMeta(r).IP,
 		}
-		if r.URL.Path == "/healthz" || r.URL.Path == "/readyz" || strings.HasPrefix(r.URL.Path, "/static/") {
+		if r.URL.Path == "/healthz" || r.URL.Path == "/readyz" || r.URL.Path == "/favicon.ico" ||
+			strings.HasPrefix(r.URL.Path, "/static/") {
 			s.Log.Debug("http request", attrs...)
 			return
 		}

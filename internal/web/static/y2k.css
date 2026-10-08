@@ -121,14 +121,8 @@
   }
   .sidebar-head { border-bottom: 1px solid var(--edge); box-shadow: 0 1px 0 var(--hi); }
   .brand { font-weight: 700; text-transform: uppercase; letter-spacing: .14em; font-size: 1rem; }
-  /* The logo: an aqua gel orb with its highlight. */
-  .logo { border-radius: 50%;
-    background:
-      radial-gradient(circle at 40% 28%, rgba(255, 255, 255, .95) 0 6%, rgba(255, 255, 255, .35) 18%, transparent 30%),
-      radial-gradient(circle closest-side, #6fd8ff 0%, #1597e0 45%, #075a99 72%, #032c4d 83%, transparent 84%);
-    filter: drop-shadow(0 0 5px rgba(60, 200, 255, .55)); }
-  .logo .logo-bg { fill: transparent; }
-  .logo .logo-fg { stroke: #fff; }
+  /* The logo glows like a lit display. */
+  .logo { filter: drop-shadow(0 0 5px rgba(60, 200, 255, .55)); }
   .side-link { text-transform: uppercase; letter-spacing: .06em; font-size: .86rem; font-weight: 600; position: relative; }
   /* Each entry has an LED: off, lit on the current page. */
   .side-link::after { content: ""; position: absolute; right: .9rem; top: 50%; width: 6px; height: 6px; margin-top: -3px;

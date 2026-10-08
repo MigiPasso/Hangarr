@@ -1,3 +1,5 @@
+<p align="center"><img src="internal/web/static/favicon.svg" alt="Logo Hangarr" width="96" height="96"></p>
+
 # Hangarr
 
 Tour de contrôle auto-hébergée (Go + HTMX) d'une stack *arr : elle croise Tautulli, Plex, Sonarr et Radarr pour

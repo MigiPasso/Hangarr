@@ -167,6 +167,18 @@ func TestPublicEndpoints(t *testing.T) {
 		!strings.Contains(r.header.Get("Content-Type"), "text/css") {
 		t.Errorf("static: %d %s", r.status, r.header.Get("Content-Type"))
 	}
+	if r := h.do(c, "GET", "/favicon.ico", nil, nil); r.status != http.StatusOK || r.header.Get("Content-Type") != "image/png" {
+		t.Errorf("favicon.ico: %d %s", r.status, r.header.Get("Content-Type"))
+	}
+	// The SVG icon styles itself (dark tabs), and nothing else.
+	r := h.do(c, "GET", "/static/favicon.svg", nil, nil)
+	if r.status != http.StatusOK || r.header.Get("Content-Type") != "image/svg+xml" ||
+		r.header.Get("Content-Security-Policy") != "default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'none'" {
+		t.Errorf("favicon.svg: %d %s %q", r.status, r.header.Get("Content-Type"), r.header.Get("Content-Security-Policy"))
+	}
+	if login := h.do(c, "GET", "/login", nil, nil); !strings.Contains(login.body, `rel="icon" href="/static/favicon.svg?v=`) {
+		t.Error("login page lacks the SVG icon")
+	}
 	h.srv.SetDraining()
 	if r := h.do(c, "GET", "/readyz", nil, nil); r.status != http.StatusServiceUnavailable {
 		t.Errorf("readyz while draining: %d", r.status)

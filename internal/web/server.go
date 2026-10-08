@@ -88,6 +88,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /healthz", s.healthz)
 	mux.HandleFunc("GET /readyz", s.readyz)
 	mux.Handle("GET /static/", s.static())
+	mux.HandleFunc("GET /favicon.ico", s.favicon)
 
 	mux.HandleFunc("POST /webhooks/tautulli", s.tautulliWebhook)
 	mux.HandleFunc("GET /lang/{code}", s.setLang)

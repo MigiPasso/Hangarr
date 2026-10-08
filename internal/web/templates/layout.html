@@ -6,6 +6,10 @@
   <meta name="htmx-config" content='{"includeIndicatorStyles":false,"allowEval":false,"allowScriptTags":false}'>
   <meta name="referrer" content="same-origin">
   <title>{{.Title}} · Hangarr</title>
+  {{/* PNG first with its size, so browsers that read SVG icons keep the SVG. */}}
+  <link rel="icon" href="{{asset "favicon-32.png"}}" sizes="32x32" type="image/png">
+  <link rel="icon" href="{{asset "favicon.svg"}}" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="{{asset "apple-touch-icon.png"}}">
   <link rel="stylesheet" href="{{asset "app.css"}}">
   {{with .Style}}<link rel="stylesheet" href="{{asset (print . ".css")}}">{{end}}
   <script src="{{asset "htmx.min.js"}}" defer></script>
