@@ -265,7 +265,7 @@ var bannerPassword = regexp.MustCompile(`(?m)^ Password : (\S+)$`)
 func bootstrap(t *testing.T, s *Service) string {
 	t.Helper()
 	var out bytes.Buffer
-	created, err := s.Bootstrap(context.Background(), "admin", &out)
+	created, err := s.Bootstrap(context.Background(), "admin", "", &out)
 	if err != nil || !created {
 		t.Fatalf("bootstrap: created=%v err=%v", created, err)
 	}
@@ -283,7 +283,7 @@ func TestBootstrapOnce(t *testing.T) {
 		t.Fatalf("password length %d", len(pw))
 	}
 	var out bytes.Buffer
-	created, err := s.Bootstrap(context.Background(), "admin", &out)
+	created, err := s.Bootstrap(context.Background(), "admin", "", &out)
 	if err != nil || created || out.Len() != 0 {
 		t.Fatalf("second bootstrap must be silent: created=%v err=%v out=%q", created, err, out.String())
 	}
@@ -313,7 +313,7 @@ func TestBootstrapConcurrentProcesses(t *testing.T) {
 			defer func() { _ = st.Close() }()
 			s := &Service{Store: st, Hasher: h, Log: slog.New(slog.NewTextHandler(io.Discard, nil)),
 				IdleTimeout: time.Hour, MaxAge: time.Hour}
-			_, errs[i] = s.Bootstrap(ctx, "admin", &outs[i])
+			_, errs[i] = s.Bootstrap(ctx, "admin", "", &outs[i])
 		}()
 	}
 	wg.Wait()
@@ -326,6 +326,48 @@ func TestBootstrapConcurrentProcesses(t *testing.T) {
 	}
 	if banners != 1 {
 		t.Fatalf("banner printed %d times, want exactly 1", banners)
+	}
+}
+
+func TestBootstrapChosenPassword(t *testing.T) {
+	s, _ := newService(t)
+	ctx := context.Background()
+	const pw = "Hangarr-Dev-1"
+
+	var out bytes.Buffer
+	created, err := s.Bootstrap(ctx, "admin", pw, &out)
+	if err != nil || !created || out.Len() != 0 {
+		t.Fatalf("chosen password must be silent: created=%v err=%v out=%q", created, err, out.String())
+	}
+	ns, err := s.Login(ctx, "admin", pw, ClientMeta{IP: "1.2.3.4"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ns.Session.MustChangePassword {
+		t.Error("a chosen password must not have to be changed")
+	}
+
+	// Later starts keep the account as it is, whatever the variable says.
+	created, err = s.Bootstrap(ctx, "admin", "Another-Pass-2", &out)
+	if err != nil || created {
+		t.Fatalf("second bootstrap: created=%v err=%v", created, err)
+	}
+	if _, err := s.Login(ctx, "admin", "Another-Pass-2", ClientMeta{IP: "1.2.3.4"}); !errors.Is(err, ErrInvalidCredentials) {
+		t.Fatalf("the variable must not replace the password: %v", err)
+	}
+}
+
+func TestBootstrapChosenPasswordPolicy(t *testing.T) {
+	s, _ := newService(t)
+	for _, pw := range []string{"short-1A", "nouppercase-1", "NoDigits-Here!", "My-admin-Pass-1"} {
+		var out bytes.Buffer
+		created, err := s.Bootstrap(context.Background(), "admin", pw, &out)
+		if !errors.Is(err, ErrWeakPassword) || created {
+			t.Errorf("%q: created=%v err=%v", pw, created, err)
+		}
+	}
+	if u, err := s.Store.UserByUsername(context.Background(), "admin"); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("no account may be created with a weak password: %+v %v", u, err)
 	}
 }
 

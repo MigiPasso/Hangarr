@@ -28,6 +28,7 @@ Rien ne s'exécute sur la machine hôte en dehors de `docker`, `docker compose`,
 | Autre commande Go ponctuelle | `docker compose -f compose.dev.yml --profile tools run --rm gotools <cmd>` (ex. `gofmt -l -w .`) |
 | npm pour e2e | `docker compose -f compose.dev.yml --profile e2e run --rm --no-deps e2e npm …` |
 | Télécharger htmx / la liste de mots de passe | `make vendor-assets` |
+| Régénérer les PNG du favicon depuis `static/favicon.svg` | `make icons` |
 | Image runtime locale / multi-arch | `make image-load` / `make image` (`PUSH=1` pour pousser) |
 | Vérifier le déploiement Docker (`compose.yml`) | `make deploy-check` |
 | Lancer une sync dans l'app de dev | `make sync` (`hangarr sync --once`) |
@@ -92,7 +93,10 @@ Pas de framework web, pas de build Node pour l'app, pas de CDN.
   seule source, l'autre est purgée. Ne jamais utiliser `viewCount` / `lastViewedAt` / `viewedLeafCount` de Plex : ils
   ne concernent que le compte du token.
 - Auth (SPEC §11) : admin créé une seule fois au premier démarrage, mot de passe affiché une seule fois sur stdout,
-  changement forcé, argon2id (PHC), sessions stockées hachées (SHA-256), verrouillage progressif, rate limit par IP,
+  changement forcé ; sauf `HANGARR_ADMIN_PASSWORD` (décision utilisateur, variable seule **sans `_FILE`**) : mot de
+  passe choisi, soumis à la politique (sinon refus de démarrer, même compte existant), ni affiché ni à changer, utilisé seulement si le compte
+  n'existe pas (sinon ignoré avec avertissement) ; dev : `admin` / `Hangarr-Dev-1` (`compose.dev.yml`), e2e :
+  `app-e2e-live` (pas de bannière, vérifié par `make e2e`), argon2id (PHC), sessions stockées hachées (SHA-256), verrouillage progressif, rate limit par IP,
   `X-Forwarded-For` seulement depuis `TRUSTED_PROXIES`.
 - Requêtes sortantes : clients amont via `httpx` uniquement (redirections suivies seulement vers le même hôte,
   `httpx.SameHostOnly`, sinon la clé partirait ailleurs) ; images distantes : https seulement, redirections https, 3 max.
@@ -241,6 +245,10 @@ Pas de framework web, pas de build Node pour l'app, pas de CDN.
   Polices vendorisées dans `static/fonts` (OFL, licences jointes, servies en `font/woff2`). Règle : **une couleur = une
   variable** de `app.css` ; un nouvel élément d'UI qui les utilise s'adapte à tous les styles. Couleurs de graphiques
   des styles optionnels non validées dataviz (d'où « expérimental »).
+- Logo : H (couleur `--logo-h`, marine en clair / blanc en sombre, redéfinie par style) + bouton lecture orange en dégradé ;
+  template `logo` (`partials/nav.html`, argument = suffixe de l'id du dégradé, unique par page) = même dessin que
+  `static/favicon.svg` (suit le thème du système par `<style>` interne, CSP propre aux SVG dans `static()`). PNG
+  (`favicon-32.png`, aussi servi sur `/favicon.ico` ; `apple-touch-icon.png`) générés par `make icons`.
 - Projets Compose : `hangarr` = `compose.yml` (prod), `hangarr-dev` = `compose.dev.yml`, `hangarr-e2e`,
   `hangarr-deploy-check` : ne jamais leur donner le même nom (un `down` emporterait l'autre).
 - `make e2e` tourne dans le projet compose `hangarr-e2e` (séparé) et lit le mot de passe initial dans les logs.

@@ -66,6 +66,7 @@ type Config struct {
 	PlexRefreshAfterDelete bool
 
 	AdminUsername      string
+	AdminPassword      string // HANGARR_ADMIN_PASSWORD: chosen first-start password instead of a generated one
 	CookieSecure       bool
 	SessionIdleTimeout time.Duration
 	SessionMaxAge      time.Duration
@@ -241,6 +242,9 @@ func Load(lookup LookupFunc, readFile ReadFileFunc) (*Config, error) {
 	if c.AdminUsername == "" || len(c.AdminUsername) > 64 {
 		l.fail("ADMIN_USERNAME must be 1 to 64 characters")
 	}
+	// Not trimmed: spaces may be part of the password. The policy is checked
+	// when the account is created (auth.Bootstrap).
+	c.AdminPassword, _ = l.lookup("HANGARR_ADMIN_PASSWORD")
 	if c.SessionMaxAge < c.SessionIdleTimeout {
 		l.fail("SESSION_MAX_AGE (%s) must be >= SESSION_IDLE_TIMEOUT (%s)", c.SessionMaxAge, c.SessionIdleTimeout)
 	}

@@ -197,6 +197,18 @@ func TestInvalidValues(t *testing.T) {
 	}
 }
 
+func TestAdminPassword(t *testing.T) {
+	c, err := Load(env(upstreams()), files(nil))
+	if err != nil || c.AdminPassword != "" {
+		t.Fatalf("default: %q %v", c.AdminPassword, err)
+	}
+	m := upstreams()
+	m["HANGARR_ADMIN_PASSWORD"] = " Spaces-Kept-1 "
+	if c, err = Load(env(m), files(nil)); err != nil || c.AdminPassword != " Spaces-Kept-1 " {
+		t.Fatalf("HANGARR_ADMIN_PASSWORD must be read as is: %q %v", c.AdminPassword, err)
+	}
+}
+
 func TestTrustedProxies(t *testing.T) {
 	m := upstreams()
 	m["TRUSTED_PROXIES"] = "10.0.0.0/8, 192.168.1.10 ,fd00::/8"

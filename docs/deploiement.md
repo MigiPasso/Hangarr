@@ -171,6 +171,14 @@ docker compose exec hangarr /hangarr admin reset-password
 À la connexion, l'application impose de choisir un nouveau mot de passe. L'interface est en anglais ; le lien
 **FR** de la barre du haut la passe en français (`DEFAULT_LANG=fr` pour en faire la langue de l'instance).
 
+**Variante : choisir le mot de passe à l'avance** avec `HANGARR_ADMIN_PASSWORD` (dans `.env` pour Docker ; pour
+Kubernetes, en variable `env` du Deployment, lue depuis un Secret par `valueFrom.secretKeyRef`). Le compte est alors
+créé avec ce mot de passe, rien n'est écrit dans les logs et aucun changement n'est imposé. Il doit respecter les
+mêmes règles qu'un mot de passe saisi (12 caractères au moins, minuscule, majuscule, chiffre, symbole, sans le nom
+d'utilisateur), sinon l'application refuse de démarrer, même si le compte existe déjà. La variable ne sert **qu'au
+premier démarrage** : si le compte existe déjà, elle est ignorée (avertissement dans les logs) ; retirez-la une fois le
+compte créé, elle reste sinon lisible dans la configuration du conteneur (`docker inspect`, spec du pod).
+
 ---
 
 ## 6. Connecter les services

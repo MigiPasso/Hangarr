@@ -29,6 +29,8 @@ services:
       # Dev-only key: the services come from the environment (locked in the
       # UI), but public URLs and the webhook secret can be saved.
       HANGARR_MASTER_KEY: ZGV2LW9ubHktbWFzdGVyLWtleS0tZG8tbm90LXVzZSE=
+      # Dev-only admin password (first start only, no forced change): admin / Hangarr-Dev-1.
+      HANGARR_ADMIN_PASSWORD: &dev-admin-password Hangarr-Dev-1
     ports:
       # DEV_PORT=8081 make dev when 8080 is taken (e.g. by compose.yml).
       - "${DEV_PORT:-8080}:8080"
@@ -64,6 +66,7 @@ services:
     env_file: ${HANGARR_ENV_FILE:-.env.example}
     environment:
       DATA_DIR: /data
+      HANGARR_ADMIN_PASSWORD: *dev-admin-password
       DRY_RUN: ${DRY_RUN:-true}
       COOKIE_SECURE: "false"
       LOG_FORMAT: text
@@ -160,6 +163,8 @@ services:
     environment:
       <<: *upstreams-mock
       DRY_RUN: "false"
+      # Admin password chosen by the operator: no banner, no forced change.
+      HANGARR_ADMIN_PASSWORD: &live-admin-password Tr3s-Solide-Mot-De-Passe!
       COOKIE_SECURE: "false"
       LOG_FORMAT: json
       LOGIN_MAX_PER_IP: "50"
@@ -213,7 +218,7 @@ services:
       MOCK_URL: http://mock:8989
       ADMIN_USERNAME: admin
       ADMIN_INITIAL_PASSWORD: ${ADMIN_INITIAL_PASSWORD:-}
-      ADMIN_INITIAL_PASSWORD_LIVE: ${ADMIN_INITIAL_PASSWORD_LIVE:-}
+      ADMIN_PASSWORD_LIVE: *live-admin-password
       ADMIN_INITIAL_PASSWORD_CONFIG: ${ADMIN_INITIAL_PASSWORD_CONFIG:-}
       CI: "1"
     volumes:

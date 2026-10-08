@@ -64,7 +64,7 @@ func TestConcurrentOpenAndCreateFirstUser(t *testing.T) {
 				return
 			}
 			defer func() { _ = s.Close() }()
-			created[i], errs[i] = s.CreateFirstUser(ctx, "admin", "hash", time.Now())
+			created[i], errs[i] = s.CreateFirstUser(ctx, "admin", "hash", true, time.Now())
 		}()
 	}
 	wg.Wait()
@@ -85,7 +85,7 @@ func TestConcurrentOpenAndCreateFirstUser(t *testing.T) {
 func TestUserLookupIsCaseInsensitive(t *testing.T) {
 	s := openTemp(t)
 	ctx := context.Background()
-	if _, err := s.CreateFirstUser(ctx, "Admin", "h", time.Now()); err != nil {
+	if _, err := s.CreateFirstUser(ctx, "Admin", "h", true, time.Now()); err != nil {
 		t.Fatal(err)
 	}
 	u, err := s.UserByUsername(ctx, "ADMIN")

@@ -339,6 +339,9 @@ func (s *Server) static() http.Handler {
 		if strings.HasSuffix(name, ".woff2") { // not in Go's built-in MIME table
 			w.Header().Set("Content-Type", "font/woff2")
 		}
+		if strings.HasSuffix(name, ".svg") { // the favicon follows the system theme with an inline <style>
+			w.Header().Set("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'none'")
+		}
 		if h, ok := s.views.assets[name]; ok && r.URL.Query().Get("v") == h {
 			w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
 		} else {
@@ -346,6 +349,19 @@ func (s *Server) static() http.Handler {
 		}
 		files.ServeHTTP(w, r)
 	})
+}
+
+// favicon answers clients that ask /favicon.ico without reading the page
+// (the layout declares the SVG icon, with this PNG as a fallback).
+func (s *Server) favicon(w http.ResponseWriter, r *http.Request) {
+	b, err := staticFS.ReadFile("static/favicon-32.png")
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	w.Header().Set("Content-Type", "image/png")
+	w.Header().Set("Cache-Control", "public, max-age=86400")
+	_, _ = w.Write(b)
 }
 
 // browserSummary turns a User-Agent into "Firefox · Linux".

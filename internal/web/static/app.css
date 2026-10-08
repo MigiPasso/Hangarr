@@ -20,6 +20,7 @@
   --muted: light-dark(#5f6570, #adb4bf);
   --accent: light-dark(#2563c4, #5e9eff);
   --accent-strong: light-dark(#1d4f9e, #82b4ff);
+  --logo-h: light-dark(#13294b, #eef1f5); /* the H of the logo; its play button stays orange */
   --on-accent: light-dark(#ffffff, #0d1320); /* text on accent / danger fills */
   --btn: light-dark(#ffffff, #2c3a52);
   --btn-hover: light-dark(#f1f3f5, #36476a);
@@ -96,8 +97,7 @@ h2 { font-size: 1.15rem; margin: 0 0 calc(var(--space) * .75); }
   white-space: nowrap; }
 .brand:hover { text-decoration: none; }
 .logo { width: 1.6rem; height: 1.6rem; flex: none; }
-.logo .logo-bg { fill: var(--accent); }
-.logo .logo-fg { stroke: var(--on-accent); }
+.logo .logo-h { fill: var(--logo-h); }
 .sidebar-collapse, .sidebar-open, .sidebar-close { display: inline-grid; place-items: center; padding: .35rem; border: 0;
   background: none; color: var(--muted); border-radius: 6px; cursor: pointer; }
 .sidebar-collapse:hover, .sidebar-open:hover, .sidebar-close:hover { color: var(--text); background: var(--btn); }

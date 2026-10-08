@@ -67,8 +67,9 @@ func scanUser(row interface{ Scan(...any) error }) (*User, error) {
 // CreateFirstUser inserts a user only if app_users is empty. The check and
 // the insert share one IMMEDIATE transaction, and the UNIQUE constraint is a
 // second safety net: concurrent starts on the same file create it once.
-// The auth event is written in the same transaction.
-func (s *Store) CreateFirstUser(ctx context.Context, username, passwordHash string, now time.Time) (created bool, err error) {
+// The auth event is written in the same transaction. mustChange forces a
+// password change at the first sign-in (generated password).
+func (s *Store) CreateFirstUser(ctx context.Context, username, passwordHash string, mustChange bool, now time.Time) (created bool, err error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return false, err
@@ -82,7 +83,7 @@ func (s *Store) CreateFirstUser(ctx context.Context, username, passwordHash stri
 		return false, nil
 	}
 	res, err := tx.ExecContext(ctx, `INSERT INTO app_users(username, password_hash, must_change_password, created_at)
-		VALUES (?, ?, 1, ?)`, username, passwordHash, now.Unix())
+		VALUES (?, ?, ?, ?)`, username, passwordHash, mustChange, now.Unix())
 	if err != nil {
 		return false, fmt.Errorf("insert admin: %w", err)
 	}

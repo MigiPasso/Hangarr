@@ -1,3 +1,5 @@
+<p align="center"><img src="internal/web/static/favicon.svg" alt="Logo Hangarr" width="96" height="96"></p>
+
 # Hangarr
 
 Tour de contrôle auto-hébergée (Go + HTMX) d'une stack *arr : elle croise Tautulli, Plex, Sonarr et Radarr pour
@@ -75,8 +77,15 @@ dans les logs :
  ...
 ```
 
-En dev : `docker compose -f compose.dev.yml logs app | grep -A4 "INITIAL ADMIN"`. Le changement est obligatoire à la
-première connexion. Mot de passe perdu : `make reset-admin` (ou `hangarr admin reset-password` via
+Le changement est obligatoire à la première connexion.
+
+Pour choisir le mot de passe à l'avance : `HANGARR_ADMIN_PASSWORD` (12 caractères au moins, minuscule, majuscule,
+chiffre et symbole, sans le nom d'utilisateur ; sinon l'application refuse de démarrer). Il n'est alors ni affiché ni à
+changer. La variable ne sert qu'à la création du compte : ensuite elle est ignorée (avertissement dans les logs) et
+peut être retirée.
+
+En dev, `compose.dev.yml` la fixe : connexion directe avec **`admin` / `Hangarr-Dev-1`** sur une base neuve (après
+`make clean`). Mot de passe perdu : `make reset-admin` (ou `hangarr admin reset-password` via
 `docker exec` / `kubectl exec`), qui affiche un nouveau mot de passe temporaire uniquement dans la sortie de la commande.
 
 ## Récupérer le token Plex et les clés d'API
