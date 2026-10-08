@@ -21,6 +21,9 @@ var (
 	ErrWrongPassword      = errors.New("current password is incorrect")
 	ErrSessionInvalid     = errors.New("session invalid or expired")
 	ErrUnknownUser        = errors.New("unknown user")
+	// ErrWeakPassword: an operator-chosen password fails the policy.
+	ErrWeakPassword = errors.New("password does not meet the policy (at least 12 characters " +
+		"with lower and upper case letters, a digit and a symbol, without the username, not a common password)")
 )
 
 // Auth event names stored in auth_events.
@@ -99,25 +102,43 @@ func Banner(username, password string) string {
 		line, username, password, line)
 }
 
-// Bootstrap creates the admin account when app_users is empty and writes the
-// plaintext password once to out. It reports whether the account was created.
-func (s *Service) Bootstrap(ctx context.Context, username string, out io.Writer) (bool, error) {
-	pw, err := GeneratePassword(GeneratedPasswordLength, username)
+// Bootstrap creates the admin account when app_users is empty and reports
+// whether it was created. Without password, one is generated, written once to
+// out and must be changed at the first sign-in. A password chosen by the
+// operator (HANGARR_ADMIN_PASSWORD) must meet the policy, even when the
+// account already exists; it is never written and need not be changed.
+func (s *Service) Bootstrap(ctx context.Context, username, password string, out io.Writer) (bool, error) {
+	chosen := password != ""
+	if chosen {
+		if v := CheckPolicy(password, username); len(v) > 0 {
+			names := make([]string, len(v))
+			for i, x := range v {
+				names[i] = string(x)
+			}
+			return false, fmt.Errorf("%w: %s", ErrWeakPassword, strings.Join(names, ", "))
+		}
+	} else {
+		var err error
+		if password, err = GeneratePassword(GeneratedPasswordLength, username); err != nil {
+			return false, err
+		}
+	}
+	hash, err := s.Hasher.Hash(ctx, password)
 	if err != nil {
 		return false, err
 	}
-	hash, err := s.Hasher.Hash(ctx, pw)
-	if err != nil {
-		return false, err
-	}
-	created, err := s.Store.CreateFirstUser(ctx, username, hash, s.now())
+	created, err := s.Store.CreateFirstUser(ctx, username, hash, !chosen, s.now())
 	if err != nil || !created {
 		return false, err
 	}
-	if _, err := io.WriteString(out, Banner(username, pw)); err != nil {
+	if chosen {
+		s.Log.Info("auth event", "event", EventAdminCreated, "username", username, "password", "HANGARR_ADMIN_PASSWORD")
+		return true, nil
+	}
+	if _, err := io.WriteString(out, Banner(username, password)); err != nil {
 		return true, err
 	}
-	s.Log.Info("auth event", "event", EventAdminCreated, "username", username)
+	s.Log.Info("auth event", "event", EventAdminCreated, "username", username, "password", "generated")
 	return true, nil
 }
 

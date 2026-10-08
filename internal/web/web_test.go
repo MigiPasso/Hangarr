@@ -59,7 +59,7 @@ func newHarness(t *testing.T, mutate func(*config.Config), opts ...func(*Deps)) 
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
 	svc := &auth.Service{Store: st, Hasher: h, Log: log, IdleTimeout: cfg.SessionIdleTimeout, MaxAge: cfg.SessionMaxAge}
 	var banner bytes.Buffer
-	if _, err := svc.Bootstrap(ctx, cfg.AdminUsername, &banner); err != nil {
+	if _, err := svc.Bootstrap(ctx, cfg.AdminUsername, "", &banner); err != nil {
 		t.Fatal(err)
 	}
 	m := passwordRe.FindStringSubmatch(banner.String())

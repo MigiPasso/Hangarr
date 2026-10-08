@@ -93,7 +93,10 @@ Pas de framework web, pas de build Node pour l'app, pas de CDN.
   seule source, l'autre est purgée. Ne jamais utiliser `viewCount` / `lastViewedAt` / `viewedLeafCount` de Plex : ils
   ne concernent que le compte du token.
 - Auth (SPEC §11) : admin créé une seule fois au premier démarrage, mot de passe affiché une seule fois sur stdout,
-  changement forcé, argon2id (PHC), sessions stockées hachées (SHA-256), verrouillage progressif, rate limit par IP,
+  changement forcé ; sauf `HANGARR_ADMIN_PASSWORD` (décision utilisateur, variable seule **sans `_FILE`**) : mot de
+  passe choisi, soumis à la politique (sinon refus de démarrer, même compte existant), ni affiché ni à changer, utilisé seulement si le compte
+  n'existe pas (sinon ignoré avec avertissement) ; dev : `admin` / `Hangarr-Dev-1` (`compose.dev.yml`), e2e :
+  `app-e2e-live` (pas de bannière, vérifié par `make e2e`), argon2id (PHC), sessions stockées hachées (SHA-256), verrouillage progressif, rate limit par IP,
   `X-Forwarded-For` seulement depuis `TRUSTED_PROXIES`.
 - Requêtes sortantes : clients amont via `httpx` uniquement (redirections suivies seulement vers le même hôte,
   `httpx.SameHostOnly`, sinon la clé partirait ailleurs) ; images distantes : https seulement, redirections https, 3 max.

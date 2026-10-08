@@ -132,9 +132,17 @@ func serve() error {
 		IdleTimeout: cfg.SessionIdleTimeout, MaxAge: cfg.SessionMaxAge}
 	// The banner goes straight to stdout, in plain text even in JSON mode,
 	// so that it stays readable in `docker logs` / `kubectl logs`.
-	if _, err := svc.Bootstrap(ctx, cfg.AdminUsername, os.Stdout); err != nil {
+	created, err := svc.Bootstrap(ctx, cfg.AdminUsername, cfg.AdminPassword, os.Stdout)
+	switch {
+	case errors.Is(err, auth.ErrWeakPassword):
+		return fmt.Errorf("HANGARR_ADMIN_PASSWORD: %w", err)
+	case err != nil:
 		return fmt.Errorf("admin bootstrap: %w", err)
+	case !created && cfg.AdminPassword != "":
+		log.Warn("HANGARR_ADMIN_PASSWORD is ignored: the admin account already exists " +
+			"(change its password in the interface or with `hangarr admin reset-password`)")
 	}
+	cfg.AdminPassword = "" // only needed above; cfg lives on in the web server
 
 	key, err := st.Secret(ctx, "presession_csrf_key", func() ([]byte, error) {
 		b := make([]byte, 32)

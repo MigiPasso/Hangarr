@@ -1,12 +1,13 @@
 import { expect, test, type APIRequestContext } from "@playwright/test";
-import { login, newPassword, username } from "./helpers";
+import { login, username } from "./helpers";
 
 // DRY_RUN=false instance (app-e2e-live): deletions really reach the mock.
 test.describe.configure({ mode: "serial" });
 test.use({ baseURL: process.env.BASE_URL_LIVE ?? "http://app-e2e-live:8080" });
 
 const mockURL = process.env.MOCK_URL ?? "http://mock:8989";
-const initialPassword = process.env.ADMIN_INITIAL_PASSWORD_LIVE ?? "";
+// Chosen with HANGARR_ADMIN_PASSWORD (compose.dev.yml): nothing to change.
+const password = process.env.ADMIN_PASSWORD_LIVE ?? "";
 
 type Call = { service: string; method: string; path: string; query: string; body: string };
 
@@ -15,19 +16,16 @@ async function arrCalls(request: APIRequestContext): Promise<Call[]> {
   return calls.filter((c) => c.service === "sonarr" || c.service === "radarr");
 }
 
-test("first login on the live instance", async ({ page }) => {
-  expect(initialPassword).toHaveLength(24);
-  await login(page, username, initialPassword);
-  await page.getByLabel("Mot de passe actuel").fill(initialPassword);
-  await page.getByLabel("Nouveau mot de passe").fill(newPassword);
-  await page.getByLabel("Confirmation").fill(newPassword);
-  await page.getByRole("button", { name: "Enregistrer" }).click();
+test("first login with HANGARR_ADMIN_PASSWORD: no forced change", async ({ page }) => {
+  expect(password).not.toBe("");
+  await login(page, username, password);
+  await expect(page).toHaveURL(/\/$/);
   await expect(page.getByRole("heading", { name: "Tableau de bord" })).toBeVisible();
   await expect(page.getByText("Mode simulation (DRY_RUN)")).toHaveCount(0);
 });
 
 test("season deletion: files first, then the season is unmonitored", async ({ page, request }) => {
-  await login(page, username, newPassword);
+  await login(page, username, password);
   await request.post(`${mockURL}/_reset`);
   await page.goto("/series");
   await page.locator(".media-card", { hasText: "The Expanse" }).click();
@@ -53,7 +51,7 @@ test("season deletion: files first, then the season is unmonitored", async ({ pa
 });
 
 test("movie deletion removes the card", async ({ page, request }) => {
-  await login(page, username, newPassword);
+  await login(page, username, password);
   await request.post(`${mockURL}/_reset`);
   await page.goto("/movies");
   await page.locator(".media-card", { hasText: "Tenet" }).click();
@@ -76,7 +74,7 @@ test("movie deletion removes the card", async ({ page, request }) => {
 });
 
 test("a movie known by Plex only is deleted through Plex", async ({ page, request }) => {
-  await login(page, username, newPassword);
+  await login(page, username, password);
   await request.post(`${mockURL}/_reset`);
   await page.goto("/movies");
   await page.locator(".media-card", { hasText: "Vacances 2019" }).click();
@@ -95,7 +93,7 @@ test("a movie known by Plex only is deleted through Plex", async ({ page, reques
 });
 
 test("a series known by Plex only is protected in Hangarr only", async ({ page, request }) => {
-  await login(page, username, newPassword);
+  await login(page, username, password);
   await request.post(`${mockURL}/_reset`);
   await page.goto("/series");
   await page.locator(".media-card", { hasText: "Home Videos" }).click();
@@ -117,7 +115,7 @@ test("a series known by Plex only is protected in Hangarr only", async ({ page, 
 });
 
 test("protect then unprotect a series from its detail", async ({ page, request }) => {
-  await login(page, username, newPassword);
+  await login(page, username, password);
   await request.post(`${mockURL}/_reset`);
   await page.goto("/series");
   await page.locator(".media-card", { hasText: "Breaking Bad" }).click();
@@ -145,7 +143,7 @@ test("protect then unprotect a series from its detail", async ({ page, request }
 });
 
 test("batch deletion from the movie grid", async ({ page, request }) => {
-  await login(page, username, newPassword);
+  await login(page, username, password);
   await request.post(`${mockURL}/_reset`);
   await page.goto("/movies");
   await page.getByRole("checkbox", { name: "Sélectionner Interstellar" }).check();

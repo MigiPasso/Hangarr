@@ -49,12 +49,13 @@ e2e: ## Playwright against the runtime image on a blank database
 	$(E2E_COMPOSE) up -d --wait app-e2e app-e2e-live app-e2e-config mock || status=$$?; \
 	if [ $$status -eq 0 ]; then \
 	  pw=$$($(E2E_COMPOSE) logs --no-log-prefix app-e2e | sed -n 's/^ Password : //p' | head -n 1); \
-	  pwlive=$$($(E2E_COMPOSE) logs --no-log-prefix app-e2e-live | sed -n 's/^ Password : //p' | head -n 1); \
 	  pwcfg=$$($(E2E_COMPOSE) logs --no-log-prefix app-e2e-config | sed -n 's/^ Password : //p' | head -n 1); \
-	  if [ -z "$$pw" ] || [ -z "$$pwlive" ] || [ -z "$$pwcfg" ]; then \
+	  if [ -z "$$pw" ] || [ -z "$$pwcfg" ]; then \
 	    echo "initial admin password not found in app-e2e logs" >&2; status=1; \
+	  elif $(E2E_COMPOSE) logs --no-log-prefix app-e2e-live | grep -q "INITIAL ADMIN"; then \
+	    echo "app-e2e-live printed a generated password despite HANGARR_ADMIN_PASSWORD" >&2; status=1; \
 	  else \
-	    ADMIN_INITIAL_PASSWORD="$$pw" ADMIN_INITIAL_PASSWORD_LIVE="$$pwlive" ADMIN_INITIAL_PASSWORD_CONFIG="$$pwcfg" \
+	    ADMIN_INITIAL_PASSWORD="$$pw" ADMIN_INITIAL_PASSWORD_CONFIG="$$pwcfg" \
 	      $(E2E_COMPOSE) run --rm e2e || status=$$?; \
 	  fi; \
 	fi; \
