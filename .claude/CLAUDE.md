@@ -8,6 +8,10 @@
   (ex. règles de fusion d'historique). Même alors, ce qui l'entoure (UI, tests simples, docs, adaptation des appelants)
   est délégué. « Le brief serait aussi long que le code » n'est pas une raison de coder soi-même. Chaque ligne écrite
   par le lead est justifiée dans le plan et dans le rapport de clôture.
+  **Effort** (décision utilisateur) : le lead ne peut pas changer son propre effort. S'il travaille en `medium` et
+  qu'une étape le justifie vraiment (coder ou auditer ce cœur délicat, diagnostic difficile), il s'arrête et demande à
+  l'utilisateur de passer en `high`, en une ligne avec la raison, puis lui signale quand redescendre. Jamais par
+  précaution ni pour une tâche courante.
 - **@haiku-dev (sous-agent, Haiku)** : exécutant. Il réalise les tâches détaillées par le lead et applique ses recommandations d'audit.
   Il ne prend aucune décision de conception : en cas d'ambiguïté ou de blocage, il remonte le problème au lead.
 
