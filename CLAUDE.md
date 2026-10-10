@@ -143,7 +143,7 @@ Pas de framework web, pas de build Node pour l'app, pas de CDN.
   affiches de `testdata/posters.json` et vraies images de fond TMDB de `testdata/fanarts.json`, téléchargées par le
   mock ; seulement les URL sont versionnées) ; jamais dans les tests (pas d'Internet, comptes stables).
 - `testdata/` : scénario synthétique décrit dans `testdata/README.md` (les tests en dépendent) ;
-  `testdata/captured/` : vraies réponses anonymisées, seulement vérifiées au décodage.
+  `testdata/captured/` : vraies réponses anonymisées, ignorées par git (jamais commitées), seulement vérifiées au décodage.
 - `internal/syncer` (et non `internal/sync`, pour ne pas masquer le paquet standard) : fetch parallèle, stockage,
   rapprochement (`internal/matching`), liaison de l'historique, recalcul (`internal/scoring`).
 - Rapprochement Plex ↔ *arr (`internal/matching`) : IDs (TVDB/TMDB/IMDb) → **même fichier ou dossier** (nom de base,

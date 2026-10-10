@@ -1,5 +1,5 @@
 #!/bin/sh
-# Prepares the Jellyfin lab (see README.md): startup wizard, libraries, users,
+# Prepares the Jellyfin lab: startup wizard, libraries, users,
 # playback state of testdata/jellyfin/ (without audio) and an API key for
 # hangarr, written to /out/api-key. Safe to run again.
 set -eu

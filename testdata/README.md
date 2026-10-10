@@ -60,5 +60,5 @@ For `make dev` only (`compose.dev.yml`), never used by the tests:
 ## Real captures (`testdata/captured/`)
 
 `make capture-fixtures` writes anonymized responses of your real instances to `testdata/captured/` (same layout).
-Tests check that every captured file decodes; the synthetic scenario stays the reference for assertions. Review
-the files before committing them. Point the mock at them with `MOCK_FIXTURES=/testdata/captured`.
+Tests check that every captured file decodes; the synthetic scenario stays the reference for assertions. The folder
+is ignored by git: captures are never committed. Point the mock at them with `MOCK_FIXTURES=/testdata/captured`.
