@@ -53,6 +53,20 @@ test.describe("dry-run instance (app-e2e)", () => {
     await expect(webRow.locator(".badge")).toHaveCount(0);
   });
 
+  test("the path of a version is copied, and its button says so", async ({ page }) => {
+    await page.goto("/duplicates");
+    // Wait for the live fragment: it replaces the table, and the button with it.
+    await expect(dune(page).getByText("Français (AC3 5.1)")).toBeVisible();
+    const copy = dune(page).getByRole("button", { name: `Copier le chemin de ${webdl}` });
+    await copy.click();
+    await expect(copy).toHaveText("Copié ✓");
+    // The aria-label hides the button's text from screen readers: the live region says it.
+    await expect(page.locator("#copy-status")).toHaveText("Copié ✓");
+    // The copy fallback selects a hidden textarea: the focus must come back to the button.
+    await expect(copy).toBeFocused();
+    await expect(copy).toHaveText("Chemin");
+  });
+
   test("keeping a duplicate hides it until its versions change", async ({ page }) => {
     await page.goto("/duplicates");
     await dune(page).getByRole("button", { name: "Tout garder" }).click();

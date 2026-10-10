@@ -1,5 +1,6 @@
 {{define "content"}}{{$d := .Data}}
 <div class="title-row"><h1>{{t "Duplicates"}}</h1>{{template "info" (t "Movies %s has more than once: several versions of one movie, or the same movie in several libraries. Updated at each sync." (server))}}</div>
+<p id="copy-status" class="visually-hidden" role="status" aria-live="polite"></p>
 
 {{if $d.Conflict}}
 <p class="alert alert-warning" role="status">{{t "Plex and Jellyfin are both configured: clear one of them first."}}</p>
@@ -59,10 +60,12 @@
 </section>
 {{end}}
 
-{{/* duplicate_versions: the files of a movie. On the page the table loads its
-     tracks by itself (hx-trigger="revealed"); the fragment is the table alone. */}}
+{{/* duplicate_versions: the files of a movie, and the note under them. On the page the
+     block loads its tracks by itself (hx-trigger="revealed"); the fragment is the same
+     block, without those attributes, which replaces it. */}}
 {{define "duplicate_versions"}}{{$g := .}}
-<div class="table-wrap"{{with $g.LiveURL}} hx-get="{{.}}" hx-trigger="revealed" hx-swap="outerHTML"{{end}}>
+<div class="dup-versions"{{with $g.LiveURL}} hx-get="{{.}}" hx-trigger="revealed" hx-swap="outerHTML"{{end}}>
+<div class="table-wrap">
   <table class="table">
     <thead><tr>
       <th scope="col">{{t "File"}}</th><th scope="col">{{t "Quality"}}</th><th scope="col">{{t "Resolution"}}</th><th scope="col">{{t "Video"}}</th><th scope="col">{{t "Audio"}}</th><th scope="col" class="num">{{t "Size"}}</th><th scope="col">{{t "Audio tracks"}}</th><th scope="col">{{t "Subtitles"}}</th><th scope="col"><span class="visually-hidden">{{t "Actions"}}</span></th>
@@ -70,7 +73,7 @@
     <tbody>
     {{range $g.Versions}}
       <tr>
-        <td class="dup-file" title="{{.File}}"><div class="dup-file-name">{{.Name}}</div>{{if .Radarr}} <span class="badge">Radarr</span> <span class="small muted">{{if .Monitored}}{{t "monitored|movie"}}{{else}}{{t "not monitored|movie"}}{{end}}</span>{{end}}</td>
+        <td class="dup-file" title="{{.File}}"><div class="dup-file-name">{{.Name}}</div><button type="button" class="small copy-btn" data-copy="{{.File}}" data-copied="{{t "Copied"}}" data-copy-failed="{{t "Copy failed"}}" aria-label="{{t "Copy the path of %s" .Name}}">{{t "Path"}}</button>{{if .Radarr}} <span class="badge">Radarr</span> <span class="small muted">{{if .Monitored}}{{t "monitored|movie"}}{{else}}{{t "not monitored|movie"}}{{end}}</span>{{end}}</td>
         <td class="dup-short">{{.Quality}}</td>
         <td class="dup-short">{{.Resolution}}</td>
         <td class="dup-short">{{.Video}}</td>
@@ -78,12 +81,14 @@
         <td class="num dup-short">{{bytes .Size}}</td>
         <td>{{if not $g.Live}}<span class="muted">…</span>{{else if $g.Failed}}<span class="muted">—</span>{{else}}{{with .AudioTracks}}{{join . ", "}}{{else}}<span class="muted">—</span>{{end}}{{end}}</td>
         <td>{{if not $g.Live}}<span class="muted">…</span>{{else if $g.Failed}}<span class="muted">—</span>{{else}}{{with .Subtitles}}{{join . ", "}}{{else}}<span class="muted">—</span>{{end}}{{end}}</td>
-        <td class="actions">{{if .CanDelete}}<button type="button" class="danger small" hx-get="{{.DeleteURL}}" hx-target="#confirm-body" aria-label="{{t "Delete %s" .Name}}">{{t "Delete"}}</button>{{else if .WholeFolder}}<span class="with-info small">{{t "Jellyfin would delete the whole folder"}}{{template "info" (t "Delete the file on disk or through Radarr.")}}</span>{{end}}</td>
+        <td class="actions">{{if .CanDelete}}<button type="button" class="danger small" hx-get="{{.DeleteURL}}" hx-target="#confirm-body" aria-label="{{t "Delete %s" .Name}}">{{t "Delete"}}</button>{{else if .WholeFolder}}<button type="button" class="danger small" disabled aria-describedby="{{$g.NoteID}}" aria-label="{{t "Delete %s" .Name}}">{{t "Delete"}}</button>{{end}}</td>
       </tr>
     {{end}}
     {{if and $g.Live $g.Failed}}<tr><td colspan="9" class="small muted">{{t "Could not read the tracks from %s." (server)}}</td></tr>{{end}}
     </tbody>
   </table>
+</div>
+{{with $g.NoteID}}<p id="{{.}}" class="alert alert-warning small">{{t "These versions are in the same folder: Jellyfin would delete all of it. Delete the file on disk or through Radarr."}}</p>{{end}}
 </div>
 {{end}}
 

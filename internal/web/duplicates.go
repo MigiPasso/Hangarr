@@ -55,6 +55,7 @@ type duplicateCard struct {
 	LiveURL     string // where the versions load from (page only)
 	Live        bool   // the tracks were asked for (fragment)
 	Failed      bool   // the tracks could not be read
+	NoteID      string // id of the note on versions Jellyfin deletes together; "" when there are none
 	Versions    []duplicateVersion
 }
 
@@ -205,6 +206,7 @@ func (s *Server) newDuplicateCard(r *http.Request, server string, g *store.Dupli
 		Count: len(g.Versions), Size: g.SizeBytes, Protected: g.Protected, Fingerprint: g.Fingerprint, Tab: tab,
 		CSRFToken: csrf, AckURL: dupURL(g.GroupKey) + "/ack", UnackURL: dupURL(g.GroupKey) + "/unack",
 		LiveURL: dupURL(g.GroupKey) + "/live", Versions: duplicateVersions(s.loc(r), server, g)}
+	c.NoteID = folderNoteID(c.GroupKey, c.Versions)
 	if g.AckedAt != nil {
 		c.Acked, c.AckedUnix = true, g.AckedAt.Unix()
 	}
@@ -249,6 +251,27 @@ func sharesWithOther(versions []store.DuplicateVersion, v store.DuplicateVersion
 	return false
 }
 
+// folderNoteID is the id of the note saying that Jellyfin would delete the
+// versions of a group together; "" when no version is in that case. The id
+// comes from the group key, so it is unique on the page.
+func folderNoteID(groupKey string, versions []duplicateVersion) string {
+	for _, v := range versions {
+		if v.WholeFolder {
+			return "dup-folder-" + strings.Map(htmlIDRune, groupKey)
+		}
+	}
+	return ""
+}
+
+// htmlIDRune keeps the characters of a group key that are safe in an HTML id,
+// and turns the others into dashes.
+func htmlIDRune(r rune) rune {
+	if r == '-' || (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') {
+		return r
+	}
+	return '-'
+}
+
 // duplicatesLive is the versions table of one group, with the tracks and
 // Radarr's status read live: the page loads it by HTMX once it is shown.
 func (s *Server) duplicatesLive(w http.ResponseWriter, r *http.Request) {
@@ -267,6 +290,7 @@ func (s *Server) duplicatesLive(w http.ResponseWriter, r *http.Request) {
 	}
 	l := s.loc(r)
 	c := duplicateCard{GroupKey: g.GroupKey, Live: true, Versions: duplicateVersions(l, server, g)}
+	c.NoteID = folderNoteID(c.GroupKey, c.Versions)
 	tracks, rf, ok := s.readLive(r.Context(), l, up, server, g)
 	c.Failed = !ok
 	for i := range c.Versions {

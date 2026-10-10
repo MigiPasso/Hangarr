@@ -42,6 +42,23 @@ func TestDuplicatesPage(t *testing.T) {
 	}
 }
 
+// Each version has a button that copies its path; the page script does the copy.
+func TestDuplicatesCopyPath(t *testing.T) {
+	e := newLibEnv(t, 0)
+	r := e.do(e.c, "GET", "/duplicates", nil, nil)
+	const name = "Dune.2021.1080p.WEB-DL.DDP5.1.H.264-GRP.mkv"
+	row := duplicateRow(t, r.body, name)
+	for _, want := range []string{
+		`data-copy="/data/movies/Dune (2021)/` + name + `"`,
+		`data-copied="Copié ✓"`, `data-copy-failed="Copie impossible"`,
+		`aria-label="Copier le chemin de ` + name + `"`, `>Chemin</button>`,
+	} {
+		if !strings.Contains(row, want) {
+			t.Errorf("WEB-DL row misses %q:\n%s", want, row)
+		}
+	}
+}
+
 func TestDuplicatesLive(t *testing.T) {
 	e := newLibEnv(t, 0)
 	r := e.do(e.c, "GET", "/duplicates/tmdb:438631/live", nil, map[string]string{"HX-Request": "true"})
@@ -162,6 +179,70 @@ func TestDuplicateVersionDelete(t *testing.T) {
 	}
 	if j := e.do(e.c, "GET", "/journal", nil, nil); !strings.Contains(j.body, "Version supprimée") {
 		t.Error("journal misses the version deletion")
+	}
+}
+
+// Dune's two versions are two media sources of one Jellyfin item, in one
+// folder: Jellyfin would delete both with either of them. Neither has an active
+// delete button; a note under the table says why, on the page and in the live fragment.
+func TestDuplicatesJellyfinSameFolder(t *testing.T) {
+	e := newLibEnv(t, 0)
+	useJellyfin(t, e)
+	ctx := context.Background()
+	const item, v4k, v1080 = "f0000000000000000000000000000102", "f0000000000000000000000000000102", "f0000000000000000000000000000202"
+	dune := e.mediaID("movie", "Dune")
+	if _, err := e.srv.Store.DB().Exec(`UPDATE media SET jellyfin_id = ? WHERE id = ?`, item, dune); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.srv.Store.ReplaceVersions(ctx, store.ServerJellyfin, []store.MediaVersion{
+		{Server: store.ServerJellyfin, VersionKey: v4k, ItemKey: item, GroupKey: "tmdb:438631",
+			File: "/data/movies/Dune (2021)/Dune (2021).mkv", SizeBytes: 60000000000, Resolution: "4k"},
+		{Server: store.ServerJellyfin, VersionKey: v1080, ItemKey: item, GroupKey: "tmdb:438631",
+			File: "/data/movies/Dune (2021)/Dune (2021) - 1080p.mkv", SizeBytes: 8000000000, Resolution: "1080"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	page := e.do(e.c, "GET", "/duplicates", nil, nil)
+	if page.status != http.StatusOK {
+		t.Fatalf("status %d", page.status)
+	}
+	checkFolderNote(t, page.body, v4k, v1080)
+
+	live := e.do(e.c, "GET", "/duplicates/tmdb:438631/live", nil, map[string]string{"HX-Request": "true"})
+	if live.status != http.StatusOK {
+		t.Fatalf("status %d\n%s", live.status, live.body)
+	}
+	if !strings.HasPrefix(strings.TrimSpace(live.body), `<div class="dup-versions">`) {
+		t.Errorf("the fragment does not replace the block:\n%s", live.body)
+	}
+	if strings.Contains(live.body, "hx-trigger") || strings.Contains(live.body, "hx-swap") {
+		t.Error("the live fragment asks for itself again")
+	}
+	checkFolderNote(t, live.body, v4k, v1080)
+}
+
+// checkFolderNote checks the page or the fragment of a group whose versions
+// share a folder: the note, a disabled delete button for each version, and no
+// active delete button.
+func checkFolderNote(t *testing.T, body string, versions ...string) {
+	t.Helper()
+	const note = `<p id="dup-folder-tmdb-438631" class="alert alert-warning small">Ces versions sont dans le même dossier : ` +
+		`Jellyfin le supprimerait en entier. Supprime le fichier sur le disque ou via Radarr.</p>`
+	if !strings.Contains(body, note) {
+		t.Errorf("no folder note:\n%s", body)
+	}
+	// After the table's scroll wrapper: inside it, the note would scroll away with the table.
+	if !strings.Contains(body, "</table>\n</div>\n"+note) {
+		t.Errorf("the note is not right after the table wrapper:\n%s", body)
+	}
+	// Disabled, and named like the other delete buttons (the name says which version).
+	if n := strings.Count(body, `disabled aria-describedby="dup-folder-tmdb-438631" aria-label="Supprimer `); n != len(versions) {
+		t.Errorf("%d disabled delete buttons with a name, want %d", n, len(versions))
+	}
+	for _, v := range versions {
+		if strings.Contains(body, `hx-get="`+versionURL("tmdb:438631", v)+`"`) {
+			t.Errorf("version %s can be deleted from the page", v)
+		}
 	}
 }
 
