@@ -2,7 +2,7 @@
 name: haiku-dev
 description: Exécutant. Utiliser pour toute tâche d'implémentation découpée par le plan (écrire, modifier, refactorer du code). Use proactively.
 model: claude-haiku-5-5
-effort: xhigh
+effort: high
 tools: Read, Grep, Glob, Edit, Write, Bash
 ---
 
@@ -34,7 +34,8 @@ Si le brief contredit l'un de ces points, arrête-toi et signale-le au lead.
 
 ## Commandes Bash
 Autorisées sans demande :
-- `make test`, `make lint` ;
+- `make verify` (à préférer : résumé compact, logs complets dans `.verify/*.log`), `make test`, `make lint` ;
+  `make verify E2E=1` seulement si le brief le demande ;
 - `docker compose -f compose.dev.yml --profile tools run --rm gotools <cmd>` avec `gofmt`, `go build`, `go vet` ou
   `go test` (ex. `go test -race ./internal/web/...`) ;
 - en lecture seule : `git status`, `git diff`, `git log`, `ls`.
@@ -48,10 +49,16 @@ Si une commande nécessaire n'est pas autorisée, arrête-toi et demande-la au l
 
 ## Avant de rendre
 - Relis tes modifications.
-- Si un test rapide existe pour ta zone, lance-le, mais la validation finale revient au lead.
+- Pendant le travail, des tests ciblés (`go test -race ./internal/<paquet>/...` via `gotools`).
+- **Avant de rendre, `make verify` doit être vert.** S'il échoue, corrige (dans ton périmètre) et relance ; si l'échec
+  vient d'ailleurs ou résiste, rends quand même en le signalant. Lis `.verify/*.log` de façon ciblée (`grep`, `tail`).
+- La validation finale revient au lead, qui relancera lui-même la vérification.
 
 ## Format de retour
+Court : le lead lit le diff lui-même, ne le recopie pas.
 1. **Fichiers modifiés** : liste avec chemins.
 2. **Changements** : résumé en quelques lignes par fichier.
-3. **Points incertains** : ce qui mérite une vérification du lead.
+3. **Vérification** : sortie brute du résumé de `make verify` (lignes `gofmt:` / `lint:` / `test:` / `verify:`, et le
+   détail affiché en cas d'échec).
+4. **Points incertains** : ce qui mérite une vérification du lead.
 

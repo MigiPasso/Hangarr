@@ -24,6 +24,7 @@ Rien ne s'exécute sur la machine hôte en dehors de `docker`, `docker compose`,
 | Tests unitaires et d'intégration (`-race`) | `make test` |
 | `go vet` + golangci-lint | `make lint` |
 | e2e Playwright (image runtime, base vierge) | `make e2e` |
+| Vérification compacte (gofmt + lint + tests, `E2E=1` pour e2e), logs complets dans `.verify/` | `make verify` |
 | `go mod tidy` | `make deps` |
 | Autre commande Go ponctuelle | `docker compose -f compose.dev.yml --profile tools run --rm gotools <cmd>` (ex. `gofmt -l -w .`) |
 | npm pour e2e | `docker compose -f compose.dev.yml --profile e2e run --rm --no-deps e2e npm …` |

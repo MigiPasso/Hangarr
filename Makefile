@@ -22,8 +22,12 @@ DEV_ENV_plex     := DEV_PLEX_URL=http://mock:32400 DEV_PLEX_TOKEN=mock-api-key D
 DEV_ENV_jellyfin := DEV_PLEX_URL= DEV_PLEX_TOKEN= DEV_TAUTULLI_URL= DEV_TAUTULLI_API_KEY= DEV_JELLYFIN_URL=http://mock:8096 DEV_JELLYFIN_API_KEY=mock-api-key
 DEV_ENV_none     := DEV_PLEX_URL= DEV_PLEX_TOKEN= DEV_TAUTULLI_URL= DEV_TAUTULLI_API_KEY= DEV_JELLYFIN_URL= DEV_JELLYFIN_API_KEY=
 
+VERIFY_DIR   := .verify
+# Quiet progress: Compose writes "Container … Creating" lines to stderr, which would land in the logs.
+VERIFY_COMPOSE := docker compose --progress quiet -f compose.dev.yml
+
 .DEFAULT_GOAL := help
-.PHONY: help dev dev-real down logs test lint e2e image image-load reset-admin clean deps vendor-assets deploy-check capture-fixtures jellyfin-lab jellyfin-lab-capture jellyfin-lab-down sync icons
+.PHONY: help dev dev-real down logs test lint e2e verify image image-load reset-admin clean deps vendor-assets deploy-check capture-fixtures jellyfin-lab jellyfin-lab-capture jellyfin-lab-down sync icons
 
 help: ## List targets
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-18s %s\n", $$1, $$2}'
@@ -69,6 +73,52 @@ e2e: ## Playwright against the runtime image on a blank database
 	fi; \
 	if [ $$status -ne 0 ]; then $(E2E_COMPOSE) logs --tail 50 app-e2e app-e2e-live app-e2e-config app-e2e-jellyfin mock; fi; \
 	$(E2E_COMPOSE) down --remove-orphans; \
+	exit $$status
+
+verify: ## gofmt + lint + test (+ e2e with E2E=1): compact summary, full logs in .verify/
+	@mkdir -p $(VERIFY_DIR); rm -f $(VERIFY_DIR)/*.log; status=0; \
+	$(VERIFY_COMPOSE) --profile tools run --rm -T gotools gofmt -l . > $(VERIFY_DIR)/gofmt.log 2>&1; rc=$$?; \
+	if [ $$rc -eq 0 ] && [ ! -s $(VERIFY_DIR)/gofmt.log ]; then \
+	  echo "gofmt: OK"; \
+	else \
+	  echo "gofmt: FAIL"; cat $(VERIFY_DIR)/gofmt.log; status=1; \
+	fi; \
+	$(VERIFY_COMPOSE) --profile tools build -q lint > $(VERIFY_DIR)/lint.log 2>&1; rc=$$?; \
+	if [ $$rc -eq 0 ]; then $(VERIFY_COMPOSE) --profile tools run --rm -T lint >> $(VERIFY_DIR)/lint.log 2>&1; rc=$$?; fi; \
+	if [ $$rc -eq 0 ]; then \
+	  echo "lint: OK"; \
+	else \
+	  echo "lint: FAIL"; head -n 200 $(VERIFY_DIR)/lint.log; status=1; \
+	fi; \
+	$(VERIFY_COMPOSE) --profile tools build -q test > $(VERIFY_DIR)/test.log 2>&1; rc=$$?; \
+	if [ $$rc -eq 0 ]; then $(VERIFY_COMPOSE) --profile tools run --rm -T test >> $(VERIFY_DIR)/test.log 2>&1; rc=$$?; fi; \
+	if [ $$rc -eq 0 ]; then \
+	  echo "test: OK ($$(grep -c -E '(^|[[:space:]])ok[[:space:]]' $(VERIFY_DIR)/test.log) packages)"; \
+	else \
+	  echo "test: FAIL"; grep -v -E '^(ok|\?)[[:space:]]|^[[:space:]]+[^[:space:]]+[[:space:]]+coverage: 0\.0% of statements$$' $(VERIFY_DIR)/test.log | head -n 200; status=1; \
+	fi; \
+	if [ -n "$(E2E)" ]; then \
+	  if [ $$status -ne 0 ]; then \
+	    echo "e2e: skipped (earlier failure)"; \
+	  else \
+	    $(MAKE) --no-print-directory e2e > $(VERIFY_DIR)/e2e.log 2>&1; rc=$$?; \
+	    if [ $$rc -eq 0 ]; then \
+	      grep -E '^ +[0-9]+ (passed|failed|flaky|skipped|did not run)' $(VERIFY_DIR)/e2e.log; \
+	      echo "e2e: OK"; \
+	    else \
+	      echo "e2e: FAIL"; \
+	      grep -E '^ +[0-9]+ (passed|failed|flaky|skipped|did not run)' $(VERIFY_DIR)/e2e.log; \
+	      if grep -q -E '^  [0-9]+\) ' $(VERIFY_DIR)/e2e.log; then \
+	        sed -n '/^  [0-9][0-9]*) /,$$p' $(VERIFY_DIR)/e2e.log | head -n 300; \
+	      else \
+	        tail -n 60 $(VERIFY_DIR)/e2e.log; \
+	      fi; \
+	      status=1; \
+	    fi; \
+	  fi; \
+	fi; \
+	if [ $$status -eq 0 ]; then echo "verify: OK"; \
+	else echo "verify: FAIL (full logs: $(VERIFY_DIR)/*.log)"; fi; \
 	exit $$status
 
 image: ## Multi-arch runtime image (PUSH=1 to push to $(IMAGE))
