@@ -13,7 +13,6 @@ import (
 	"sync"
 	"time"
 
-	"hangarr/internal/config"
 	"hangarr/internal/store"
 )
 
@@ -101,7 +100,8 @@ type dayPoint struct {
 type dashboardData struct {
 	Overview    *store.Overview
 	CleanupDays int
-	// NoDurations: the history comes from Plex, which records no durations.
+	// NoDurations: the history comes from Plex or Jellyfin alone, which
+	// record no durations.
 	NoDurations  bool
 	TopAll       bool
 	TopSeries    []store.TopItem
@@ -137,7 +137,7 @@ func (s *Server) home(w http.ResponseWriter, r *http.Request) {
 	}
 	scope, days := s.cleanupScope(ctx, now)
 	d.CleanupDays = days
-	d.NoDurations = s.Upstreams.Get().HistorySource == config.HistoryPlex
+	d.NoDurations = s.Upstreams.Get().NoDurations()
 	if d.Overview, err = s.Store.Overview(ctx, scope, since); err != nil {
 		s.serverError(w, r, err)
 		return

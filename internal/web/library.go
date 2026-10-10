@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"hangarr/internal/clients/jellyfin"
 	"hangarr/internal/store"
 	"hangarr/internal/syncer"
 )
@@ -33,7 +34,7 @@ var (
 	// inactiveOptions are the "not watched for" choices, in days.
 	inactiveOptions = []int{30, 90, 180, 365}
 	addOptions      = []string{"lt30", "gt180", "gt365"}
-	matchStates     = []string{"matched", "arr_only", "plex_only"}
+	matchStates     = []string{"matched", "arr_only", "server_only"}
 	statuses        = []string{"continuing", "ended"}
 )
 
@@ -94,6 +95,19 @@ func atof(v string) float64 {
 	return min(f, maxNumber)
 }
 
+// legacyMatch reads "plex_only", the name of server_only before Jellyfin, so
+// that saved links keep working.
+func legacyMatch(vs []string) []string {
+	out := make([]string, len(vs))
+	for i, v := range vs {
+		if v == "plex_only" {
+			v = "server_only"
+		}
+		out[i] = v
+	}
+	return out
+}
+
 // parseLibraryFilter reads filters from the query string. Unknown values are
 // dropped, so URLs are shareable and safe to replay.
 func parseLibraryFilter(q url.Values, kind string) (store.LibraryFilter, int) {
@@ -111,7 +125,7 @@ func parseLibraryFilter(q url.Values, kind string) (store.LibraryFilter, int) {
 		Network:   strings.TrimSpace(q.Get("network")),
 		SizeMinGB: atof(q.Get("size_min")),
 		SizeMaxGB: atof(q.Get("size_max")),
-		Match:     pickAll(q["match"], matchStates),
+		Match:     pickAll(legacyMatch(q["match"]), matchStates),
 		Sort:      q.Get("sort"),
 	}
 	if n := atoi(q.Get("inactive")); slices.Contains(inactiveOptions, n) {
@@ -304,12 +318,24 @@ func (s *Server) library(kind, path, title string) http.HandlerFunc {
 // --- images ---------------------------------------------------------------------
 
 func (s *Server) image(w http.ResponseWriter, r *http.Request) {
-	kind, variant := r.PathValue("kind"), r.PathValue("variant")
-	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
-	if s.Images == nil || err != nil || id <= 0 || (kind != "series" && kind != "movie" && kind != "plex") ||
+	kind, variant, id := r.PathValue("kind"), r.PathValue("variant"), r.PathValue("id")
+	if s.Images == nil || (kind != "series" && kind != "movie" && kind != "plex" && kind != "jellyfin") ||
 		(variant != "poster" && variant != "fanart") {
 		http.NotFound(w, r)
 		return
+	}
+	if kind == "jellyfin" {
+		if !jellyfin.IsID(id) {
+			http.NotFound(w, r)
+			return
+		}
+	} else {
+		n, err := strconv.ParseInt(id, 10, 64)
+		if err != nil || n <= 0 {
+			http.NotFound(w, r)
+			return
+		}
+		id = strconv.FormatInt(n, 10) // "007" and "7" are the same image
 	}
 	s.Images.ServeImage(w, r, kind, id, variant)
 }

@@ -13,6 +13,7 @@ type Media struct {
 	Kind               string
 	ArrID              int64
 	PlexRatingKey      string
+	JellyfinID         string
 	Title              string
 	TitleSlug          string
 	Year               int
@@ -44,7 +45,7 @@ type Media struct {
 	LastViewedAt       *int64
 	LastViewedBy       string
 	WatchState         string
-	ProtectedLocal     bool // protected in Hangarr only (plex_only items)
+	ProtectedLocal     bool // protected in Hangarr only (server_only items)
 }
 
 // MediaByID returns a media row; ErrNotFound if it does not exist.
@@ -53,7 +54,7 @@ func (s *Store) MediaByID(ctx context.Context, id int64) (*Media, error) {
 	var genres, tags string
 	var added, last sql.NullInt64
 	err := s.db.QueryRowContext(ctx, `SELECT m.id, m.kind, COALESCE(m.arr_id, 0), COALESCE(m.plex_rating_key, ''),
-		m.title, COALESCE(m.title_slug, ''), COALESCE(m.year, 0), COALESCE(m.overview, ''), COALESCE(m.tvdb_id, 0),
+		COALESCE(m.jellyfin_id, ''), m.title, COALESCE(m.title_slug, ''), COALESCE(m.year, 0), COALESCE(m.overview, ''), COALESCE(m.tvdb_id, 0),
 		COALESCE(m.tmdb_id, 0), COALESCE(m.imdb_id, ''), COALESCE(m.status, ''), m.genres,
 		COALESCE(m.network_or_studio, ''), COALESCE(m.rating, 0), m.size_bytes, m.added_at, m.tags,
 		COALESCE(m.quality_profile, ''), COALESCE(m.monitored, 0), COALESCE(m.path, ''), COALESCE(m.has_file, 0),
@@ -62,7 +63,7 @@ func (s *Store) MediaByID(ctx context.Context, id int64) (*Media, error) {
 		m.completed_play_count, m.watch_seconds, m.distinct_viewers, m.last_viewed_at,
 		COALESCE(NULLIF(a.friendly_name, ''), a.username, ''), m.watch_state, m.protected_local
 		FROM media m LEFT JOIN plex_accounts a ON a.account_id = m.last_viewed_by WHERE m.id = ?`, id).Scan(
-		&m.ID, &m.Kind, &m.ArrID, &m.PlexRatingKey, &m.Title, &m.TitleSlug, &m.Year, &m.Overview, &m.TvdbID,
+		&m.ID, &m.Kind, &m.ArrID, &m.PlexRatingKey, &m.JellyfinID, &m.Title, &m.TitleSlug, &m.Year, &m.Overview, &m.TvdbID,
 		&m.TmdbID, &m.ImdbID, &m.Status, &genres, &m.NetworkOrStudio, &m.Rating, &m.SizeBytes, &added, &tags,
 		&m.QualityProfile, &m.Monitored, &m.Path, &m.HasFile, &m.TotalEpisodes, &m.DownloadedEpisodes,
 		&m.WatchedEpisodes, &m.RuntimeMinutes, &m.MatchState, &m.MatchMethod, &m.Plays, &m.CompletedPlays,
@@ -89,18 +90,19 @@ type Season struct {
 	SizeBytes         int64
 	LastViewedAt      *int64
 	PlexRatingKey     string
+	JellyfinID        string
 }
 
 // Seasons lists the seasons of a series.
 func (s *Store) Seasons(ctx context.Context, mediaID int64) ([]Season, error) {
 	var out []Season
 	err := s.queryEach(ctx, `SELECT season_number, COALESCE(monitored, 0), episode_file_count, total_episode_count,
-		watched_episodes, size_bytes, last_viewed_at, COALESCE(plex_rating_key, '') FROM seasons
+		watched_episodes, size_bytes, last_viewed_at, COALESCE(plex_rating_key, ''), COALESCE(jellyfin_id, '') FROM seasons
 		WHERE media_id = ? ORDER BY season_number`, func(rows *sql.Rows) error {
 		var se Season
 		var last sql.NullInt64
 		if err := rows.Scan(&se.Number, &se.Monitored, &se.EpisodeFileCount, &se.TotalEpisodeCount,
-			&se.WatchedEpisodes, &se.SizeBytes, &last, &se.PlexRatingKey); err != nil {
+			&se.WatchedEpisodes, &se.SizeBytes, &last, &se.PlexRatingKey, &se.JellyfinID); err != nil {
 			return err
 		}
 		se.LastViewedAt = ptrInt(last)
@@ -318,3 +320,12 @@ func (s *Store) PlexMachineID(ctx context.Context) string {
 
 // SettingPlexMachineID stores the Plex server identifier used for links.
 const SettingPlexMachineID = "plex_machine_id"
+
+// JellyfinServerID returns the stored Jellyfin server id ("" if unknown).
+func (s *Store) JellyfinServerID(ctx context.Context) string {
+	v, _ := s.Setting(ctx, SettingJellyfinServerID, "")
+	return v
+}
+
+// SettingJellyfinServerID stores the Jellyfin server id used for links.
+const SettingJellyfinServerID = "jellyfin_server_id"

@@ -125,7 +125,7 @@ func TestFrenchCatalogComplete(t *testing.T) {
 	}
 	for _, k := range []string{"starting", "saving the catalog", "linking the history", "computing statistics",
 		"history: %d / %d", "history: %d", // sync progress
-		"not found", "in Plex only", "already protected", "protected by a tag", // batch exclusions
+		"not found", "in %s only", "already protected", "protected by a tag", // batch exclusions
 		"No item selected.", "Invalid selection.", "No deletable item in the selection.",
 		"The number typed does not match the number of items to delete.",
 		"Invalid time: hour 0 to 23, minute 0 to 59.",

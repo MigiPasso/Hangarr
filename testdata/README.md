@@ -15,6 +15,13 @@ endpoints:
 | `plex/section-<key>-type-<n>.json` | `GET /library/sections/<key>/all?type=<n>&includeGuids=1` |
 | `plex/accounts.json`, `plex/history.json` | `GET /accounts`, `GET /status/sessions/history/all` |
 | `tautulli/get_history.json`, `get_users.json` | `GET /api/v2?cmd=get_history&grouping=0…`, `cmd=get_users` |
+| `jellyfin/system-info.json` | `GET /System/Info` |
+| `jellyfin/users.json` | `GET /Users` |
+| `jellyfin/items-<Type>.json` | `GET /Items?recursive=true&includeItemTypes=<Type>…` |
+| `jellyfin/played-<userId>.json` | `GET /Items?userId=…&isPlayed=true&sortBy=DatePlayed…` |
+| `jellyfin/resumable-<userId>.json` | `GET /Items?userId=…&filters=IsResumable…` |
+
+`mockarr` serves Jellyfin on `:8096`, from the `jellyfin/` files above.
 
 ## Synthetic scenario (`testdata/`)
 
@@ -35,6 +42,9 @@ Hand-written from the API documentation, timestamps anchored on **2026-10-01T00:
   rest of Severance season 2 and about ten series and nine movies not in the catalog (weekly shows and anime, whole
   seasons released at once, an episode airing today, releases up to +130 days);
 - Lost: deleted from the library → orphan history row; plus a music track and a live session, both ignored.
+- Jellyfin: the fixtures mirror the Plex library (same titles, `jf(n)` ids mirror the Plex rating keys), with
+  per-user played and in-progress items instead of a history; bob has one item marked played without a date,
+  alice one audio item (both ignored by the sync).
 
 ## Dev extras (`testdata/dev/`, `posters.json`, `fanarts.json`)
 

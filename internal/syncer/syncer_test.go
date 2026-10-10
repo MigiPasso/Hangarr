@@ -15,6 +15,7 @@ import (
 	"testing/fstest"
 	"time"
 
+	"hangarr/internal/clients/jellyfin"
 	"hangarr/internal/clients/sonarr"
 	"hangarr/internal/mockarr"
 	"hangarr/internal/store"
@@ -101,15 +102,16 @@ type row struct {
 	Tags            string
 	PlexKey         sql.NullString
 	AddedAt         sql.NullInt64
+	JellyfinID      sql.NullString
 }
 
 func (e *env) media(kind, title string) row {
 	e.t.Helper()
 	var r row
 	err := e.store.DB().QueryRow(`SELECT id, match_state, match_method, play_count, completed_play_count,
-		distinct_viewers, watched_episodes, watch_state, last_viewed_by, tags, plex_rating_key, added_at
+		distinct_viewers, watched_episodes, watch_state, last_viewed_by, tags, plex_rating_key, added_at, jellyfin_id
 		FROM media WHERE kind = ? AND title = ?`, kind, title).Scan(&r.ID, &r.MatchState, &r.MatchMethod, &r.Plays,
-		&r.Completed, &r.Viewers, &r.WatchedEpisodes, &r.State, &r.LastBy, &r.Tags, &r.PlexKey, &r.AddedAt)
+		&r.Completed, &r.Viewers, &r.WatchedEpisodes, &r.State, &r.LastBy, &r.Tags, &r.PlexKey, &r.AddedAt, &r.JellyfinID)
 	if err != nil {
 		e.t.Fatalf("media %s %q: %v", kind, title, err)
 	}
@@ -131,7 +133,7 @@ func TestFullSync(t *testing.T) {
 	if res.Failed() {
 		t.Fatalf("sources failed: %+v", res.Sources)
 	}
-	if res.Matches["matched"] != 8 || res.Matches["arr_only"] != 2 || res.Matches["plex_only"] != 2 {
+	if res.Matches["matched"] != 8 || res.Matches["arr_only"] != 2 || res.Matches["server_only"] != 2 {
 		t.Errorf("match counts: %v", res.Matches)
 	}
 	if res.Linked != 19 || res.Orphans != 1 {
@@ -158,13 +160,13 @@ func TestFullSync(t *testing.T) {
 		{"movie", "Interstellar", "matched", "imdb", "abandoned", 1, 0, 1, -1},
 		{"movie", "Tenet", "matched", "tmdb", "never", 0, 0, 0, -1},
 		{"movie", "Avatar: Fire and Ash", "arr_only", "", "never", 0, 0, 0, -1},
-		{"movie", "Vacances 2019", "plex_only", "", "never", 0, 0, 0, -1},
+		{"movie", "Vacances 2019", "server_only", "", "never", 0, 0, 0, -1},
 		{"series", "Breaking Bad", "matched", "tvdb", "completed", 7, 7, 2, 6},
 		{"series", "The Expanse", "matched", "tvdb", "abandoned", 4, 3, 1, 3},
 		{"series", "Shōgun", "matched", "fuzzy", "in_progress", 1, 1, 1, 1},
 		{"series", "Severance", "matched", "tvdb", "never", 0, 0, 0, 0},
 		{"series", "Arcane", "arr_only", "", "never", 0, 0, 0, 0},
-		{"series", "Home Videos", "plex_only", "", "completed", 1, 1, 1, 1},
+		{"series", "Home Videos", "server_only", "", "completed", 1, 1, 1, 1},
 	} {
 		r := e.media(w.kind, w.title)
 		got := []any{r.MatchState, r.MatchMethod.String, r.State, r.Plays, r.Completed, r.Viewers}
@@ -298,11 +300,11 @@ func TestSourceFailureIsolated(t *testing.T) {
 		t.Errorf("series must be kept when Sonarr fails, got %d", n)
 	}
 	// Radarr now returns no movie: movies vanish; those still in Plex
-	// become plex_only and keep their history.
+	// become server_only and keep their history.
 	if n := e.count(`SELECT COUNT(*) FROM media WHERE kind = 'movie' AND arr_id IS NOT NULL`); n != 0 {
 		t.Errorf("movies removed from Radarr must be deleted, got %d", n)
 	}
-	if inc := e.media("movie", "Inception"); inc.MatchState != "plex_only" || inc.Plays != 2 {
+	if inc := e.media("movie", "Inception"); inc.MatchState != "server_only" || inc.Plays != 2 {
 		t.Errorf("Inception after Radarr removal: %+v", inc)
 	}
 	runs, _ := e.store.LatestSyncRuns(context.Background())
@@ -522,5 +524,245 @@ func TestSwitchHistorySourceKeepsOne(t *testing.T) {
 	}
 	if got := e.media("movie", "Inception").Plays; got != 2 || got == inceptionPlexPlays+2 {
 		t.Errorf("Inception plays after the switch: %d (Tautulli only, not added to Plex's)", got)
+	}
+}
+
+// newJellyfinEnv is newEnv with the Jellyfin mock too; the registry is set to
+// Jellyfin alone (Plex and Tautulli not configured).
+func newJellyfinEnv(t *testing.T) *env {
+	t.Helper()
+	e := newEnv(t)
+	ts := httptest.NewServer(e.mock.Jellyfin())
+	t.Cleanup(ts.Close)
+	e.urls["jellyfin"] = ts.URL
+	vals := upstream.TestValues(e.urls, key)
+	delete(vals, upstream.PlexToken)
+	delete(vals, upstream.TautulliAPIKey)
+	e.s.Upstreams.Set(upstream.Build(vals, "auto"))
+	return e
+}
+
+func TestFullSyncJellyfin(t *testing.T) {
+	e := newJellyfinEnv(t)
+	res := e.run()
+	if res.Failed() {
+		t.Fatalf("sources failed: %+v", res.Sources)
+	}
+	if res.Matches["matched"] != 8 || res.Matches["arr_only"] != 2 || res.Matches["server_only"] != 2 {
+		t.Errorf("match counts: %v", res.Matches)
+	}
+	if res.Linked != 18 || res.Orphans != 0 {
+		t.Errorf("linked=%d orphans=%d, want 18 and 0", res.Linked, res.Orphans)
+	}
+	// alice: 10 plays and 3 in progress; bob: 4 plays and 1 in progress. The
+	// audio track and bob's item played without a date are skipped.
+	if n := e.count(`SELECT COUNT(*) FROM watch_events`); n != 18 {
+		t.Errorf("watch_events: %d", n)
+	}
+	if n := e.count(`SELECT COUNT(*) FROM plex_accounts`); n != 3 {
+		t.Errorf("plex_accounts: %d", n)
+	}
+
+	type want struct {
+		kind, title, match, method, state string
+		plays, completed, viewers         int
+		watchedEpisodes                   int64 // -1: NULL
+	}
+	for _, w := range []want{
+		{"movie", "Inception", "matched", "tmdb", "completed", 2, 2, 2, -1},
+		{"movie", "Dune", "matched", "tmdb", "in_progress", 1, 0, 1, -1},
+		{"movie", "Interstellar", "matched", "imdb", "abandoned", 1, 0, 1, -1},
+		{"movie", "Tenet", "matched", "tmdb", "in_progress", 1, 0, 1, -1},
+		{"movie", "Avatar: Fire and Ash", "arr_only", "", "never", 0, 0, 0, -1},
+		{"movie", "Vacances 2019", "server_only", "", "never", 0, 0, 0, -1},
+		{"series", "Breaking Bad", "matched", "tvdb", "completed", 7, 7, 2, 6},
+		{"series", "The Expanse", "matched", "tvdb", "abandoned", 4, 3, 1, 3},
+		{"series", "Shōgun", "matched", "fuzzy", "in_progress", 1, 1, 1, 1},
+		{"series", "Severance", "matched", "tvdb", "never", 0, 0, 0, 0},
+		{"series", "Arcane", "arr_only", "", "never", 0, 0, 0, 0},
+		{"series", "Home Videos", "server_only", "", "completed", 1, 1, 1, 1},
+	} {
+		r := e.media(w.kind, w.title)
+		got := []any{r.MatchState, r.MatchMethod.String, r.State, r.Plays, r.Completed, r.Viewers}
+		exp := []any{w.match, w.method, w.state, w.plays, w.completed, w.viewers}
+		for i := range got {
+			if got[i] != exp[i] {
+				t.Errorf("%s: got %v, want %v", w.title, got, exp)
+				break
+			}
+		}
+		if w.watchedEpisodes >= 0 && r.WatchedEpisodes.Int64 != w.watchedEpisodes {
+			t.Errorf("%s: watched episodes %d, want %d", w.title, r.WatchedEpisodes.Int64, w.watchedEpisodes)
+		}
+	}
+
+	bobID := jellyfin.AccountID("aaaa0000000000000000000000001002")
+	if inception := e.media("movie", "Inception"); inception.LastBy.Int64 != bobID {
+		t.Errorf("Inception last viewed by %d, want bob (%d)", inception.LastBy.Int64, bobID)
+	}
+	bb := e.media("series", "Breaking Bad")
+	if bb.JellyfinID.String != "f0000000000000000000000000000201" {
+		t.Errorf("Breaking Bad jellyfin id: %q", bb.JellyfinID.String)
+	}
+	var seasonKey string
+	if err := e.store.DB().QueryRow(`SELECT jellyfin_id FROM seasons WHERE media_id = ? AND season_number = 1`,
+		bb.ID).Scan(&seasonKey); err != nil {
+		t.Fatal(err)
+	}
+	if seasonKey != "f0000000000000000000000000002011" {
+		t.Errorf("season jellyfin id: %q", seasonKey)
+	}
+	if id, err := e.store.Setting(context.Background(), store.SettingJellyfinServerID, ""); err != nil || id != "5e0c1e6a3b2f4d7c9a8b1c2d3e4f5a6b" {
+		t.Errorf("jellyfin server id: %q %v", id, err)
+	}
+
+	runs, _ := e.store.LatestSyncRuns(context.Background())
+	var sources []string
+	for _, r := range runs {
+		sources = append(sources, r.Source)
+		if r.Status != "success" {
+			t.Errorf("run %s: %s %s", r.Source, r.Status, r.Error)
+		}
+	}
+	if got := strings.Join(sources, " "); got != "jellyfin jellyfin_history radarr sonarr" {
+		t.Errorf("sync runs: %s", got)
+	}
+}
+
+func TestJellyfinIncrementalHistory(t *testing.T) {
+	e := newJellyfinEnv(t)
+	e.run()
+	e.mock.Reset()
+	if res := e.run(); res.Failed() {
+		t.Fatalf("sources: %+v", res.Sources)
+	}
+	// One page per user, each read from its cursor.
+	if n := e.mock.Hits("jellyfin:played"); n != 3 {
+		t.Fatalf("played pages: %d, want 3", n)
+	}
+	if n := e.count(`SELECT COUNT(*) FROM watch_events`); n != 18 {
+		t.Fatalf("watch_events after the second sync: %d, want 18", n)
+	}
+	// The cursor is the last play of alice, the audio track included.
+	cursor, _ := e.store.Cursor(context.Background(), cursorJellyfinHistory+"aaaa0000000000000000000000001001")
+	if cursor != "1790720200" {
+		t.Errorf("cursor = %q", cursor)
+	}
+}
+
+func TestJellyfinEvent(t *testing.T) {
+	const user = "aaaa0000000000000000000000001001"
+	parse := func(s string) jellyfin.Item {
+		t.Helper()
+		var it jellyfin.Item
+		if err := json.Unmarshal([]byte(s), &it); err != nil {
+			t.Fatal(err)
+		}
+		return it
+	}
+
+	movie := parse(`{"Id":"f0000000000000000000000000000101","Name":"Inception","Type":"Movie","ProductionYear":2010,
+		"RunTimeTicks":88800000000,"UserData":{"Played":true,"LastPlayedDate":"2025-08-27T22:26:40.0000000Z"}}`)
+	e, ok := JellyfinEvent(user, 7, movie)
+	if !ok || e.Source != SourceJellyfinHistory || e.MediaType != "movie" || !e.Watched || e.PercentComplete != 100 ||
+		e.UserID != 7 || e.SourceID != jellyfin.EventID(user, movie.ID) {
+		t.Errorf("played movie: ok=%v %+v", ok, e)
+	}
+
+	episode := parse(`{"Id":"f0000000000000000000000000020122","Name":"Grilled","Type":"Episode",
+		"SeriesId":"f0000000000000000000000000000201","SeriesName":"Breaking Bad","ParentIndexNumber":2,"IndexNumber":2,
+		"RunTimeTicks":28200000000,"UserData":{"Played":false,"LastPlayedDate":"2026-07-02T20:47:00.0000000Z","PlayedPercentage":40}}`)
+	e, ok = JellyfinEvent(user, 7, episode)
+	if !ok || e.MediaType != "episode" || e.Watched || e.PercentComplete != 40 ||
+		e.GrandparentRatingKey != "f0000000000000000000000000000201" || e.GrandparentTitle != "Breaking Bad" ||
+		e.SeasonNumber == nil || *e.SeasonNumber != 2 || e.EpisodeNumber == nil || *e.EpisodeNumber != 2 {
+		t.Errorf("episode in progress: ok=%v %+v", ok, e)
+	}
+
+	// No percentage: the position (30 s of 120 s).
+	position := parse(`{"Id":"f0000000000000000000000000000104","Name":"Interstellar","Type":"Movie",
+		"RunTimeTicks":1200000000,"UserData":{"Played":false,"LastPlayedDate":"2026-03-15T20:50:00.0000000Z",
+		"PlaybackPositionTicks":300000000}}`)
+	if e, ok := JellyfinEvent(user, 7, position); !ok || e.PercentComplete != 25 || e.Watched {
+		t.Errorf("position without percentage: ok=%v %+v", ok, e)
+	}
+
+	for name, s := range map[string]string{
+		"audio": `{"Id":"f0000000000000000000000000000077","Name":"Some Track","Type":"Audio",
+			"UserData":{"Played":true,"LastPlayedDate":"2026-09-29T22:16:40.0000000Z"}}`,
+		"no user data": `{"Id":"f0000000000000000000000000000101","Name":"Inception","Type":"Movie"}`,
+		"no play date": `{"Id":"f0000000000000000000000000020123","Name":"Bit by a Dead Bee","Type":"Episode",
+			"UserData":{"Played":true}}`,
+	} {
+		if _, ok := JellyfinEvent(user, 7, parse(s)); ok {
+			t.Errorf("%s must not be stored", name)
+		}
+	}
+}
+
+// The Plex server is replaced by Jellyfin in the same database: the Tautulli
+// and Plex histories stay, the accounts are matched by name, and the items
+// only Plex knows are hidden.
+func TestSwitchPlexToJellyfin(t *testing.T) {
+	e := newJellyfinEnv(t)
+	plexVals := upstream.TestValues(e.urls, key)
+	delete(plexVals, upstream.JellyfinURL)
+	delete(plexVals, upstream.JellyfinAPIKey)
+	e.s.Upstreams.Set(upstream.Build(plexVals, "auto"))
+	if res := e.run(); res.Failed() {
+		t.Fatalf("plex sync: %+v", res.Sources)
+	}
+
+	// Merged mode drops the Plex entries that Tautulli covers, so only Tautulli
+	// sessions may remain of that history: the Jellyfin sync must keep them.
+	before := e.count(`SELECT COUNT(*) FROM watch_events WHERE source IN ('tautulli', 'plex_history')`)
+
+	jellyfinVals := upstream.TestValues(e.urls, key)
+	delete(jellyfinVals, upstream.PlexToken)
+	e.s.Upstreams.Set(upstream.Build(jellyfinVals, "auto"))
+	if res := e.run(); res.Failed() {
+		t.Fatalf("jellyfin sync: %+v", res.Sources)
+	}
+	if n := e.count(`SELECT COUNT(*) FROM plex_accounts`); n != 3 {
+		t.Errorf("plex_accounts: %d, want the 3 Tautulli users matched by name", n)
+	}
+	if n := e.count(`SELECT COUNT(*) FROM watch_events WHERE source = 'tautulli'`); n == 0 {
+		t.Error("the Tautulli sessions must stay")
+	}
+	if after := e.count(`SELECT COUNT(*) FROM watch_events WHERE source IN ('tautulli', 'plex_history')`); after != before {
+		t.Errorf("the Tautulli and Plex history must stay: %d events, %d after the Jellyfin sync", before, after)
+	}
+	if n := e.count(`SELECT COUNT(*) FROM media WHERE plex_rating_key = '105' AND match_state = 'hidden'`); n != 1 {
+		t.Error("Vacances 2019, known to Plex only, must be hidden")
+	}
+	if n := e.count(`SELECT COUNT(*) FROM media WHERE match_state = 'server_only' AND jellyfin_id = 'f0000000000000000000000000000105'`); n != 1 {
+		t.Error("Vacances 2019 must be a server_only row of Jellyfin")
+	}
+
+	// The Jellyfin fixtures repeat the plays of the Plex scenario at the same
+	// dates (watched states copied between the servers): they count once.
+	for _, w := range []struct {
+		kind, title               string
+		plays, completed, viewers int
+	}{
+		{"movie", "Inception", 2, 2, 2},
+		{"movie", "Dune", 1, 0, 1},
+		{"movie", "Interstellar", 1, 0, 1},
+		{"series", "Breaking Bad", 7, 7, 2},
+		{"series", "The Expanse", 4, 3, 1},
+		{"series", "Shōgun", 1, 1, 1},
+		// Tenet: only Jellyfin has bob's play (Tautulli's is a live session).
+		{"movie", "Tenet", 1, 0, 1},
+	} {
+		r := e.media(w.kind, w.title)
+		if r.Plays != w.plays || r.Completed != w.completed || r.Viewers != w.viewers {
+			t.Errorf("%s after the switch: %d plays, %d completed, %d viewers; want %d, %d, %d",
+				w.title, r.Plays, r.Completed, r.Viewers, w.plays, w.completed, w.viewers)
+		}
+	}
+	// Left: Tenet, and Home Videos, whose Plex and Jellyfin rows differ (no
+	// common id, items Sonarr does not manage).
+	if n := e.count(`SELECT COUNT(*) FROM watch_events WHERE source = 'jellyfin_history'`); n != 2 {
+		t.Errorf("jellyfin events left after the merge: %d, want 2", n)
 	}
 }

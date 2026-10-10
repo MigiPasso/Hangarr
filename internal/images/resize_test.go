@@ -133,13 +133,13 @@ func TestProxyCachesReducedFanart(t *testing.T) {
 		t.Fatal(err)
 	}
 	client := httpx.New("sonarr", upstream.URL, nil)
-	lookup := func(context.Context, string, int64, string) (Info, bool, error) { return Info{Title: "X"}, true, nil }
+	lookup := func(context.Context, string, string, string) (Info, bool, error) { return Info{Title: "X"}, true, nil }
 	p := New(dir, func(string) *httpx.Client { return client }, lookup, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	if _, err := os.Stat(old); !os.IsNotExist(err) {
 		t.Error("files of the previous cache version must be removed")
 	}
 	rec := httptest.NewRecorder()
-	p.ServeImage(rec, httptest.NewRequest(http.MethodGet, "/img/series/1/fanart", nil), "series", 1, "fanart")
+	p.ServeImage(rec, httptest.NewRequest(http.MethodGet, "/img/series/1/fanart", nil), "series", "1", "fanart")
 	if w, h, _ := size(t, rec.Body.Bytes()); rec.Code != http.StatusOK || w != 1280 || h != 720 {
 		t.Fatalf("served fanart: %d, %dx%d", rec.Code, w, h)
 	}

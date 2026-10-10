@@ -6,19 +6,35 @@ import (
 	"sort"
 )
 
-// LinkWatchEventsByKey resolves media_id from Plex rating keys: a movie row
-// by rating_key, an episode by its show (grandparent_rating_key). Arr-managed
-// rows win over plex_only ones. Every event is re-evaluated, since rating
-// keys can move between syncs.
+// LinkWatchEventsByKey resolves media_id from the keys of the server each
+// event comes from (Plex rating keys for Tautulli and the Plex history,
+// Jellyfin ids for the Jellyfin history): a movie row by rating_key, an
+// episode by its show (grandparent_rating_key). Arr-managed rows win over
+// server_only ones. Every event is re-evaluated, since keys can move between
+// syncs.
 func (s *Store) LinkWatchEventsByKey(ctx context.Context) error {
-	_, err := s.db.ExecContext(ctx, `UPDATE watch_events SET media_id = (
-		SELECT m.id FROM media m
-		WHERE m.plex_rating_key IS NOT NULL
-		  AND ((watch_events.media_type = 'movie' AND m.kind = 'movie' AND m.plex_rating_key = watch_events.rating_key)
-		    OR (watch_events.media_type = 'episode' AND m.kind = 'series'
-		        AND m.plex_rating_key = watch_events.grandparent_rating_key))
-		ORDER BY m.arr_id IS NULL, m.id LIMIT 1)`)
-	return err
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	for _, l := range []struct{ col, sources string }{
+		{"plex_rating_key", `watch_events.source <> 'jellyfin_history'`},
+		{"jellyfin_id", `watch_events.source = 'jellyfin_history'`},
+	} {
+		//nolint:gosec // G202: constant fragments only
+		if _, err := tx.ExecContext(ctx, `UPDATE watch_events SET media_id = (
+			SELECT m.id FROM media m
+			WHERE m.`+l.col+` IS NOT NULL
+			  AND ((watch_events.media_type = 'movie' AND m.kind = 'movie' AND m.`+l.col+` = watch_events.rating_key)
+			    OR (watch_events.media_type = 'episode' AND m.kind = 'series'
+			        AND m.`+l.col+` = watch_events.grandparent_rating_key))
+			ORDER BY m.arr_id IS NULL, m.id LIMIT 1)
+			WHERE `+l.sources); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
 }
 
 // UnlinkedTitle is a distinct (type, title, year) of events without media.

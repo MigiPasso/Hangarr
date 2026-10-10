@@ -12,22 +12,22 @@
     <strong>{{$d.M.Title}}</strong>{{if $d.Season}} · {{t "Season %d" (deref $d.Season)}}{{end}}
     {{if $d.Season}}{{template "info" (t "Files are deleted, then the season is unmonitored in Sonarr so it is not downloaded again.")}}{{end}}
   </p>
-  {{if $d.Plex}}
-  <p class="alert alert-warning">{{t "Not in Sonarr/Radarr anymore: Plex deletes it, with its files from disk."}}</p>
+  {{if $d.Server}}
+  <p class="alert alert-warning">{{t "Not in Sonarr/Radarr anymore: %s deletes it, with its files from disk." $d.Server}}</p>
   <p>{{t "Space freed:"}} <strong>{{if $d.SizeBytes}}{{bytes $d.SizeBytes}}{{else}}{{t "unknown"}}{{end}}</strong></p>
   {{else}}
   <p>{{t "Space freed:"}} <strong>{{if $d.SizeBytes}}{{bytes $d.SizeBytes}}{{else}}{{t "none"}}{{end}}</strong>{{template "info" (t "If the files are deleted.")}}</p>
   {{end}}
   {{if $d.DryRun}}<p class="alert alert-warning">{{t "Simulation (DRY_RUN): logged, nothing deleted."}}</p>{{end}}
-  {{if $d.Protected}}<p class="alert alert-error">{{if $d.Plex}}{{t "Protected in Hangarr: deletion will be refused."}}{{else}}{{t "Protected by a tag: deletion will be refused."}}{{end}}</p>{{end}}
+  {{if $d.Protected}}<p class="alert alert-error">{{if $d.Server}}{{t "Protected in Hangarr: deletion will be refused."}}{{else}}{{t "Protected by a tag: deletion will be refused."}}{{end}}</p>{{end}}
   {{with $d.Error}}<p class="alert alert-error" role="alert">{{.}}</p>{{end}}
 
-  {{if $d.Plex}}
+  {{if $d.Server}}
   <input type="hidden" name="delete_files" value="1">
   {{else}}
   <label class="check"><input type="checkbox" name="delete_files" value="1"{{if $d.DeleteFiles}} checked{{end}}> {{t "Delete files from disk"}}</label>
   {{end}}
-  {{if not (or $d.Season $d.Plex)}}
+  {{if not (or $d.Season $d.Server)}}
   <label class="check"><input type="checkbox" name="import_exclusion" value="1"{{if $d.ImportExclusion}} checked{{end}}> {{t "Add an import list exclusion"}}</label>
   {{end}}
   {{if $d.ConfirmByTyping}}

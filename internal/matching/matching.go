@@ -1,5 +1,6 @@
-// Package matching pairs Plex items with Sonarr/Radarr items (SPEC §4) and
-// resolves history rows to media by title when rating keys are unknown.
+// Package matching pairs media server items (Plex or Jellyfin) with
+// Sonarr/Radarr items (SPEC §4) and resolves history rows to media by title
+// when rating keys are unknown.
 package matching
 
 import (
@@ -74,16 +75,16 @@ type ArrItem struct {
 	File   string
 }
 
-// PlexItem is a Plex movie or show.
-type PlexItem struct {
-	Kind      string
-	RatingKey string
-	Title     string
-	Year      int
-	TvdbID    int64
-	TmdbID    int64
-	ImdbID    string
-	AddedAt   int64
+// ServerItem is a movie or show of the media server (Plex or Jellyfin).
+type ServerItem struct {
+	Kind    string
+	Key     string
+	Title   string
+	Year    int
+	TvdbID  int64
+	TmdbID  int64
+	ImdbID  string
+	AddedAt int64
 	// OriginalTitle is used for the title match too.
 	OriginalTitle string
 	// Folders (show location, movie file directory) and movie files.
@@ -92,7 +93,7 @@ type PlexItem struct {
 }
 
 // baseName returns the last element of a Unix or Windows path, lowercased:
-// Plex and the *arr apps may see the same file under different mounts.
+// The media server and the *arr apps may see the same file under different mounts.
 func baseName(p string) string {
 	p = strings.TrimRight(p, `/\`)
 	if i := strings.LastIndexAny(p, `/\`); i >= 0 {
@@ -110,11 +111,11 @@ func dirName(p string) string {
 	return ""
 }
 
-// Link pairs a media row with a Plex rating key.
+// Link pairs a media row with a media server key.
 type Link struct {
-	MediaID   int64
-	RatingKey string
-	Method    string
+	MediaID int64
+	Key     string
+	Method  string
 }
 
 type idKey struct {
@@ -149,12 +150,12 @@ func yearsCompatible(a, b int) bool {
 	return a == 0 || b == 0 || abs(a-b) <= 1
 }
 
-// Match pairs arr items with Plex items. Exact external ids are tried first
+// Match pairs arr items with server items. Exact external ids are tried first
 // for every item, so a weaker match can never steal an item that has an id
 // match; then the same file or folder on disk; then normalized title (or
 // original / alternate title) and year ±1.
-// It returns the links and the Plex items left unmatched (plex_only).
-func Match(arr []ArrItem, plex []PlexItem) ([]Link, []PlexItem) {
+// It returns the links and the server items left unmatched (server_only).
+func Match(arr []ArrItem, plex []ServerItem) ([]Link, []ServerItem) {
 	byID := map[idKey]int{}
 	for i, p := range plex {
 		for _, k := range idKeys(p.Kind, p.TvdbID, p.TmdbID, p.ImdbID) {
@@ -171,14 +172,14 @@ func Match(arr []ArrItem, plex []PlexItem) ([]Link, []PlexItem) {
 		for _, k := range idKeys(a.Kind, a.TvdbID, a.TmdbID, a.ImdbID) {
 			if pi, ok := byID[k]; ok && !used[pi] {
 				used[pi], matched[ai] = true, true
-				links = append(links, Link{MediaID: a.MediaID, RatingKey: plex[pi].RatingKey, Method: k.scheme})
+				links = append(links, Link{MediaID: a.MediaID, Key: plex[pi].Key, Method: k.scheme})
 				break
 			}
 		}
 	}
 
 	// Same file or folder on disk: works whatever the metadata says (no ids
-	// on the Plex side, titles in another language, wrong year). A name
+	// on the server side, titles in another language, wrong year). A name
 	// shared by several items on either side is ignored.
 	byFile, byFolder := map[string]int{}, map[string]int{}
 	index := func(m map[string]int, key string, i int) {
@@ -229,7 +230,7 @@ func Match(arr []ArrItem, plex []PlexItem) ([]Link, []PlexItem) {
 		}
 		if pi >= 0 && !used[pi] {
 			used[pi], matched[ai] = true, true
-			links = append(links, Link{MediaID: a.MediaID, RatingKey: plex[pi].RatingKey, Method: MethodFile})
+			links = append(links, Link{MediaID: a.MediaID, Key: plex[pi].Key, Method: MethodFile})
 		}
 	}
 
@@ -263,7 +264,7 @@ func Match(arr []ArrItem, plex []PlexItem) ([]Link, []PlexItem) {
 					diff = abs(a.Year - p.Year)
 				}
 				if diff < bestDiff {
-					best, bestKey, bestDiff = pi, p.RatingKey, diff
+					best, bestKey, bestDiff = pi, p.Key, diff
 				}
 			}
 			if best >= 0 {
@@ -272,11 +273,11 @@ func Match(arr []ArrItem, plex []PlexItem) ([]Link, []PlexItem) {
 		}
 		if best >= 0 {
 			used[best] = true
-			links = append(links, Link{MediaID: a.MediaID, RatingKey: bestKey, Method: MethodFuzzy})
+			links = append(links, Link{MediaID: a.MediaID, Key: bestKey, Method: MethodFuzzy})
 		}
 	}
 
-	var plexOnly []PlexItem
+	var plexOnly []ServerItem
 	for i, p := range plex {
 		if !used[i] {
 			plexOnly = append(plexOnly, p)

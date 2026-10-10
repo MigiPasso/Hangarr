@@ -39,9 +39,6 @@ func TestDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := c.RequireUpstreams(); err != nil {
-		t.Fatal(err)
-	}
 	if !c.DryRun || !c.CookieSecure || !c.ConfirmByTyping {
 		t.Error("DRY_RUN, COOKIE_SECURE and CONFIRM_BY_TYPING must default to true")
 	}
@@ -68,14 +65,37 @@ func TestDefaults(t *testing.T) {
 	}
 }
 
-func TestRequireUpstreams(t *testing.T) {
-	c, err := Load(env(map[string]string{}), files(nil))
+func TestJellyfinSettings(t *testing.T) {
+	m := upstreams()
+	delete(m, "PLEX_URL")
+	delete(m, "PLEX_TOKEN")
+	m["JELLYFIN_URL"] = "http://jellyfin:8096/"
+	m["JELLYFIN_API_KEY_FILE"] = "/run/secrets/jf"
+	m["JELLYFIN_PUBLIC_URL"] = "https://jf.example.com/"
+	c, err := Load(env(m), files(map[string]string{"/run/secrets/jf": "j\n"}))
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = c.RequireUpstreams()
-	if err == nil || !strings.Contains(err.Error(), "SONARR_URL") || !strings.Contains(err.Error(), "PLEX_TOKEN") {
-		t.Fatalf("expected missing upstream errors, got %v", err)
+	if c.JellyfinURL != "http://jellyfin:8096" || c.JellyfinAPIKey != "j" || c.JellyfinPublicURL != "https://jf.example.com" {
+		t.Errorf("Jellyfin settings: %q %q %q", c.JellyfinURL, c.JellyfinAPIKey, c.JellyfinPublicURL)
+	}
+	m["JELLYFIN_URL"] = "ftp://jellyfin"
+	if _, err := Load(env(m), files(map[string]string{"/run/secrets/jf": "j"})); err == nil || !strings.Contains(err.Error(), "JELLYFIN_URL") {
+		t.Errorf("invalid JELLYFIN_URL: %v", err)
+	}
+}
+
+func TestPlexAndJellyfinExclusive(t *testing.T) {
+	m := upstreams()
+	m["JELLYFIN_URL"] = "http://jellyfin:8096"
+	if _, err := Load(env(m), files(nil)); err == nil || !strings.Contains(err.Error(), "PLEX_* and JELLYFIN_*") {
+		t.Errorf("PLEX_URL and JELLYFIN_URL: %v", err)
+	}
+	m = upstreams()
+	delete(m, "PLEX_URL")
+	m["JELLYFIN_API_KEY"] = "j"
+	if _, err := Load(env(m), files(nil)); err == nil || !strings.Contains(err.Error(), "PLEX_* and JELLYFIN_*") {
+		t.Errorf("PLEX_TOKEN and JELLYFIN_API_KEY: %v", err)
 	}
 }
 

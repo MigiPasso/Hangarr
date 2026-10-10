@@ -40,7 +40,7 @@ func TestConfigPage(t *testing.T) {
 	c := h.loggedIn()
 
 	home := h.do(c, "GET", "/", nil, nil)
-	if !strings.Contains(home.body, "Services non configurés (Sonarr, Radarr, Plex)") ||
+	if !strings.Contains(home.body, "Services non configurés (Sonarr, Radarr, Plex / Jellyfin)") ||
 		!strings.Contains(home.body, `href="/config">Configurer les services`) {
 		t.Error("the banner must invite to configure the services")
 	}
@@ -69,7 +69,7 @@ func TestConfigPage(t *testing.T) {
 		t.Error("the credential must never be sent back, only its masked hint")
 	}
 	if !strings.Contains(r.body, `id="config-banner" hx-swap-oob="true"`) ||
-		!strings.Contains(r.body, "Services non configurés (Radarr, Plex)") {
+		!strings.Contains(r.body, "Services non configurés (Radarr, Plex / Jellyfin)") {
 		t.Error("the banner must be updated out of band")
 	}
 	if r := h.do(c, "GET", "/config", nil, nil); strings.Contains(r.body, testAPIKey) {
@@ -180,6 +180,14 @@ func TestTautulliWebhook(t *testing.T) {
 	if r := e.do(c, "GET", "/webhooks/tautulli", nil, nil); r.status == http.StatusAccepted {
 		t.Error("GET must not trigger anything")
 	}
+	// Jellyfin in use: Tautulli is not read, the webhook does not exist.
+	jf := *e.srv.Upstreams.Get()
+	jf.MediaServer = upstream.Jellyfin
+	e.srv.Upstreams.Set(&jf)
+	if r := post(secret); r.status != http.StatusNotFound {
+		t.Errorf("webhook with Jellyfin: %d", r.status)
+	}
+	e.srv.Upstreams.Set(&up)
 	for i := 0; i < webhookPerMinute; i++ {
 		post(secret)
 	}

@@ -4,12 +4,14 @@ import (
 	"context"
 	"io"
 	"log/slog"
+	"maps"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"os"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -52,8 +54,16 @@ func newLibEnvDry(t *testing.T, pageSize int, dryRun bool) *libEnv {
 		if _, err := sy.Run(context.Background()); err != nil {
 			t.Fatal(err)
 		}
-		lookup := func(ctx context.Context, kind string, id int64, variant string) (images.Info, bool, error) {
-			title, remote, ok, err := d.Store.ImageInfo(ctx, kind, id, variant)
+		lookup := func(ctx context.Context, kind, id, variant string) (images.Info, bool, error) {
+			if kind == "plex" || kind == "jellyfin" {
+				title, ok, err := d.Store.ServerItemTitle(ctx, kind, id)
+				return images.Info{Title: title}, ok, err
+			}
+			arrID, err := strconv.ParseInt(id, 10, 64)
+			if err != nil || arrID <= 0 {
+				return images.Info{}, false, nil
+			}
+			title, remote, ok, err := d.Store.ImageInfo(ctx, kind, arrID, variant)
 			return images.Info{Title: title, RemoteURL: remote}, ok, err
 		}
 		d.Images = images.New(t.TempDir(), sy.Upstreams.ImageHTTP, lookup, log)
@@ -361,6 +371,42 @@ func TestPlexOnlyPosters(t *testing.T) {
 	}
 }
 
+// Vacances 2019 is known by Jellyfin only: its card and its poster use the
+// Jellyfin id, and the poster comes from the Jellyfin server once (then cached).
+func TestJellyfinOnlyPosters(t *testing.T) {
+	e := newLibEnv(t, 0)
+	const jid = "f0000000000000000000000000000105"
+	if _, err := e.srv.Store.DB().Exec(`UPDATE media SET jellyfin_id = ?, plex_rating_key = NULL WHERE kind = ? AND title = ?`,
+		jid, "movie", "Vacances 2019"); err != nil {
+		t.Fatal(err)
+	}
+	// The image client of the environment becomes Jellyfin's, served by the mock.
+	jf := httptest.NewServer(e.mock.Jellyfin())
+	t.Cleanup(jf.Close)
+	v := maps.Clone(e.srv.Upstreams.Get().Values)
+	v[upstream.JellyfinURL], v[upstream.JellyfinAPIKey] = jf.URL, "k"
+	e.srv.Upstreams.Set(upstream.Build(v, "auto"))
+
+	if r := e.do(e.c, "GET", "/movies", nil, nil); !strings.Contains(r.body, `src="/img/jellyfin/`+jid+`/poster"`) {
+		t.Error("jellyfin_only card must use the Jellyfin poster")
+	}
+	for range 2 {
+		r := e.do(e.c, "GET", "/img/jellyfin/"+jid+"/poster", nil, nil)
+		if r.status != http.StatusOK || r.header.Get("Content-Type") != "image/png" {
+			t.Fatalf("jellyfin poster: %d %v", r.status, r.header)
+		}
+	}
+	if n := e.mock.Hits("jellyfin:image"); n != 1 {
+		t.Errorf("jellyfin image hits: %d, want 1 (then cached)", n)
+	}
+	// Unknown ids, and ids that are not lowercase hexadecimal, are not proxied.
+	for _, p := range []string{"/img/jellyfin/f0000000000000000000000000000999/poster", "/img/jellyfin/F0000000000000000000000000000105/poster"} {
+		if r := e.do(e.c, "GET", p, nil, nil); r.status != http.StatusNotFound {
+			t.Errorf("%s: %d", p, r.status)
+		}
+	}
+}
+
 // "Present in" sits right under the watch state, outside « More filters »,
 // and does not open that block.
 func TestLibraryPresentInFilter(t *testing.T) {
@@ -374,8 +420,9 @@ func TestLibraryPresentInFilter(t *testing.T) {
 	if strings.Contains(r.body, `class="more-filters" open`) {
 		t.Error("the presence filter must not open « More filters »")
 	}
-	if !slices.Equal(cardTitles(r.body), []string{"Vacances 2019"}) || !strings.Contains(r.body, `value="plex_only" checked`) {
-		t.Errorf("plex_only movies: %q", cardTitles(r.body))
+	// plex_only, the former name of server_only, still works in saved links.
+	if !slices.Equal(cardTitles(r.body), []string{"Vacances 2019"}) || !strings.Contains(r.body, `value="server_only" checked`) {
+		t.Errorf("server_only movies: %q", cardTitles(r.body))
 	}
 }
 

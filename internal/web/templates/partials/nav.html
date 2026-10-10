@@ -93,6 +93,7 @@
 
 {{define "sync_status"}}{{with .Sync}}
 <div id="sync-status" class="sync-status"{{if $.OOB}} hx-swap-oob="true"{{end}}{{if .Running}} hx-get="/sync/status" hx-trigger="every 2s" hx-swap="outerHTML"{{end}}>
+  {{with serverInUse}}<a class="server-chip" href="/config" title="{{t "Media server in use: %s" .}}" aria-label="{{t "Media server in use: %s" .}}">{{.}}</a>{{end}}
   {{if .Running}}
     <span class="spinner" aria-hidden="true"></span>
     <span class="small sync-ticker"><span>{{t "Syncing"}}{{with .Progress}}: {{tv . $.Sync.ProgressArgs}}{{end}}…</span></span>
@@ -111,9 +112,9 @@
 {{end}}{{end}}
 
 {{define "config_banner"}}
-<div id="config-banner"{{if .OOB}} hx-swap-oob="true"{{end}}>{{if .Missing}}
+<div id="config-banner"{{if .OOB}} hx-swap-oob="true"{{end}}>{{if or .Missing .ServerConflict}}
   <div class="config-banner" role="status">
-    {{t "Services not configured (%s): sync disabled." (join .Missing ", ")}}{{if ne .Active "config"}} <a href="/config">{{t "Configure the services"}}</a>{{end}}
+    {{if .Missing}}{{t "Services not configured (%s): sync disabled." (join .Missing ", ")}}{{end}}{{if and .Missing .ServerConflict}} {{end}}{{if .ServerConflict}}{{t "Plex and Jellyfin are both configured: sync disabled. Clear one of them."}}{{end}}{{if ne .Active "config"}} <a href="/config">{{t "Configure the services"}}</a>{{end}}
   </div>
 {{end}}</div>
 {{end}}

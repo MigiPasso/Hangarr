@@ -2,6 +2,7 @@ package actions
 
 import (
 	"context"
+	"sort"
 )
 
 // MaxBatch caps the number of items of a batch action.
@@ -27,8 +28,8 @@ type BatchOptions struct {
 
 // DeleteBatch deletes items one after the other (SPEC §7.4): each goes
 // through Delete (live protection check, dry-run, journal); the typed
-// confirmation was done once for the whole batch. Plex is refreshed once at
-// the end. A failure does not stop the others.
+// confirmation was done once for the whole batch. The media server is
+// refreshed once at the end. A failure does not stop the others.
 func (s *Service) DeleteBatch(ctx context.Context, ids []int64, opt BatchOptions) []BatchItem {
 	// Finish the batch even if the client goes away: half-done batches are
 	// harder to understand than a complete journal.
@@ -41,7 +42,7 @@ func (s *Service) DeleteBatch(ctx context.Context, ids []int64, opt BatchOptions
 			it.Kind, it.Title = m.Kind, m.Title
 		}
 		res, err := s.Delete(ctx, Request{MediaID: id, DeleteFiles: opt.DeleteFiles, ImportExclusion: opt.ImportExclusion,
-			Confirmed: true, SkipPlexRefresh: true, Username: opt.Username})
+			Confirmed: true, SkipServerRefresh: true, Username: opt.Username})
 		if err != nil {
 			it.Err = err
 		} else {
@@ -50,10 +51,13 @@ func (s *Service) DeleteBatch(ctx context.Context, ids []int64, opt BatchOptions
 		}
 		out = append(out, it)
 	}
-	if up := s.Upstreams.Get(); !s.DryRun && s.PlexRefresh && opt.DeleteFiles && up.Plex != nil {
+	if !s.DryRun && s.PlexRefresh && opt.DeleteFiles && len(kinds) > 0 {
+		list := make([]string, 0, len(kinds))
 		for kind := range kinds {
-			s.refreshPlex(ctx, up.Plex, kind)
+			list = append(list, kind)
 		}
+		sort.Strings(list)
+		s.refreshServer(ctx, s.Upstreams.Get(), list)
 	}
 	return out
 }

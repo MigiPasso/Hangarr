@@ -23,6 +23,9 @@ const (
 	HistoryPlex     = "plex"     // Plex history only (no durations)
 	HistoryMerged   = "merged"   // Plex history as reference, enriched by Tautulli
 	HistoryAuto     = "auto"
+	// HistoryJellyfin is not a HISTORY_SOURCE value: the source whenever
+	// Jellyfin is the media server (HISTORY_SOURCE is then ignored).
+	HistoryJellyfin = "jellyfin"
 )
 
 // Config is the fully parsed application configuration.
@@ -38,12 +41,15 @@ type Config struct {
 	PlexToken      string
 	TautulliURL    string
 	TautulliAPIKey string
+	JellyfinURL    string
+	JellyfinAPIKey string
 
 	// Browser-facing URLs for "open in" links (default: the API URLs above;
 	// Plex defaults to app.plex.tv).
-	SonarrPublicURL string
-	RadarrPublicURL string
-	PlexPublicURL   string
+	SonarrPublicURL   string
+	RadarrPublicURL   string
+	PlexPublicURL     string
+	JellyfinPublicURL string
 
 	// HistorySource is the requested mode: "auto", "merged", "tautulli" or "plex".
 	// It is resolved against the effective service configuration (which may
@@ -190,9 +196,9 @@ func splitList(v string) []string {
 	return out
 }
 
-// Load parses the configuration. Format errors are reported together; the
-// presence of upstream services is checked separately by RequireUpstreams so
-// that CLI commands (reset-password, healthcheck) do not need them.
+// Load parses the configuration. Format errors are reported together. The
+// upstream services are optional here: they may be configured from the UI,
+// and CLI commands (reset-password, healthcheck) do not need them.
 func Load(lookup LookupFunc, readFile ReadFileFunc) (*Config, error) {
 	l := &loader{lookup: lookup, readFile: readFile}
 	c := &Config{
@@ -207,10 +213,13 @@ func Load(lookup LookupFunc, readFile ReadFileFunc) (*Config, error) {
 		PlexToken:      l.secret("PLEX_TOKEN"),
 		TautulliURL:    l.baseURL("TAUTULLI_URL"),
 		TautulliAPIKey: l.secret("TAUTULLI_API_KEY"),
+		JellyfinURL:    l.baseURL("JELLYFIN_URL"),
+		JellyfinAPIKey: l.secret("JELLYFIN_API_KEY"),
 
-		SonarrPublicURL: l.baseURL("SONARR_PUBLIC_URL"),
-		RadarrPublicURL: l.baseURL("RADARR_PUBLIC_URL"),
-		PlexPublicURL:   l.baseURL("PLEX_PUBLIC_URL"),
+		SonarrPublicURL:   l.baseURL("SONARR_PUBLIC_URL"),
+		RadarrPublicURL:   l.baseURL("RADARR_PUBLIC_URL"),
+		PlexPublicURL:     l.baseURL("PLEX_PUBLIC_URL"),
+		JellyfinPublicURL: l.baseURL("JELLYFIN_PUBLIC_URL"),
 
 		TautulliWebhookSecret: l.secret("TAUTULLI_WEBHOOK_SECRET"),
 		HistorySource:         strings.ToLower(l.str("HISTORY_SOURCE", HistoryAuto)),
@@ -250,6 +259,9 @@ func Load(lookup LookupFunc, readFile ReadFileFunc) (*Config, error) {
 	}
 	if c.TautulliWebhookSecret != "" && len(c.TautulliWebhookSecret) < 32 {
 		l.fail("TAUTULLI_WEBHOOK_SECRET must be at least 32 characters")
+	}
+	if (c.PlexURL != "" || c.PlexToken != "") && (c.JellyfinURL != "" || c.JellyfinAPIKey != "") {
+		l.fail("PLEX_* and JELLYFIN_* are both set: Hangarr uses a single media server, set only one of them")
 	}
 
 	for _, p := range splitList(l.str("TRUSTED_PROXIES", "")) {
@@ -315,22 +327,4 @@ func Load(lookup LookupFunc, readFile ReadFileFunc) (*Config, error) {
 		return nil, errors.Join(l.errs...)
 	}
 	return c, nil
-}
-
-// RequireUpstreams checks that the mandatory upstream services are defined
-// in the environment (capture-fixtures, which never reads the database).
-func (c *Config) RequireUpstreams() error {
-	var errs []error
-	req := func(key, v string) {
-		if v == "" {
-			errs = append(errs, fmt.Errorf("%s is required", key))
-		}
-	}
-	req("SONARR_URL", c.SonarrURL)
-	req("SONARR_API_KEY", c.SonarrAPIKey)
-	req("RADARR_URL", c.RadarrURL)
-	req("RADARR_API_KEY", c.RadarrAPIKey)
-	req("PLEX_URL", c.PlexURL)
-	req("PLEX_TOKEN", c.PlexToken)
-	return errors.Join(errs...)
 }

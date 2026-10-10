@@ -4,7 +4,7 @@
 
 {{define "batch_excluded"}}{{if .}}
   <details class="small"><summary>{{tn (len .) "%d item excluded" "%d items excluded"}}</summary>
-    <ul class="batch-list">{{range .}}<li>{{.Title}} <span class="muted">: {{t .Reason}}</span></li>{{end}}</ul>
+    <ul class="batch-list">{{range .}}<li>{{.Title}} <span class="muted">: {{tv .Reason .Args}}</span></li>{{end}}</ul>
   </details>
 {{end}}{{end}}
 

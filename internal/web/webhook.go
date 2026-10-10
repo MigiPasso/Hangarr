@@ -27,11 +27,13 @@ const (
 )
 
 // tautulliWebhook (POST /webhooks/tautulli) is the only route without a
-// session: it is disabled (404) without a secret, checks the secret in
-// constant time, ignores the body and only schedules a history sync.
+// session: it is disabled (404) without a secret or while Jellyfin is the
+// media server (Tautulli is not read then), checks the secret in constant
+// time, ignores the body and only schedules a history sync.
 func (s *Server) tautulliWebhook(w http.ResponseWriter, r *http.Request) {
-	secret := s.Upstreams.Get().WebhookSecret()
-	if secret == "" {
+	up := s.Upstreams.Get()
+	secret := up.WebhookSecret()
+	if secret == "" || up.MediaServer != upstream.Plex {
 		http.NotFound(w, r)
 		return
 	}
@@ -121,7 +123,7 @@ func (s *Server) webhookSecretSubmit(w http.ResponseWriter, r *http.Request) {
 		form.GeneratedSecret = secret
 	}
 	if isHTMX(r) {
-		pd := s.page(r, "Services", "config", *form)
+		pd := s.page(r, "Services", "config", savedForm{Form: *form})
 		pd.OOB = true
 		s.render(w, r, http.StatusOK, "config", "config_saved", pd)
 		return

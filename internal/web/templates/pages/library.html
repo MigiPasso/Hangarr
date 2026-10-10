@@ -31,8 +31,8 @@
 
       <fieldset>
         <legend>{{t "Present in"}}</legend>
-        {{range pairs "matched" "Plex and Sonarr/Radarr" "arr_only" "Sonarr/Radarr only" "plex_only" "Plex only"}}
-        <label class="check"><input type="checkbox" name="match" value="{{.V}}"{{if has $d.Filter.Match .V}} checked{{end}}> {{t .L}}</label>
+        {{range pairs "matched" (t "%s and Sonarr/Radarr" (server)) "arr_only" (t "Sonarr/Radarr only") "server_only" (t "%s only" (server))}}
+        <label class="check"><input type="checkbox" name="match" value="{{.V}}"{{if has $d.Filter.Match .V}} checked{{end}}> {{.L}}</label>
         {{end}}
       </fieldset>
 

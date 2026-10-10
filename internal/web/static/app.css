@@ -237,6 +237,10 @@ button.link:hover { color: var(--text); }
 
 .nav-end { margin-left: auto; display: flex; align-items: center; gap: 1rem; }
 .sync-status { display: flex; align-items: center; gap: .5rem; }
+/* The media server in use (Plex or Jellyfin), next to the sync status. */
+.server-chip { padding: .1rem .55rem; border-radius: 999px; border: 1px solid var(--border); color: var(--muted);
+  font-size: .8rem; font-weight: 600; }
+.server-chip:hover { color: var(--text); border-color: var(--muted); text-decoration: none; }
 .warn { color: var(--warning); }
 .spinner {
   width: .9rem; height: .9rem; border-radius: 50%;
@@ -589,6 +593,7 @@ meter { width: 100%; height: .6rem; }
 .config-card { margin: 0; }
 .config-head { display: flex; align-items: center; justify-content: space-between; gap: .5rem; }
 .config-head h2 { margin: 0; }
+.config-card.is-disabled .config-head h2 { color: var(--muted); }
 .config-field { display: flex; flex-direction: column; gap: .25rem; }
 .config-field p { margin: 0; }
 .config-field input:disabled { opacity: .7; cursor: not-allowed; }
@@ -759,7 +764,7 @@ code.secret { word-break: break-all; user-select: all; }
   .sidebar-close { display: inline-grid; }
   .sidebar-open, .topbar-brand { display: inline-flex; }
   .topbar { padding: .5rem .75rem; gap: .5rem; }
-  .nav-end { gap: .6rem; }
+  .nav-end { gap: .6rem; flex-wrap: wrap; justify-content: flex-end; row-gap: .4rem; }
   .nav-end .sync-status > .small.muted { display: none; }
   /* Without JavaScript: the menu above the page. */
   .no-js .sidebar { position: static; transform: none; width: 100%; height: auto; box-shadow: none; }

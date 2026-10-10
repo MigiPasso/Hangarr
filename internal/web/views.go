@@ -17,6 +17,7 @@ import (
 	"sync"
 	"time"
 
+	"hangarr/internal/clients/jellyfin"
 	"hangarr/internal/i18n"
 	"hangarr/internal/store"
 )
@@ -36,7 +37,10 @@ type views struct {
 	assets map[string]string // file name -> content hash, for cache busting
 }
 
-func newViews(loc *time.Location, protectedTags []string, abandonDays int) (*views, error) {
+// mediaServer returns the name of the active media server ("Plex" or
+// "Jellyfin", Plex when none is configured) and whether one is configured,
+// read at each render: the templates are parsed once per language.
+func newViews(loc *time.Location, protectedTags []string, abandonDays int, mediaServer func() (string, bool)) (*views, error) {
 	v := &views{pages: map[i18n.Lang]map[string]*template.Template{}, assets: map[string]string{}}
 	err := fs.WalkDir(staticFS, "static", func(p string, d fs.DirEntry, err error) error {
 		if err != nil || d.IsDir() {
@@ -54,7 +58,7 @@ func newViews(loc *time.Location, protectedTags []string, abandonDays int) (*vie
 		return nil, err
 	}
 	for _, lang := range i18n.Langs {
-		funcs := v.funcs(i18n.For(lang), loc, protectedTags, abandonDays)
+		funcs := v.funcs(i18n.For(lang), loc, protectedTags, abandonDays, mediaServer)
 		v.pages[lang] = map[string]*template.Template{}
 		for _, p := range pages {
 			t, err := template.New("").Funcs(funcs).ParseFS(templatesFS,
@@ -82,7 +86,7 @@ func toInt64(n any) int64 {
 }
 
 // funcs are the template functions of one language.
-func (v *views) funcs(l i18n.Localizer, loc *time.Location, protectedTags []string, abandonDays int) template.FuncMap {
+func (v *views) funcs(l i18n.Localizer, loc *time.Location, protectedTags []string, abandonDays int, mediaServer func() (string, bool)) template.FuncMap {
 	at := func(unix int64) time.Time { return time.Unix(unix, 0).In(loc) }
 	return template.FuncMap{
 		"asset": func(name string) (string, error) {
@@ -92,8 +96,16 @@ func (v *views) funcs(l i18n.Localizer, loc *time.Location, protectedTags []stri
 			}
 			return "/static/" + name + "?v=" + h, nil
 		},
-		"lang": func() string { return string(l.Lang) },
-		"t":    l.T,
+		"lang":   func() string { return string(l.Lang) },
+		"server": func() string { name, _ := mediaServer(); return name },
+		// serverInUse is the media server in use, "" when none is configured.
+		"serverInUse": func() string {
+			if name, ok := mediaServer(); ok {
+				return name
+			}
+			return ""
+		},
+		"t": l.T,
 		// tv translates a key with a slice of arguments (sync progress).
 		"tv": func(key string, args []any) string { return l.T(key, args...) },
 		// tn picks the singular or plural form: tn .Count "%d item" "%d items".
@@ -118,7 +130,6 @@ func (v *views) funcs(l i18n.Localizer, loc *time.Location, protectedTags []stri
 		"protected":  func(tags []string) bool { return store.HasProtectedTag(tags, protectedTags) },
 		"has":        func(list []string, v string) bool { return slices.Contains(list, v) },
 		"hasID":      func(list []int64, v int64) bool { return slices.Contains(list, v) },
-		"list":       func(v ...string) []string { return v },
 		"join":       strings.Join,
 		"lower":      strings.ToLower,
 		// initial is the first letter of a name, for an avatar ("?" if none).
@@ -211,7 +222,8 @@ var stateNames = map[string]string{"never": "Never watched", "in_progress": "In 
 
 // sourceLabels name the sync sources.
 var sourceLabels = map[string]string{"sonarr": "Sonarr", "radarr": "Radarr", "plex": "Plex (catalog)",
-	"tautulli": "Tautulli (history)", "plex_history": "Plex (history)"}
+	"tautulli": "Tautulli (history)", "plex_history": "Plex (history)", "jellyfin": "Jellyfin (catalog)",
+	"jellyfin_history": "Jellyfin (history)"}
 
 // pageData is passed to every template.
 type pageData struct {
@@ -224,6 +236,8 @@ type pageData struct {
 	sync      *lazySync // read through Sync()
 	// Missing lists the services the synchronization still needs (banner).
 	Missing []string
+	// ServerConflict: Plex and Jellyfin are both configured (banner).
+	ServerConflict bool
 	// OOB marks the banner and the sync status for an HTMX out-of-band swap.
 	OOB bool
 	// Theme is "light" or "dark" when chosen with the theme button, "" to
@@ -298,7 +312,8 @@ func (s *Server) pageRaw(r *http.Request, title, active string, data any) pageDa
 		pd.Session = sess
 		pd.CSRFToken = sess.CSRFToken
 		pd.sync = &lazySync{get: func() *syncView { return s.syncStatus(r.Context()) }}
-		pd.Missing = s.Upstreams.Get().Missing
+		up := s.Upstreams.Get()
+		pd.Missing, pd.ServerConflict = up.Missing, up.ServerConflict
 	}
 	return pd
 }
@@ -406,13 +421,17 @@ func stateLabel(l i18n.Localizer, it store.LibraryItem) string {
 }
 
 // imgURL is the proxied image of an item: Sonarr/Radarr when it manages the
-// item, else Plex (plex_only items); "" when there is none.
-func imgURL(kind string, arrID int64, plexKey, variant string) string {
+// item, else the media server (server_only items: Plex, then Jellyfin); ""
+// when there is none.
+func imgURL(kind string, arrID int64, plexKey, jellyfinID, variant string) string {
 	if arrID > 0 {
 		return fmt.Sprintf("/img/%s/%d/%s", kind, arrID, variant)
 	}
 	if n, err := strconv.ParseInt(plexKey, 10, 64); err == nil && n > 0 {
 		return fmt.Sprintf("/img/plex/%d/%s", n, variant)
+	}
+	if jellyfin.IsID(jellyfinID) {
+		return fmt.Sprintf("/img/jellyfin/%s/%s", jellyfinID, variant)
 	}
 	return ""
 }

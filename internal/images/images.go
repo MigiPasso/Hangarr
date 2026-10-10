@@ -1,6 +1,7 @@
 // Package images proxies posters and fanarts from Sonarr/Radarr MediaCover
-// (SPEC §8), or from Plex for items it alone knows, with a disk cache, so
-// the browser never talks to the upstreams and API keys stay server side.
+// (SPEC §8), or from Plex or Jellyfin for items they alone know, with a disk
+// cache, so the browser never talks to the upstreams and API keys stay server
+// side.
 package images
 
 import (
@@ -15,7 +16,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
-	"strconv"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -40,21 +41,26 @@ const (
 
 var errNoImage = errors.New("no image available")
 
+// validID matches the ids that can name a cached file: Sonarr/Radarr ids,
+// Plex rating keys and Jellyfin ids (lowercase hexadecimal, never a path).
+var validID = regexp.MustCompile(`^[0-9a-f]{1,64}$`)
+
 // Info describes the media whose image is requested.
 type Info struct {
 	Title     string
 	RemoteURL string // fallback when MediaCover has nothing
 }
 
-// Lookup returns Info for (kind, arrID, variant); ok is false when the media
-// is unknown.
-type Lookup func(ctx context.Context, kind string, arrID int64, variant string) (info Info, ok bool, err error)
+// Lookup returns Info for (kind, id, variant); id is a Sonarr/Radarr id, a
+// Plex rating key or a Jellyfin id. ok is false when the media is unknown.
+type Lookup func(ctx context.Context, kind, id, variant string) (info Info, ok bool, err error)
 
-// Proxy serves /img/{kind}/{arrId}/{variant}.
+// Proxy serves /img/{kind}/{id}/{variant}.
 type Proxy struct {
 	Dir string // DATA_DIR/cache/img
-	// Client returns the Sonarr ("series") or Radarr ("movie") client, nil
-	// when the service is not configured.
+	// Client returns the client of the kind: Sonarr ("series"), Radarr
+	// ("movie"), Plex ("plex") or Jellyfin ("jellyfin"), nil when the service
+	// is not configured.
 	Client func(kind string) *httpx.Client
 	Remote *http.Client // for remoteUrl fallbacks
 	Lookup Lookup
@@ -107,13 +113,23 @@ func (p *Proxy) now() time.Time {
 
 // upstreamRequests lists the requests to try, smallest suitable first:
 // MediaCover files for Sonarr/Radarr; for Plex ("plex" kind, id = rating
-// key), the photo transcoder (resized), then the original image.
-func upstreamRequests(kind string, id int64, variant string) []httpx.Request {
+// key), the photo transcoder (resized), then the original image; for Jellyfin
+// ("jellyfin" kind, id = item id), its image endpoint, which resizes itself.
+func upstreamRequests(kind, id, variant string) []httpx.Request {
+	if kind == "jellyfin" {
+		req := httpx.Request{Path: "/Items/" + id + "/Images/Primary",
+			Query: url.Values{"maxWidth": {"500"}, "quality": {"90"}}}
+		if variant == "fanart" {
+			req = httpx.Request{Path: "/Items/" + id + "/Images/Backdrop/0",
+				Query: url.Values{"maxWidth": {"1280"}, "quality": {"90"}}}
+		}
+		return []httpx.Request{req}
+	}
 	if kind == "plex" {
-		src := "/library/metadata/" + strconv.FormatInt(id, 10) + "/thumb"
+		src := "/library/metadata/" + id + "/thumb"
 		width, height := "500", "750"
 		if variant == "fanart" {
-			src = "/library/metadata/" + strconv.FormatInt(id, 10) + "/art"
+			src = "/library/metadata/" + id + "/art"
 			width, height = "1280", "720"
 		}
 		return []httpx.Request{
@@ -128,23 +144,28 @@ func upstreamRequests(kind string, id int64, variant string) []httpx.Request {
 	}
 	out := make([]httpx.Request, 0, len(files))
 	for _, f := range files {
-		out = append(out, httpx.Request{Path: "/api/v3/mediacover/" + strconv.FormatInt(id, 10) + "/" + f})
+		out = append(out, httpx.Request{Path: "/api/v3/mediacover/" + id + "/" + f})
 	}
 	return out
 }
 
-// ServeImage handles a request; kind is "series", "movie" or "plex" (arrID
-// is then the Plex rating key), variant "poster" or "fanart". Validation of
-// the parameters is the caller's job.
-func (p *Proxy) ServeImage(w http.ResponseWriter, r *http.Request, kind string, arrID int64, variant string) {
-	key := fmt.Sprintf("%s-%d-%s-%s", kind, arrID, variant, cacheVersion)
+// ServeImage handles a request; kind is "series", "movie", "plex" (id is then
+// the Plex rating key) or "jellyfin" (id is then the Jellyfin item id), variant
+// "poster" or "fanart". Validation of the parameters is the caller's job; an
+// id that is not lowercase hexadecimal is refused anyway, as it names a file.
+func (p *Proxy) ServeImage(w http.ResponseWriter, r *http.Request, kind, id, variant string) {
+	if !validID.MatchString(id) {
+		http.NotFound(w, r)
+		return
+	}
+	key := fmt.Sprintf("%s-%s-%s-%s", kind, id, variant, cacheVersion)
 	path := filepath.Join(p.Dir, key+".img")
 
 	if st, err := os.Stat(path); err == nil && p.now().Sub(st.ModTime()) < RefreshAfter {
 		p.serveFile(w, r, path)
 		return
 	}
-	info, ok, err := p.Lookup(r.Context(), kind, arrID, variant)
+	info, ok, err := p.Lookup(r.Context(), kind, id, variant)
 	if err != nil {
 		http.Error(w, "Internal error.", http.StatusInternalServerError)
 		return
@@ -161,12 +182,12 @@ func (p *Proxy) ServeImage(w http.ResponseWriter, r *http.Request, kind string, 
 			}
 			ctx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), fetchTimeout)
 			defer cancel()
-			return nil, p.fetch(ctx, kind, arrID, variant, info, path)
+			return nil, p.fetch(ctx, kind, id, variant, info, path)
 		})
 		if err != nil {
 			p.markMiss(key)
 			if !errors.Is(err, errNoImage) {
-				p.Log.Warn("image fetch failed", "kind", kind, "arr_id", arrID, "variant", variant, "err", err)
+				p.Log.Warn("image fetch failed", "kind", kind, "id", id, "variant", variant, "err", err)
 			}
 		}
 	}
@@ -200,7 +221,7 @@ func (p *Proxy) markMiss(key string) {
 	p.misses[key] = p.now()
 }
 
-func (p *Proxy) fetch(ctx context.Context, kind string, arrID int64, variant string, info Info, path string) error {
+func (p *Proxy) fetch(ctx context.Context, kind, id, variant string, info Info, path string) error {
 	select {
 	case p.sem <- struct{}{}:
 	case <-ctx.Done():
@@ -211,7 +232,7 @@ func (p *Proxy) fetch(ctx context.Context, kind string, arrID int64, variant str
 	client := p.Client(kind)
 	lastErr := errNoImage
 	if client != nil {
-		for _, req := range upstreamRequests(kind, arrID, variant) {
+		for _, req := range upstreamRequests(kind, id, variant) {
 			b, err := client.Do(ctx, req)
 			if err == nil && isImage(b) {
 				if b, err = shrink(b, maxWidth(variant)); err == nil {

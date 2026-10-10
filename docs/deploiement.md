@@ -1,7 +1,7 @@
 # Déployer Hangarr
 
 Ce guide couvre la publication de l'image, le déploiement avec **Docker** ou **Kubernetes**, la connexion à
-Sonarr, Radarr, Plex et Tautulli, et les problèmes courants.
+Sonarr, Radarr, Plex (ou Jellyfin) et Tautulli, et les problèmes courants.
 
 - [1. Avant de commencer](#1-avant-de-commencer)
 - [2. Publier l'image sur GHCR](#2-publier-limage-sur-ghcr)
@@ -19,7 +19,7 @@ Sonarr, Radarr, Plex et Tautulli, et les problèmes courants.
 ## 1. Avant de commencer
 
 **Ce qu'il faut**
-- Sonarr, Radarr, Plex et Tautulli joignables depuis l'endroit où tourne Hangarr.
+- Sonarr, Radarr, Plex ou Jellyfin joignables depuis l'endroit où tourne Hangarr, et Tautulli avec Plex.
 - Leurs clés d'accès (voir [6](#6-connecter-les-services)).
 - Docker (Compose ≥ 2.24) sur la machine, ou un cluster Kubernetes.
 
@@ -183,8 +183,9 @@ compte créé, elle reste sinon lisible dans la configuration du conteneur (`doc
 
 ## 6. Connecter les services
 
-Page **Services** (« Configuration » en français). Pour chacun : adresse, clé, **Test connection**, puis **Save**.
-La première synchronisation démarre seule dès que Sonarr, Radarr, Plex et Tautulli sont enregistrés.
+Page **Configuration** (menu Réglages → Configuration). Pour chacun : adresse, clé, **Test connection**, puis **Save**.
+La première synchronisation démarre seule dès que Sonarr, Radarr et le serveur multimédia (Plex ou Jellyfin, pas les deux)
+sont enregistrés. Tautulli ne concerne que Plex.
 
 L'« API URL » est **l'adresse de base** du service, celle de son interface web, sans `/api` : Hangarr ajoute le
 reste. Incluez l'éventuelle *URL Base* (`https://hôte/sonarr`) et le port s'il n'est pas 443.
@@ -194,6 +195,7 @@ reste. Incluez l'éventuelle *URL Base* (`https://hôte/sonarr`) et le port s'il
 | Sonarr | `http://sonarr:8989` | *Settings → General → Security → API Key* |
 | Radarr | `http://radarr:7878` | *Settings → General → Security → API Key* |
 | Plex | `http://plex:32400` | token `X-Plex-Token` (ci-dessous) |
+| Jellyfin | `http://jellyfin:8096` | *Tableau de bord → Clés API* (section [Jellyfin](#jellyfin)) |
 | Tautulli | `http://tautulli:8181` | *Settings → Web Interface → API* (cocher *Enable API*) |
 
 Les noms et ports exacts sont ceux de vos Services : `kubectl -n arr get svc`. Hors cluster : l'adresse que vous
@@ -239,10 +241,24 @@ Avec le **compte propriétaire du serveur** (un compte partagé ne voit que ses 
 Ce token donne accès à tout le compte Plex : ne le partagez pas. Dans Hangarr il est chiffré et jamais réaffiché.
 Il change si vous vous déconnectez de tous les appareils ou changez votre mot de passe Plex.
 
+### Jellyfin
+
+Jellyfin remplace Plex comme serveur multimédia : configurez l'un ou l'autre, pas les deux (voir le
+[README](../README.md#plex-ou-jellyfin)). Tant que Plex est configuré, la carte Jellyfin est grisée : videz d'abord la
+configuration de Plex. Sa configuration :
+
+- **Adresse du serveur** : l'adresse que Hangarr joint, par exemple `http://jellyfin:8096` dans le même namespace.
+- **Clé d'API** : *Tableau de bord → Clés API → +*. Comme les autres clés, elle est chiffrée en base.
+- **URL publique** (facultative) : l'adresse que le navigateur ouvre pour les liens « Ouvrir dans Jellyfin ». Par défaut,
+  l'adresse du serveur. Une adresse qui se termine par `/web` est refusée.
+
+L'historique vient de Jellyfin lui-même, sans Tautulli (détails dans le README).
+
 ### Tautulli
 
-Tautulli est la source de l'historique de lecture (vu / pas vu, par utilisateur). Une fois enregistré, lancez
-**Sync now** : la première synchronisation importe tout l'historique, les suivantes seulement les nouveautés.
+Tautulli ne suit que Plex : avec Jellyfin, il n'est pas nécessaire (sa carte est alors grisée). Avec Plex, il est la
+source de l'historique de lecture (vu / pas vu, par utilisateur). Une fois enregistré, lancez **Sync now** : la première
+synchronisation importe tout l'historique, les suivantes seulement les nouveautés.
 
 ---
 
@@ -251,7 +267,10 @@ Tautulli est la source de l'historique de lecture (vu / pas vu, par utilisateur)
 Sans webhook, les statistiques suivent la synchronisation planifiée (heure et fréquence réglables dans **Settings**). Avec, elles
 sont à jour environ 30 secondes après chaque fin de lecture.
 
-1. Hangarr : **Services → Tautulli → Webhook → Generate a secret**. Copiez-le : il n'est affiché **qu'une fois**.
+**Plex seulement** : Tautulli ne suit que Plex. Avec Jellyfin, il n'existe pas de webhook : la synchronisation planifiée
+ou **Sync now** met l'historique à jour.
+
+1. Hangarr : **Configuration → Tautulli → Webhook → Generate a secret**. Copiez-le : il n'est affiché **qu'une fois**.
 2. Tautulli : *Settings → Notification Agents → Add a new notification agent → **Webhook***.
    - **Configuration** : *Webhook URL* `http://hangarr:8080/webhooks/tautulli` (même namespace ; sinon l'adresse
      sous laquelle Tautulli joint Hangarr), *Webhook Method* `POST`.
@@ -274,9 +293,9 @@ Sans secret configuré, la route répond 404.
 
 ## 8. Vérifier
 
-- **Health** : les quatre services « Reachable » (version, temps de réponse, alertes Sonarr/Radarr), l'historique
-  des synchronisations et les écarts entre Plex et Sonarr/Radarr (éléments seulement dans Plex, rapprochements
-  approximatifs…).
+- **Health** : les services configurés « Reachable » (version, temps de réponse, alertes Sonarr/Radarr), l'historique
+  des synchronisations et les écarts entre le serveur multimédia (Plex ou Jellyfin) et Sonarr/Radarr (éléments seulement
+  dans ce serveur, rapprochements approximatifs…).
 - **Series / Movies / Stats** : vos données.
 - **Cleanup** : ce que personne n'a regardé depuis 180 jours (réglable dans **Settings**). Tant que `DRY_RUN=true`,
   les suppressions sont simulées et visibles dans **Log**.
@@ -348,7 +367,8 @@ en HTTPS ou mettez `COOKIE_SECURE=false` pour un test local. La page de connexio
 
 ### « Access denied (HTTP 401) » au test de connexion
 
-Mauvaise clé d'API ou mauvais token. Pour Plex, utilisez le token du compte propriétaire.
+Mauvaise clé d'API ou mauvais token. Pour Plex, utilisez le token du compte propriétaire. Pour Jellyfin, utilisez une clé
+d'API créée dans *Tableau de bord → Clés API*.
 
 ### « This address redirects to another host »
 
@@ -358,6 +378,11 @@ un autre hôte : indiquez l'adresse finale du service.
 ### « This address answers as Radarr, not Sonarr »
 
 L'adresse saisie est celle d'un autre service.
+
+### « This address answers as …, not Jellyfin »
+
+L'adresse est celle d'un autre serveur, Emby par exemple : Hangarr ne fonctionne pas avec Emby. Le test de connexion
+refuse tout serveur dont le nom ne contient pas « Jellyfin ».
 
 ### Hangarr en Docker ne résout pas les noms `*.ts.net`
 

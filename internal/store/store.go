@@ -163,6 +163,11 @@ func (s *Store) migrate(ctx context.Context) error {
 	return nil
 }
 
+// ErrMigrationMismatch: the database recorded another migration under the
+// same version (it was migrated by code that is not this one, such as an
+// abandoned branch): its schema cannot be trusted, nothing is applied.
+var ErrMigrationMismatch = errors.New("the database was migrated by other code")
+
 // applyMigration runs one migration in its own IMMEDIATE transaction; the
 // version check happens inside it so concurrent starts apply it once.
 func (s *Store) applyMigration(ctx context.Context, m migration) error {
@@ -171,12 +176,16 @@ func (s *Store) applyMigration(ctx context.Context, m migration) error {
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
-	var n int
-	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM schema_migrations WHERE version = ?`, m.version).Scan(&n); err != nil {
-		return err
-	}
-	if n > 0 {
+	var name string
+	err = tx.QueryRowContext(ctx, `SELECT name FROM schema_migrations WHERE version = ?`, m.version).Scan(&name)
+	switch {
+	case err == nil && name == m.name:
 		return nil
+	case err == nil:
+		return fmt.Errorf("%w: version %d is %s in the database, %s in this release", ErrMigrationMismatch,
+			m.version, name, m.name)
+	case !errors.Is(err, sql.ErrNoRows):
+		return err
 	}
 	if _, err := tx.ExecContext(ctx, m.sql); err != nil {
 		return err

@@ -1,21 +1,21 @@
 {{define "detail_body"}}{{$d := .Data}}{{$m := $d.M}}
 <article class="detail state-{{$m.WatchState}}" data-media-id="{{$m.ID}}">
   {{/* Backdrop: the fanart over the blurred poster, which shows when there is no fanart. */}}
-  {{$poster := imgURL $m.Kind $m.ArrID $m.PlexRatingKey "poster"}}{{$fanart := imgURL $m.Kind $m.ArrID $m.PlexRatingKey "fanart"}}
+  {{$poster := imgURL $m.Kind $m.ArrID $m.PlexRatingKey $m.JellyfinID "poster"}}{{$fanart := imgURL $m.Kind $m.ArrID $m.PlexRatingKey $m.JellyfinID "fanart"}}
   <div class="detail-hero{{if or $poster $fanart}} has-art{{end}}">
     {{with $poster}}<img class="hero-ambient" src="{{.}}" alt="" decoding="async">{{end}}
     {{with $fanart}}<img class="hero-art" src="{{.}}" alt="" decoding="async">{{end}}
   </div>
   <div class="detail-head">
     <div class="detail-poster">
-      {{with imgURL $m.Kind $m.ArrID $m.PlexRatingKey "poster"}}<img src="{{.}}" alt="" width="200" height="300" decoding="async">
+      {{with imgURL $m.Kind $m.ArrID $m.PlexRatingKey $m.JellyfinID "poster"}}<img src="{{.}}" alt="" width="200" height="300" decoding="async">
       {{else}}<div class="poster-fallback">{{$m.Title}}</div>{{end}}
     </div>
     <div class="detail-info">
       <h1>{{$m.Title}}{{if $m.Year}} <span class="muted">({{$m.Year}})</span>{{end}}{{if $d.Protected}} {{template "lock"}}{{end}}</h1>
       <p class="badges">
         <span class="badge state">{{stateName $m.WatchState}}{{if and (eq $m.Kind "series") $m.DownloadedEpisodes}} · {{$m.WatchedEpisodes}}/{{$m.DownloadedEpisodes}}{{end}}</span>
-        {{if eq $m.MatchState "plex_only"}}<span class="badge">{{t "Plex only"}}</span>{{else if eq $m.MatchState "arr_only"}}<span class="badge">{{t "Not in Plex"}}</span>{{else if eq $m.MatchMethod "fuzzy"}}<span class="badge">{{t "Fuzzy match"}}</span>{{template "info" (t "Matched by title and year: no common ID.")}}{{else if eq $m.MatchMethod "file"}}<span class="badge">{{t "Matched by file"}}</span>{{template "info" (t "Same file or folder on disk in Plex and Sonarr/Radarr: no common ID.")}}{{end}}
+        {{if eq $m.MatchState "hidden"}}<span class="badge">{{t "%s (not in use)" (or (and $m.PlexRatingKey "Plex") "Jellyfin")}}</span>{{template "info" (t "Known only by the media server that is not in use: shown for its history, nothing can be done to it.")}}{{else if eq $m.MatchState "server_only"}}<span class="badge">{{t "%s only" (server)}}</span>{{else if eq $m.MatchState "arr_only"}}<span class="badge">{{t "Not in %s" (server)}}</span>{{else if eq $m.MatchMethod "fuzzy"}}<span class="badge">{{t "Fuzzy match"}}</span>{{template "info" (t "Matched by title and year: no common ID.")}}{{else if eq $m.MatchMethod "file"}}<span class="badge">{{t "Matched by file"}}</span>{{template "info" (t "Same file or folder on disk in %s and Sonarr/Radarr: no common ID." (server))}}{{end}}
       </p>
       {{/* Identity line: rating, genres, network or studio, status. */}}
       <p class="detail-meta">
@@ -37,7 +37,7 @@
       <div class="detail-actions">
         <div class="detail-buttons">
         {{if $d.CanProtect}}
-        {{$why := ""}}{{if $m.ArrID}}{{$why = t "Adds or removes the “%s” tag in Sonarr/Radarr. Protected items are never proposed nor deleted." $d.ProtectTag}}{{else}}{{$why = t "Not in Sonarr/Radarr: protected in Hangarr only, Plex is not changed. Protected items cannot be deleted."}}{{end}}
+        {{$why := ""}}{{if $m.ArrID}}{{$why = t "Adds or removes the “%s” tag in Sonarr/Radarr. Protected items are never proposed nor deleted." $d.ProtectTag}}{{else}}{{$why = t "Not in Sonarr/Radarr: protected in Hangarr only, %s is not changed. Protected items cannot be deleted." (server)}}{{end}}
         <form method="post" action="{{$d.Path}}/{{$m.ID}}/protect" class="inline" hx-post="{{$d.Path}}/{{$m.ID}}/protect">
           <input type="hidden" name="csrf_token" value="{{$d.CSRFToken}}">
           {{if $d.Protected}}

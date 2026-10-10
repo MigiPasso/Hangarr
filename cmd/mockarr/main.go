@@ -1,6 +1,6 @@
-// Command mockarr serves fake Sonarr (:8989), Radarr (:7878), Plex (:32400)
-// and Tautulli (:8181) from fixture files, for development and e2e tests.
-// See internal/mockarr.
+// Command mockarr serves fake Sonarr (:8989), Radarr (:7878), Plex (:32400),
+// Jellyfin (:8096) and Tautulli (:8181) from fixture files, for development
+// and e2e tests. See internal/mockarr.
 package main
 
 import (
@@ -43,6 +43,7 @@ func main() {
 		{"sonarr", ":8989", m.Sonarr()},
 		{"radarr", ":7878", m.Radarr()},
 		{"plex", ":32400", m.Plex()},
+		{"jellyfin", ":8096", m.Jellyfin()},
 		{"tautulli", ":8181", m.Tautulli()},
 	}
 

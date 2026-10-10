@@ -17,6 +17,7 @@ import (
 	"hangarr/internal/clients/sonarr"
 	"hangarr/internal/i18n"
 	"hangarr/internal/store"
+	"hangarr/internal/upstream"
 )
 
 // historyLimit bounds the play history shown on the detail page.
@@ -221,13 +222,19 @@ func (s *Server) links(ctx context.Context, m *store.Media) []link {
 			out = append(out, link{"Radarr", up.RadarrWebURL() + "/movie/" + url.PathEscape(slug)})
 		}
 	}
-	if mid := s.Store.PlexMachineID(ctx); mid != "" && m.PlexRatingKey != "" {
+	if mid := s.Store.PlexMachineID(ctx); up.MediaServer == upstream.Plex && mid != "" && m.PlexRatingKey != "" {
 		base := "https://app.plex.tv/desktop"
 		if pub := up.PlexWebURL(); pub != "" {
 			base = pub + "/web/index.html"
 		}
 		out = append(out, link{"Plex", base + "#!/server/" + url.PathEscape(mid) + "/details?key=" +
 			url.QueryEscape("/library/metadata/"+m.PlexRatingKey)})
+	}
+	if up.MediaServer == upstream.Jellyfin && m.JellyfinID != "" {
+		if serverID := s.Store.JellyfinServerID(ctx); serverID != "" {
+			out = append(out, link{"Jellyfin", up.JellyfinWebURL() + "/web/#/details?id=" + url.QueryEscape(m.JellyfinID) +
+				"&serverId=" + url.QueryEscape(serverID)})
+		}
 	}
 	if m.ImdbID != "" {
 		out = append(out, link{"IMDb", "https://www.imdb.com/title/" + url.PathEscape(m.ImdbID) + "/"})
@@ -262,11 +269,12 @@ func (s *Server) detail(kind string) http.HandlerFunc {
 			return
 		}
 		ctx := r.Context()
+		up := s.Upstreams.Get()
 		d := detailData{M: m, Path: kindPath(kind), Links: s.links(ctx, m),
-			Protected: store.HasProtectedTag(m.Tags, s.Config.ProtectedTags) || m.ProtectedLocal, Deletable: plexDeletable(m) || m.ArrID > 0}
+			Protected: store.HasProtectedTag(m.Tags, s.Config.ProtectedTags) || m.ProtectedLocal, Deletable: serverDeletable(up, m) || m.ArrID > 0}
 		switch {
 		case s.Actions == nil:
-		case plexDeletable(m):
+		case serverDeletable(up, m):
 			d.CanProtect = true // in Hangarr only
 		case len(s.Config.ProtectedTags) > 0 && m.ArrID > 0:
 			d.CanProtect, d.ProtectTag = true, s.Config.ProtectedTags[0]
@@ -315,14 +323,23 @@ func (s *Server) detail(kind string) http.HandlerFunc {
 
 // --- deletion -----------------------------------------------------------------
 
-// plexDeletable: only Plex still knows the item, so it is deleted through
-// Plex (no season deletion there).
-func plexDeletable(m *store.Media) bool { return m.ArrID == 0 && m.PlexRatingKey != "" }
+// serverDeletable: only the media server in use still knows the item (not
+// managed by Sonarr/Radarr), so it is deleted through that server (no season
+// deletion there). Hidden items belong to the server not in use.
+func serverDeletable(up *upstream.Clients, m *store.Media) bool {
+	if m.ArrID != 0 || m.MatchState == "hidden" {
+		return false
+	}
+	if up.MediaServer == upstream.Jellyfin {
+		return m.JellyfinID != ""
+	}
+	return m.PlexRatingKey != ""
+}
 
 type deleteData struct {
 	M               *store.Media
 	Path            string
-	Plex            bool // deleted through Plex: files always deleted, size may be unknown
+	Server          string // label of the media server the item is deleted through (files always deleted, size may be unknown)
 	Season          *int
 	SizeBytes       int64
 	DryRun          bool
@@ -334,9 +351,12 @@ type deleteData struct {
 }
 
 func (s *Server) deleteForm(r *http.Request, m *store.Media, season *int) (deleteData, error) {
-	d := deleteData{M: m, Path: kindPath(m.Kind), Plex: m.ArrID == 0, Season: season, SizeBytes: m.SizeBytes, DryRun: s.Config.DryRun,
+	d := deleteData{M: m, Path: kindPath(m.Kind), Season: season, SizeBytes: m.SizeBytes, DryRun: s.Config.DryRun,
 		ConfirmByTyping: s.Config.ConfirmByTyping && m.Kind == "series" && season == nil,
 		Protected:       store.HasProtectedTag(m.Tags, s.Config.ProtectedTags) || m.ProtectedLocal, DeleteFiles: true}
+	if m.ArrID == 0 {
+		d.Server = s.Upstreams.Get().ServerLabel()
+	}
 	if season != nil {
 		seasons, err := s.Store.Seasons(r.Context(), m.ID)
 		if err != nil {
@@ -379,7 +399,7 @@ func (s *Server) deletePage(kind string) http.HandlerFunc {
 			return
 		}
 		season := seasonParam(r.URL.Query().Get("season"))
-		if m.ArrID == 0 && (!plexDeletable(m) || season != nil) {
+		if m.ArrID == 0 && (!serverDeletable(s.Upstreams.Get(), m) || season != nil) {
 			s.notFound(w, r)
 			return
 		}
@@ -407,6 +427,9 @@ var actionErrors = []struct {
 	{actions.ErrNoProtectedTag, "No protection tag configured (PROTECTED_TAGS)."},
 	{actions.ErrUnconfigured, "Service not configured."},
 	{actions.ErrPlexDeletionDenied, "Plex refused the deletion: allow it on the Plex server (Settings › Library › Allow media deletion)."},
+	{actions.ErrJellyfinDeletionDenied, "Jellyfin refused the deletion: check that its API key may delete media."},
+	{actions.ErrInactiveServer, "Known only by the media server that is not in use: nothing is done."},
+	{actions.ErrServerConflict, "Plex and Jellyfin are both configured: clear one of them first."},
 	{actions.ErrUnmonitorAfterDelete, "Files deleted, but the season could not be unmonitored: Sonarr may download it again."},
 }
 
@@ -524,6 +547,7 @@ var authEventLabels = map[string]string{ //nolint:gosec // G101: UI labels, not 
 	"password_reset_cli": "Password reset (CLI)", "logout": "Sign-out", "session_revoked": "Session revoked",
 	"config_sonarr": "Sonarr configuration changed", "config_radarr": "Radarr configuration changed",
 	"config_plex": "Plex configuration changed", "config_tautulli": "Tautulli configuration changed",
+	"config_jellyfin": "Jellyfin configuration changed",
 }
 
 func (s *Server) journal(w http.ResponseWriter, r *http.Request) {
@@ -582,7 +606,7 @@ func (s *Server) protectSubmit(kind string) http.HandlerFunc {
 		case res.Unchanged:
 			msg, level = l.T("“%s” is not protected.", res.Title), "info"
 		case res.Local && protect:
-			msg, level = l.T("“%s” is protected in Hangarr: it can no longer be deleted. Plex is not changed.", res.Title), "success"
+			msg, level = l.T("“%s” is protected in Hangarr: it can no longer be deleted. %s is not changed.", res.Title, s.Upstreams.Get().ServerLabel()), "success"
 		case res.Local:
 			msg, level = l.T("“%s” is no longer protected.", res.Title), "success"
 		case res.DryRun && protect:

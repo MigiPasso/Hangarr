@@ -90,7 +90,7 @@ func TestBuild(t *testing.T) {
 	if c.Sonarr == nil || c.Radarr != nil || c.Ready() {
 		t.Fatalf("partial config: %+v", c)
 	}
-	if strings.Join(c.Missing, ",") != "Radarr,Plex" || c.HistorySource != "plex" {
+	if strings.Join(c.Missing, ",") != "Radarr,Plex / Jellyfin" || c.HistorySource != "plex" {
 		t.Errorf("missing=%v history=%s", c.Missing, c.HistorySource)
 	}
 	full := TestValues(map[string]string{Sonarr: "http://s", Radarr: "http://r", Plex: "http://p", Tautulli: "http://t"}, "k")
@@ -257,7 +257,7 @@ func TestMasterKeyChanged(t *testing.T) {
 func TestConnectionTest(t *testing.T) {
 	mock := mockarr.New(os.DirFS("../../testdata"), apiKey)
 	urls := map[string]string{}
-	for name, h := range map[string]http.Handler{Sonarr: mock.Sonarr(), Radarr: mock.Radarr(), Plex: mock.Plex(), Tautulli: mock.Tautulli()} {
+	for name, h := range map[string]http.Handler{Sonarr: mock.Sonarr(), Radarr: mock.Radarr(), Plex: mock.Plex(), Jellyfin: mock.Jellyfin(), Tautulli: mock.Tautulli()} {
 		ts := httptest.NewServer(h)
 		t.Cleanup(ts.Close)
 		urls[name] = ts.URL

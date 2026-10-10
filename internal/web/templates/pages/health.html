@@ -51,11 +51,11 @@
 </section>
 
 <section class="card">
-  <div class="title-row"><h2>{{t "Data"}}</h2>{{template "info" (t "Gaps between Plex and Sonarr/Radarr, from the last sync.")}}</div>
+  <div class="title-row"><h2>{{t "Data"}}</h2>{{template "info" (t "Gaps between %s and Sonarr/Radarr, from the last sync." (server))}}</div>
   <div class="health-grid">
-    {{template "health_list" list2 (t "In Plex, not in Sonarr/Radarr") (t "Cannot be deleted from Hangarr.") $d.Data.PlexOnly}}
+    {{template "health_list" list2 (t "In %s, not in Sonarr/Radarr" (server)) (t "Cannot be deleted from Hangarr.") $d.Data.ServerOnly}}
     {{template "health_list" list2 (t "In Sonarr/Radarr without files") (t "Monitored or waiting for a download.") $d.Data.NoFile}}
-    {{template "health_list" list2 (t "In Sonarr/Radarr, missing from Plex") (t "Files Plex has not indexed: check the library path or scan.") $d.Data.NotInPlex}}
+    {{template "health_list" list2 (t "In Sonarr/Radarr, missing from %s" (server)) (t "Files %s has not indexed: check the library path or scan." (server)) $d.Data.NotInServer}}
     {{template "health_list" list2 (t "Fuzzy matches") (t "Matched by title and year (no common TVDB, TMDB or IMDb ID): worth a check.") $d.Data.Fuzzy}}
   </div>
   {{if $d.Data.Orphans}}<p class="small muted">{{tn $d.Data.Orphans "%d history session is about a deleted item" "%d history sessions are about deleted items"}}{{template "info" (t "They still count in the user statistics.")}}</p>{{end}}

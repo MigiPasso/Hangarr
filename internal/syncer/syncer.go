@@ -31,14 +31,17 @@ import (
 
 // Source names, as stored in sync_runs.
 const (
-	SourceSonarr       = "sonarr"
-	SourceRadarr       = "radarr"
-	SourcePlex         = "plex"
-	SourceTautulli     = "tautulli"
-	SourcePlexHistory  = "plex_history"
-	cursorTautulli     = "tautulli_history"
-	cursorPlexHistory  = "plex_history"
-	historyOverlapSecs = 24 * 60 * 60
+	SourceSonarr          = "sonarr"
+	SourceRadarr          = "radarr"
+	SourcePlex            = "plex"
+	SourceJellyfin        = "jellyfin"
+	SourceTautulli        = "tautulli"
+	SourcePlexHistory     = "plex_history"
+	SourceJellyfinHistory = "jellyfin_history"
+	cursorTautulli        = "tautulli_history"
+	cursorPlexHistory     = "plex_history"
+	cursorJellyfinHistory = "jellyfin_history:"
+	historyOverlapSecs    = 24 * 60 * 60
 )
 
 // ErrAlreadyRunning is returned when a sync is requested while one runs.
@@ -138,7 +141,7 @@ func (s *Syncer) now() time.Time {
 type fetched struct {
 	series []store.CatalogItem
 	movies []store.CatalogItem
-	plex   *plexCatalog
+	server *serverCatalog
 }
 
 // Run performs one full synchronization. A failing source does not stop the
@@ -217,6 +220,14 @@ func (s *Syncer) run(ctx context.Context, up *upstream.Clients) (*Result, error)
 		}
 	}
 
+	// The catalog comes from the media server in use, Plex or Jellyfin.
+	serverSource := ""
+	switch {
+	case up.MediaServer == upstream.Plex && up.Plex != nil:
+		serverSource = SourcePlex
+	case up.MediaServer == upstream.Jellyfin && up.Jellyfin != nil:
+		serverSource = SourceJellyfin
+	}
 	var f fetched
 	runIDs := map[string]int64{}
 	sources := []string{}
@@ -226,8 +237,8 @@ func (s *Syncer) run(ctx context.Context, up *upstream.Clients) (*Result, error)
 	if up.Radarr != nil {
 		sources = append(sources, SourceRadarr)
 	}
-	if up.Plex != nil {
-		sources = append(sources, SourcePlex)
+	if serverSource != "" {
+		sources = append(sources, serverSource)
 	}
 	finished := map[string]bool{}
 	// A run left open (shutdown during the fetch, local error) would show
@@ -259,8 +270,8 @@ func (s *Syncer) run(ctx context.Context, up *upstream.Clients) (*Result, error)
 	// Fetch phase: all sources in parallel. Goroutines never return an error
 	// so that one failure does not cancel the others.
 	var g errgroup.Group
-	var seriesErr, moviesErr, plexErr error
-	var seriesStart, moviesStart, plexStart time.Time
+	var seriesErr, moviesErr, serverErr error
+	var seriesStart, moviesStart, serverStart time.Time
 	if up.Sonarr != nil {
 		g.Go(func() error {
 			seriesStart = time.Now()
@@ -275,10 +286,17 @@ func (s *Syncer) run(ctx context.Context, up *upstream.Clients) (*Result, error)
 			return nil
 		})
 	}
-	if up.Plex != nil {
+	if serverSource == SourcePlex {
 		g.Go(func() error {
-			plexStart = time.Now()
-			f.plex, plexErr = s.fetchPlex(ctx, up.Plex)
+			serverStart = time.Now()
+			f.server, serverErr = s.fetchPlex(ctx, up.Plex)
+			return nil
+		})
+	}
+	if serverSource == SourceJellyfin {
+		g.Go(func() error {
+			serverStart = time.Now()
+			f.server, serverErr = s.fetchJellyfin(ctx, up.Jellyfin)
 			return nil
 		})
 	}
@@ -309,14 +327,14 @@ func (s *Syncer) run(ctx context.Context, up *upstream.Clients) (*Result, error)
 		}
 		finish(SourceResult{Source: SourceRadarr, Items: len(f.movies), Duration: time.Since(moviesStart), Err: err})
 	}
-	if up.Plex != nil {
-		err := plexErr
+	if serverSource != "" {
+		err := serverErr
 		items := 0
 		if err == nil {
-			items = len(f.plex.items)
-			err = s.applyMatches(ctx, f.plex, matchHints(f.series, f.movies))
+			items = len(f.server.items)
+			err = s.applyMatches(ctx, f.server, matchHints(f.series, f.movies))
 		}
-		finish(SourceResult{Source: SourcePlex, Items: items, Duration: time.Since(plexStart), Err: err})
+		finish(SourceResult{Source: serverSource, Items: items, Duration: time.Since(serverStart), Err: err})
 	}
 
 	s.setProgress("linking the history")
@@ -527,14 +545,16 @@ func (s *Syncer) Recompute(ctx context.Context) error {
 	return s.recompute(ctx)
 }
 
-// --- Plex catalog and matching ----------------------------------------------
+// --- Media server catalog and matching ---------------------------------------
 
-type plexCatalog struct {
-	items   []matching.PlexItem
-	seasons []store.PlexSeason
+// serverCatalog is the catalog of the media server in use (Plex or Jellyfin).
+type serverCatalog struct {
+	server  string // store.ServerPlex or store.ServerJellyfin
+	items   []matching.ServerItem
+	seasons []store.ServerSeason
 }
 
-func (s *Syncer) fetchPlex(ctx context.Context, c *plex.Client) (*plexCatalog, error) {
+func (s *Syncer) fetchPlex(ctx context.Context, c *plex.Client) (*serverCatalog, error) {
 	if id, err := c.Identity(ctx); err == nil && id != "" {
 		if err := s.Store.SetSetting(ctx, store.SettingPlexMachineID, id, s.now()); err != nil {
 			return nil, err
@@ -544,7 +564,7 @@ func (s *Syncer) fetchPlex(ctx context.Context, c *plex.Client) (*plexCatalog, e
 	if err != nil {
 		return nil, err
 	}
-	cat := &plexCatalog{}
+	cat := &serverCatalog{server: store.ServerPlex}
 	for _, sec := range sections {
 		key := string(sec.Key)
 		switch sec.Type {
@@ -569,17 +589,17 @@ func (s *Syncer) fetchPlex(ctx context.Context, c *plex.Client) (*plexCatalog, e
 				return nil, err
 			}
 			for _, se := range seasons {
-				cat.seasons = append(cat.seasons, store.PlexSeason{
-					ShowRatingKey: string(se.ParentRatingKey), Number: int(se.Index), RatingKey: string(se.RatingKey)})
+				cat.seasons = append(cat.seasons, store.ServerSeason{
+					ShowKey: string(se.ParentRatingKey), Number: int(se.Index), Key: string(se.RatingKey)})
 			}
 		}
 	}
 	return cat, nil
 }
 
-func plexItem(kind string, it plex.Item) matching.PlexItem {
+func plexItem(kind string, it plex.Item) matching.ServerItem {
 	tvdb, tmdb, imdb := it.ExternalIDs()
-	p := matching.PlexItem{Kind: kind, RatingKey: string(it.RatingKey), Title: it.Title, Year: int(it.Year),
+	p := matching.ServerItem{Kind: kind, Key: string(it.RatingKey), Title: it.Title, Year: int(it.Year),
 		TvdbID: tvdb, TmdbID: tmdb, ImdbID: imdb, AddedAt: int64(it.AddedAt), OriginalTitle: it.OriginalTitle,
 		Files: it.Files()}
 	for _, l := range it.Location {
@@ -604,7 +624,7 @@ func matchHints(series, movies []store.CatalogItem) map[string]arrHints {
 	return out
 }
 
-func (s *Syncer) applyMatches(ctx context.Context, cat *plexCatalog, hints map[string]arrHints) error {
+func (s *Syncer) applyMatches(ctx context.Context, cat *serverCatalog, hints map[string]arrHints) error {
 	arr, err := s.Store.ListArrMedia(ctx)
 	if err != nil {
 		return err
@@ -616,16 +636,16 @@ func (s *Syncer) applyMatches(ctx context.Context, cat *plexCatalog, hints map[s
 			ImdbID: m.ImdbID, Title: m.Title, Year: m.Year, AltTitles: h.titles, Folder: h.folder, File: h.file})
 	}
 	links, plexOnly := matching.Match(items, cat.items)
-	storeLinks := make([]store.PlexLink, 0, len(links))
+	storeLinks := make([]store.ServerLink, 0, len(links))
 	for _, l := range links {
-		storeLinks = append(storeLinks, store.PlexLink{MediaID: l.MediaID, RatingKey: l.RatingKey, Method: l.Method})
+		storeLinks = append(storeLinks, store.ServerLink{MediaID: l.MediaID, Key: l.Key, Method: l.Method})
 	}
-	only := make([]store.PlexOnlyItem, 0, len(plexOnly))
+	only := make([]store.ServerOnlyItem, 0, len(plexOnly))
 	for _, p := range plexOnly {
-		only = append(only, store.PlexOnlyItem{Kind: p.Kind, RatingKey: p.RatingKey, Title: p.Title, Year: p.Year,
+		only = append(only, store.ServerOnlyItem{Kind: p.Kind, Key: p.Key, Title: p.Title, Year: p.Year,
 			TvdbID: p.TvdbID, TmdbID: p.TmdbID, ImdbID: p.ImdbID, AddedAt: p.AddedAt})
 	}
-	return s.Store.ApplyPlexMatches(ctx, storeLinks, only, cat.seasons, s.now())
+	return s.Store.ApplyServerMatches(ctx, cat.server, storeLinks, only, cat.seasons, s.now())
 }
 
 // --- History -----------------------------------------------------------------
@@ -774,7 +794,8 @@ func (v *viewers) allows(id int64) bool {
 
 // syncHistories reads the history sources of up, one after the other:
 // Tautulli, then the Plex history (merged mode: both, Plex ids translated to
-// Tautulli's). In a single-source mode the other source is dropped first.
+// Tautulli's), or the Jellyfin history. In a single-source mode the other
+// source is dropped first.
 // Each source is recorded in sync_runs.
 func (s *Syncer) syncHistories(ctx context.Context, up *upstream.Clients) []SourceResult {
 	var out []SourceResult
@@ -830,21 +851,32 @@ func (s *Syncer) syncHistories(ctx context.Context, up *upstream.Clients) []Sour
 			return s.syncPlexHistory(ctx, up.Plex, v)
 		})
 	}
+	if up.JellyfinHistory() {
+		step(SourceJellyfinHistory, func() (int, error) { return s.syncJellyfinHistory(ctx, up.Jellyfin) })
+	}
 	return out
 }
 
-// mergeHistory merges the Plex history into Tautulli's (merged mode), once
-// the events are linked to media.
+// mergeHistory merges the Plex history into Tautulli's (merged mode), then
+// the Jellyfin history into both (whatever the media server: the history of
+// the other one is kept), once the events are linked to media.
 func (s *Syncer) mergeHistory(ctx context.Context, up *upstream.Clients) error {
-	if !up.Merged() {
-		return nil
+	if up.Merged() {
+		st, err := s.Store.MergePlexHistory(ctx)
+		if err != nil {
+			return err
+		}
+		s.Log.Info("history merged", "plex_entries_merged", st.Merged, "sessions_completed_by_plex", st.Completed,
+			"plex_only_plays_estimated", st.Estimated)
 	}
-	st, err := s.Store.MergePlexHistory(ctx)
+	st, err := s.Store.MergeServerHistories(ctx)
 	if err != nil {
 		return err
 	}
-	s.Log.Info("history merged", "plex_entries_merged", st.Merged, "sessions_completed_by_plex", st.Completed,
-		"plex_only_plays_estimated", st.Estimated)
+	if st.Merged > 0 || st.Completed > 0 {
+		s.Log.Info("jellyfin history merged with plex", "jellyfin_entries_merged", st.Merged,
+			"plays_completed_by_jellyfin", st.Completed)
+	}
 	return nil
 }
 

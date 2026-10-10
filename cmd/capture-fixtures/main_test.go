@@ -2,8 +2,11 @@ package main
 
 import (
 	"encoding/json"
+	"os"
 	"strings"
 	"testing"
+
+	"hangarr/internal/config"
 )
 
 func TestAnonymizer(t *testing.T) {
@@ -39,5 +42,33 @@ func TestAnonymizerAccounts(t *testing.T) {
 	out, _ := json.Marshal(newAnonymizer().walk(doc, true))
 	if strings.Contains(string(out), "bob") || !strings.Contains(string(out), "keep") {
 		t.Errorf("accounts: %s", out)
+	}
+}
+
+func TestAnonymizerJellyfin(t *testing.T) {
+	var users any
+	_ = json.Unmarshal([]byte(`[{"Name":"alice","Id":"aaaa","ServerId":"5e0c","Policy":{"IsDisabled":false}},{"Name":"bob","Id":"bbbb"}]`), &users)
+	out, _ := json.Marshal(newAnonymizer().walk(users, true))
+	s := string(out)
+	if strings.Contains(s, "alice") || strings.Contains(s, "bob") || !strings.Contains(s, `"Name":"user1"`) || !strings.Contains(s, `"Name":"user2"`) {
+		t.Errorf("Jellyfin accounts: %s", s)
+	}
+	var info any
+	_ = json.Unmarshal([]byte(`{"ServerName":"my-home","Version":"12.0.1","LocalAddress":"http://192.168.1.20:8096"}`), &info)
+	out, _ = json.Marshal(newAnonymizer().walk(info, false))
+	s = string(out)
+	if strings.Contains(s, "my-home") || strings.Contains(s, "192.168") || !strings.Contains(s, `"ServerName":"redacted"`) ||
+		!strings.Contains(s, `"Version":"12.0.1"`) {
+		t.Errorf("Jellyfin system info: %s", s)
+	}
+}
+
+func TestNothingConfigured(t *testing.T) {
+	dir := t.TempDir()
+	if err := captureAll(&config.Config{}, dir, 30); err == nil {
+		t.Fatal("expected an error when no service is configured")
+	}
+	if entries, _ := os.ReadDir(dir); len(entries) != 0 {
+		t.Errorf("files written without any configured service: %v", entries)
 	}
 }

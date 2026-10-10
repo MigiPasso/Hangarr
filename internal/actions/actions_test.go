@@ -23,11 +23,13 @@ import (
 )
 
 type env struct {
-	t    *testing.T
-	fsys fstest.MapFS
-	mock *mockarr.Mock
-	st   *store.Store
-	svc  *Service
+	t           *testing.T
+	fsys        fstest.MapFS
+	mock        *mockarr.Mock
+	st          *store.Store
+	svc         *Service
+	jellyfinURL string
+	plexValues  upstream.Values
 }
 
 func newEnv(t *testing.T, dryRun bool) *env {
@@ -43,11 +45,17 @@ func newEnv(t *testing.T, dryRun bool) *env {
 	})
 	m := mockarr.New(fsys, "k")
 	urls := map[string]string{}
+	var jellyfinURL string
 	for name, h := range map[string]http.Handler{
-		"sonarr": m.Sonarr(), "radarr": m.Radarr(), "plex": m.Plex(), "tautulli": m.Tautulli(),
+		"sonarr": m.Sonarr(), "radarr": m.Radarr(), "plex": m.Plex(), "jellyfin": m.Jellyfin(), "tautulli": m.Tautulli(),
 	} {
 		ts := httptest.NewServer(h)
 		t.Cleanup(ts.Close)
+		if name == "jellyfin" {
+			// Not in the initial configuration: a test switches to it (one media server at a time).
+			jellyfinURL = ts.URL
+			continue
+		}
 		urls[name] = ts.URL
 	}
 	st, err := store.Open(context.Background(), t.TempDir())
@@ -65,7 +73,7 @@ func newEnv(t *testing.T, dryRun bool) *env {
 		t.Fatal(err)
 	}
 	m.Reset()
-	return &env{t: t, fsys: fsys, mock: m, st: st, svc: &Service{
+	return &env{t: t, fsys: fsys, mock: m, st: st, jellyfinURL: jellyfinURL, plexValues: upstream.TestValues(urls, "k"), svc: &Service{
 		Store: st, Upstreams: sy.Upstreams, Refresher: sy,
 		DryRun: dryRun, ProtectedTags: []string{"keep"}, ConfirmByTyping: true, PlexRefresh: true, Log: log,
 	}}

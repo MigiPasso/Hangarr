@@ -24,6 +24,55 @@ type serviceForm struct {
 	Test            *testResult // connection test result without JavaScript
 	WebhookURL      string      // Tautulli: address of the webhook (as seen by the browser)
 	GeneratedSecret string      // Tautulli: new webhook secret, shown once
+	OOB             bool        // swapped out of band, after another section was saved
+}
+
+// Recorded reports whether the section holds values saved from the interface
+// (values set by the environment do not count, unreadable ones do).
+func (f serviceForm) Recorded() bool {
+	for _, fs := range f.Fields {
+		if !fs.Locked && (fs.Value != "" || fs.Hint != "" || fs.Broken) {
+			return true
+		}
+	}
+	return false
+}
+
+// AnyLocked reports whether a field of the section is set by the environment.
+func (f serviceForm) AnyLocked() bool {
+	for _, fs := range f.Fields {
+		if fs.Locked {
+			return true
+		}
+	}
+	return false
+}
+
+// savedForm is the answer to a saved section: the section itself, then the
+// sections whose state may have changed with it (swapped out of band).
+type savedForm struct {
+	Form   serviceForm
+	Others []serviceForm
+}
+
+// linkedServices are the sections whose state depends on one another: one
+// media server at a time, and Tautulli only works with Plex.
+var linkedServices = []string{upstream.Plex, upstream.Jellyfin, upstream.Tautulli}
+
+// linkedForms returns the linked sections other than svc, marked for an
+// out-of-band swap. Saving Sonarr or Radarr changes none of them.
+func linkedForms(forms []serviceForm, svc string) []serviceForm {
+	if !slices.Contains(linkedServices, svc) {
+		return nil
+	}
+	var out []serviceForm
+	for _, f := range forms {
+		if f.Service != svc && slices.Contains(linkedServices, f.Service) {
+			f.OOB = true
+			out = append(out, f)
+		}
+	}
+	return out
 }
 
 // WebhookState reports whether the webhook secret is set, and whether it
@@ -81,7 +130,8 @@ func (s *Server) serviceForms(r *http.Request) ([]serviceForm, error) {
 }
 
 func (s *Server) configData(forms []serviceForm) configData {
-	d := configData{Services: forms, HistorySource: s.Upstreams.Get().HistorySource}
+	up := s.Upstreams.Get()
+	d := configData{Services: forms, HistorySource: up.HistorySource}
 	if s.Services != nil {
 		d.CanStoreSecrets, d.KeyInDataDir = s.Services.CanStoreSecrets(), s.Services.KeyInDataDir
 	}
@@ -97,10 +147,18 @@ func (s *Server) configPage(w http.ResponseWriter, r *http.Request) {
 	s.render(w, r, http.StatusOK, "config", "", s.page(r, "Services", "config", s.configData(forms)))
 }
 
-// serviceInput reads the form of one service.
+// serviceInput reads the form of one service. clear_all (the button of a
+// section that cannot be configured) clears every field: nothing else is read.
 func serviceInput(r *http.Request, svc string) upstream.Input {
 	in := upstream.Input{Values: map[string]string{}, Clear: map[string]bool{}}
+	clearAll := r.PostFormValue("clear_all") == "1"
 	for _, f := range upstream.FieldsOf(svc) {
+		if clearAll {
+			// Manager.Save ignores the fields set by the environment.
+			in.Values[f.Key] = ""
+			in.Clear[f.Key] = true
+			continue
+		}
 		in.Values[f.Key] = r.PostFormValue(f.Key)
 		in.Clear[f.Key] = r.PostFormValue(f.Key+".clear") == "1"
 	}
@@ -159,9 +217,9 @@ func (s *Server) configSubmit(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if isHTMX(r) {
-		// The section is swapped; the banner and the sync status depend on
-		// the configuration too and are swapped out of band.
-		pd := s.page(r, "Services", "config", form)
+		// The section is swapped; the banner, the sync status and the linked
+		// sections depend on the configuration too and are swapped out of band.
+		pd := s.page(r, "Services", "config", savedForm{Form: *form, Others: linkedForms(forms, svc)})
 		pd.OOB = true
 		s.render(w, r, http.StatusOK, "config", "config_saved", pd)
 		return

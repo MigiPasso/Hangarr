@@ -26,6 +26,7 @@ type batchEntry struct {
 	Title     string
 	SizeBytes int64
 	Reason    string // why it is excluded (English key)
+	Args      []any  // arguments of the Reason key
 }
 
 type batchData struct {
@@ -70,6 +71,7 @@ func selectedIDs(r *http.Request) ([]int64, error) {
 // classify splits the selection into eligible and excluded items.
 func (s *Server) classify(r *http.Request, ids []int64, protectAction bool) (*batchData, error) {
 	d := &batchData{DryRun: s.Config.DryRun}
+	up := s.Upstreams.Get()
 	for _, id := range ids {
 		m, err := s.Store.MediaByID(r.Context(), id)
 		if errors.Is(err, store.ErrNotFound) {
@@ -82,7 +84,7 @@ func (s *Server) classify(r *http.Request, ids []int64, protectAction bool) (*ba
 		e := batchEntry{ID: m.ID, Kind: m.Kind, Title: m.Title, SizeBytes: m.SizeBytes}
 		switch {
 		case m.ArrID == 0:
-			e.Reason = "in Plex only"
+			e.Reason, e.Args = "in %s only", []any{up.ServerLabel()}
 		case store.HasProtectedTag(m.Tags, s.Config.ProtectedTags):
 			e.Reason = "already protected"
 			if !protectAction {

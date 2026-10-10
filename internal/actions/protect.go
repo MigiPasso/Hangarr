@@ -40,7 +40,7 @@ type ProtectResult struct {
 	Tag       string // tag added; for a removal, the protection tags removed
 	Unchanged bool   // the item was already in the requested state
 	DryRun    bool
-	Local     bool // protected in Hangarr only (plex_only item, Plex untouched)
+	Local     bool // protected in Hangarr only (server_only item, the server untouched)
 }
 
 // SetProtected adds the first PROTECTED_TAGS tag to the item in Sonarr/Radarr
@@ -56,8 +56,8 @@ func (s *Service) SetProtected(ctx context.Context, req ProtectRequest) (*Protec
 		return nil, err
 	}
 	if m.ArrID == 0 {
-		if m.PlexRatingKey == "" {
-			return nil, ErrNotManaged
+		if err := serverOnly(s.Upstreams.Get(), m, ErrNotManaged); err != nil {
+			return nil, err
 		}
 		return s.setLocalProtection(ctx, m, req)
 	}
@@ -99,9 +99,9 @@ func (s *Service) SetProtected(ctx context.Context, req ProtectRequest) (*Protec
 	return res, nil
 }
 
-// setLocalProtection protects an item that only Plex knows, in Hangarr
-// only: nothing is sent to Plex, so dry-run does not apply. Changes are
-// journaled.
+// setLocalProtection protects an item that only the media server knows, in
+// Hangarr only: nothing is sent to the server, so dry-run does not apply.
+// Changes are journaled.
 func (s *Service) setLocalProtection(ctx context.Context, m *store.Media, req ProtectRequest) (*ProtectResult, error) {
 	res := &ProtectResult{Title: m.Title, Kind: m.Kind, Protect: req.Protect, Local: true}
 	if m.ProtectedLocal == req.Protect {

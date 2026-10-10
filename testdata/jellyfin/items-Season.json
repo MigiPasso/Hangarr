@@ -1,0 +1,9 @@
+{"Items":[
+ {"Id":"f0000000000000000000000000002011","Name":"Season 1","IndexNumber":1,"SeriesId":"f0000000000000000000000000000201","SeriesName":"Breaking Bad","Type":"Season","ServerId":"5e0c1e6a3b2f4d7c9a8b1c2d3e4f5a6b"},
+ {"Id":"f0000000000000000000000000002012","Name":"Season 2","IndexNumber":2,"SeriesId":"f0000000000000000000000000000201","SeriesName":"Breaking Bad","Type":"Season","ServerId":"5e0c1e6a3b2f4d7c9a8b1c2d3e4f5a6b"},
+ {"Id":"f0000000000000000000000000002021","Name":"Season 1","IndexNumber":1,"SeriesId":"f0000000000000000000000000000202","SeriesName":"The Expanse","Type":"Season","ServerId":"5e0c1e6a3b2f4d7c9a8b1c2d3e4f5a6b"},
+ {"Id":"f0000000000000000000000000002022","Name":"Season 2","IndexNumber":2,"SeriesId":"f0000000000000000000000000000202","SeriesName":"The Expanse","Type":"Season","ServerId":"5e0c1e6a3b2f4d7c9a8b1c2d3e4f5a6b"},
+ {"Id":"f0000000000000000000000000002031","Name":"Season 1","IndexNumber":1,"SeriesId":"f0000000000000000000000000000203","SeriesName":"Severance","Type":"Season","ServerId":"5e0c1e6a3b2f4d7c9a8b1c2d3e4f5a6b"},
+ {"Id":"f0000000000000000000000000002041","Name":"Season 1","IndexNumber":1,"SeriesId":"f0000000000000000000000000000204","SeriesName":"Shogun","Type":"Season","ServerId":"5e0c1e6a3b2f4d7c9a8b1c2d3e4f5a6b"},
+ {"Id":"f0000000000000000000000000002051","Name":"Season 1","IndexNumber":1,"SeriesId":"f0000000000000000000000000000205","SeriesName":"Home Videos","Type":"Season","ServerId":"5e0c1e6a3b2f4d7c9a8b1c2d3e4f5a6b"}
+],"TotalRecordCount":7,"StartIndex":0}

@@ -1,13 +1,15 @@
-// Command capture-fixtures records anonymized responses of the real
-// Sonarr, Radarr, Plex and Tautulli instances (configured like hangarr,
+// Command capture-fixtures records anonymized responses of the real Sonarr,
+// Radarr, Plex, Tautulli and Jellyfin instances (configured like hangarr,
 // through environment variables) into testdata/captured/, using the layout
-// served by mockarr. Run it with `make capture-fixtures`, then review the
-// files before committing them.
+// served by mockarr. Every configured service is recorded; the others are
+// skipped. Run it with `make capture-fixtures` (or `make jellyfin-lab-capture`
+// for the Jellyfin lab), then review the files before committing them.
 package main
 
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"maps"
@@ -22,6 +24,7 @@ import (
 	"time"
 
 	"hangarr/internal/clients/httpx"
+	"hangarr/internal/clients/jellyfin"
 	"hangarr/internal/config"
 )
 
@@ -43,13 +46,34 @@ type capturer struct {
 	files int
 }
 
+// step is one listing recorded into one file.
+type step struct {
+	file   string
+	client *httpx.Client
+	path   string
+	query  url.Values
+	trim   bool
+}
+
 func run(out string, limit int) error {
 	cfg, err := config.Load(os.LookupEnv, os.ReadFile)
 	if err != nil {
 		return err
 	}
-	if err := cfg.RequireUpstreams(); err != nil {
-		return err
+	return captureAll(cfg, out, limit)
+}
+
+// captureAll records every service configured in cfg. It fails before writing
+// anything when none is configured.
+func captureAll(cfg *config.Config, out string, limit int) error {
+	sonarrOK := cfg.SonarrURL != "" && cfg.SonarrAPIKey != ""
+	radarrOK := cfg.RadarrURL != "" && cfg.RadarrAPIKey != ""
+	plexOK := cfg.PlexURL != "" && cfg.PlexToken != ""
+	tautulliOK := cfg.TautulliURL != "" && cfg.TautulliAPIKey != ""
+	jellyfinOK := cfg.JellyfinURL != "" && cfg.JellyfinAPIKey != ""
+	if !sonarrOK && !radarrOK && !plexOK && !tautulliOK && !jellyfinOK {
+		return errors.New("no service configured: set SONARR_URL and SONARR_API_KEY, RADARR_URL and RADARR_API_KEY, " +
+			"PLEX_URL and PLEX_TOKEN, TAUTULLI_URL and TAUTULLI_API_KEY, or JELLYFIN_URL and JELLYFIN_API_KEY")
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 	defer cancel()
@@ -58,34 +82,46 @@ func run(out string, limit int) error {
 	arrAuth := func(key string) func(*http.Request) {
 		return func(r *http.Request) { r.Header.Set("X-Api-Key", key) }
 	}
-	sonarr := httpx.New("sonarr", cfg.SonarrURL, arrAuth(cfg.SonarrAPIKey))
-	radarr := httpx.New("radarr", cfg.RadarrURL, arrAuth(cfg.RadarrAPIKey))
-	plex := httpx.New("plex", cfg.PlexURL, func(r *http.Request) { r.Header.Set("X-Plex-Token", cfg.PlexToken) })
-
 	now := time.Now().UTC()
 	window := url.Values{"start": {now.Format(time.RFC3339)}, "end": {now.AddDate(0, 0, 90).Format(time.RFC3339)}}
 	sonarrCal := url.Values{"includeSeries": {"true"}}
 	for k, v := range window {
 		sonarrCal[k] = v
 	}
-	steps := []struct {
-		file   string
-		client *httpx.Client
-		path   string
-		query  url.Values
-		trim   bool
-	}{
-		{"sonarr/series.json", sonarr, "/api/v3/series", nil, true},
-		{"sonarr/tag.json", sonarr, "/api/v3/tag", nil, false},
-		{"sonarr/qualityprofile.json", sonarr, "/api/v3/qualityprofile", nil, false},
-		{"sonarr/calendar.json", sonarr, "/api/v3/calendar", sonarrCal, true},
-		{"radarr/movie.json", radarr, "/api/v3/movie", nil, true},
-		{"radarr/tag.json", radarr, "/api/v3/tag", nil, false},
-		{"radarr/qualityprofile.json", radarr, "/api/v3/qualityprofile", nil, false},
-		{"radarr/calendar.json", radarr, "/api/v3/calendar", window, true},
-		{"plex/sections.json", plex, "/library/sections", nil, false},
-		{"plex/accounts.json", plex, "/accounts", nil, false},
-		{"plex/history.json", plex, "/status/sessions/history/all", c.plexPage(url.Values{"sort": {"viewedAt:desc"}}), false},
+
+	var steps []step
+	if sonarrOK {
+		sonarr := httpx.New("sonarr", cfg.SonarrURL, arrAuth(cfg.SonarrAPIKey))
+		steps = append(steps,
+			step{"sonarr/series.json", sonarr, "/api/v3/series", nil, true},
+			step{"sonarr/tag.json", sonarr, "/api/v3/tag", nil, false},
+			step{"sonarr/qualityprofile.json", sonarr, "/api/v3/qualityprofile", nil, false},
+			step{"sonarr/calendar.json", sonarr, "/api/v3/calendar", sonarrCal, true},
+		)
+	} else {
+		skip("sonarr")
+	}
+	if radarrOK {
+		radarr := httpx.New("radarr", cfg.RadarrURL, arrAuth(cfg.RadarrAPIKey))
+		steps = append(steps,
+			step{"radarr/movie.json", radarr, "/api/v3/movie", nil, true},
+			step{"radarr/tag.json", radarr, "/api/v3/tag", nil, false},
+			step{"radarr/qualityprofile.json", radarr, "/api/v3/qualityprofile", nil, false},
+			step{"radarr/calendar.json", radarr, "/api/v3/calendar", window, true},
+		)
+	} else {
+		skip("radarr")
+	}
+	var plex *httpx.Client
+	if plexOK {
+		plex = httpx.New("plex", cfg.PlexURL, func(r *http.Request) { r.Header.Set("X-Plex-Token", cfg.PlexToken) })
+		steps = append(steps,
+			step{"plex/sections.json", plex, "/library/sections", nil, false},
+			step{"plex/accounts.json", plex, "/accounts", nil, false},
+			step{"plex/history.json", plex, "/status/sessions/history/all", c.plexPage(url.Values{"sort": {"viewedAt:desc"}}), false},
+		)
+	} else {
+		skip("plex")
 	}
 	for _, s := range steps {
 		if err := c.capture(s.file, s.client, s.path, s.query, s.trim); err != nil {
@@ -94,29 +130,31 @@ func run(out string, limit int) error {
 	}
 
 	// One file per Plex movie/show section and item type.
-	var sections struct {
-		MediaContainer struct {
-			Directory []struct {
-				Key  httpx.String `json:"key"`
-				Type string       `json:"type"`
+	if plex != nil {
+		var sections struct {
+			MediaContainer struct {
+				Directory []struct {
+					Key  httpx.String `json:"key"`
+					Type string       `json:"type"`
+				}
 			}
 		}
-	}
-	if err := plex.JSON(ctx, httpx.Request{Path: "/library/sections"}, &sections); err != nil {
-		return err
-	}
-	for _, sec := range sections.MediaContainer.Directory {
-		types := map[string][]int{"movie": {1}, "show": {2, 3}}[sec.Type]
-		for _, t := range types {
-			q := c.plexPage(url.Values{"type": {strconv.Itoa(t)}, "includeGuids": {"1"}})
-			file := fmt.Sprintf("plex/section-%s-type-%d.json", sec.Key, t)
-			if err := c.capture(file, plex, "/library/sections/"+url.PathEscape(string(sec.Key))+"/all", q, false); err != nil {
-				return err
+		if err := plex.JSON(ctx, httpx.Request{Path: "/library/sections"}, &sections); err != nil {
+			return err
+		}
+		for _, sec := range sections.MediaContainer.Directory {
+			types := map[string][]int{"movie": {1}, "show": {2, 3}}[sec.Type]
+			for _, t := range types {
+				q := c.plexPage(url.Values{"type": {strconv.Itoa(t)}, "includeGuids": {"1"}})
+				file := fmt.Sprintf("plex/section-%s-type-%d.json", sec.Key, t)
+				if err := c.capture(file, plex, "/library/sections/"+url.PathEscape(string(sec.Key))+"/all", q, false); err != nil {
+					return err
+				}
 			}
 		}
 	}
 
-	if cfg.TautulliURL != "" && cfg.TautulliAPIKey != "" {
+	if tautulliOK {
 		tautulli := httpx.New("tautulli", cfg.TautulliURL, func(r *http.Request) {
 			q := r.URL.Query()
 			q.Set("apikey", cfg.TautulliAPIKey)
@@ -130,8 +168,83 @@ func run(out string, limit int) error {
 		if err := c.capture("tautulli/get_users.json", tautulli, "/api/v2", url.Values{"cmd": {"get_users"}}, false); err != nil {
 			return err
 		}
+	} else {
+		skip("tautulli")
+	}
+
+	if jellyfinOK {
+		if err := c.captureJellyfin(jellyfin.New(cfg.JellyfinURL, cfg.JellyfinAPIKey)); err != nil {
+			return err
+		}
+	} else {
+		skip("jellyfin")
 	}
 	fmt.Printf("%d files written to %s: review them before committing.\n", c.files, c.out)
+	return nil
+}
+
+func skip(service string) {
+	fmt.Printf("skipped %s: not configured\n", service)
+}
+
+// captureJellyfin records the server identity, the accounts and, for each
+// account, the items it played and the ones it can resume. The listings use
+// the parameters of the jellyfin client, with the page size of -limit.
+func (c *capturer) captureJellyfin(jf *jellyfin.Client) error {
+	if err := c.capture("jellyfin/system-info.json", jf.HTTP, "/System/Info", nil, false); err != nil {
+		return err
+	}
+	if err := c.capture("jellyfin/users.json", jf.HTTP, "/Users", nil, false); err != nil {
+		return err
+	}
+	users, err := jf.Users(c.ctx)
+	if err != nil {
+		return err
+	}
+	page := func(q url.Values) url.Values {
+		q.Set("startIndex", "0")
+		q.Set("limit", strconv.Itoa(c.limit))
+		return q
+	}
+	for _, typ := range []string{jellyfin.TypeMovie, jellyfin.TypeSeries, jellyfin.TypeSeason} {
+		q := page(url.Values{
+			"recursive":        {"true"},
+			"includeItemTypes": {typ},
+			"fields":           {"ProviderIds,Path,DateCreated,OriginalTitle"},
+			"sortBy":           {"SortName"},
+			"enableImages":     {"false"},
+		})
+		if err := c.capture("jellyfin/items-"+typ+".json", jf.HTTP, "/Items", q, false); err != nil {
+			return err
+		}
+	}
+	movieAndEpisode := jellyfin.TypeMovie + "," + jellyfin.TypeEpisode
+	for _, u := range users {
+		played := page(url.Values{
+			"userId":           {u.ID},
+			"recursive":        {"true"},
+			"includeItemTypes": {movieAndEpisode},
+			"isPlayed":         {"true"},
+			"sortBy":           {"DatePlayed"},
+			"sortOrder":        {"Descending"},
+			"enableUserData":   {"true"},
+			"enableImages":     {"false"},
+		})
+		if err := c.capture("jellyfin/played-"+u.ID+".json", jf.HTTP, "/Items", played, false); err != nil {
+			return err
+		}
+		resumable := page(url.Values{
+			"userId":           {u.ID},
+			"recursive":        {"true"},
+			"includeItemTypes": {movieAndEpisode},
+			"filters":          {"IsResumable"},
+			"enableUserData":   {"true"},
+			"enableImages":     {"false"},
+		})
+		if err := c.capture("jellyfin/resumable-"+u.ID+".json", jf.HTTP, "/Items", resumable, false); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -153,7 +266,8 @@ func (c *capturer) capture(file string, client *httpx.Client, p string, q url.Va
 	if list, ok := doc.([]any); ok && trim && len(list) > c.limit {
 		doc = list[:c.limit]
 	}
-	doc = c.anon.walk(doc, strings.HasPrefix(file, "plex/accounts"))
+	accounts := strings.HasPrefix(file, "plex/accounts") || file == "jellyfin/users.json"
+	doc = c.anon.walk(doc, accounts)
 	pretty, err := json.MarshalIndent(doc, "", "  ")
 	if err != nil {
 		return err
@@ -233,7 +347,8 @@ func (a *anonymizer) walk(v any, accounts bool) any {
 				if s != "" {
 					x[k] = "/media/" + path.Base(s)
 				}
-			case lk == "machineidentifier" || lk == "uuid" || lk == "session_key" || lk == "machine_id":
+			case lk == "machineidentifier" || lk == "uuid" || lk == "session_key" || lk == "machine_id" || lk == "servername" ||
+				lk == "localaddress": // Jellyfin's LAN URL
 				x[k] = "redacted"
 			}
 		}

@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"hangarr/internal/clients/jellyfin"
 	"hangarr/internal/clients/plex"
 	"hangarr/internal/clients/radarr"
 	"hangarr/internal/clients/sonarr"
@@ -217,5 +218,51 @@ func TestTautulliTolerance(t *testing.T) {
 	noPlayDuration := tautulli.HistoryRow{Duration: 600}
 	if noPlayDuration.PlaySeconds() != 600 {
 		t.Error("PlaySeconds must fall back to duration")
+	}
+}
+
+func TestJellyfinFixtures(t *testing.T) {
+	for _, dir := range fixtureDirs(t) {
+		var info jellyfin.SystemInfo
+		if decode(t, filepath.Join(dir, "jellyfin/system-info.json"), &info) && info.Version == "" {
+			t.Errorf("%s: system info without version", dir)
+		}
+		var users []jellyfin.User
+		if decode(t, filepath.Join(dir, "jellyfin/users.json"), &users) {
+			for _, u := range users {
+				if !jellyfin.IsID(u.ID) || u.Name == "" {
+					t.Errorf("%s: user without id/name: %+v", dir, u)
+				}
+			}
+		}
+		files, _ := filepath.Glob(filepath.Join(dir, "jellyfin/items-*.json"))
+		for _, f := range files {
+			var page struct{ Items []jellyfin.Item }
+			decode(t, f, &page)
+			for _, it := range page.Items {
+				if !jellyfin.IsID(it.ID) || it.Name == "" || it.Type == "" || (it.SeriesID != "" && !jellyfin.IsID(it.SeriesID)) {
+					t.Errorf("%s: item without valid id/name/type/seriesId: %+v", f, it)
+				}
+			}
+		}
+		for _, pattern := range []string{"played-*.json", "resumable-*.json"} {
+			files, _ := filepath.Glob(filepath.Join(dir, "jellyfin", pattern))
+			for _, f := range files {
+				var page struct{ Items []jellyfin.Item }
+				decode(t, f, &page)
+				for _, it := range page.Items {
+					if !jellyfin.IsID(it.ID) || it.UserData == nil || (it.SeriesID != "" && !jellyfin.IsID(it.SeriesID)) {
+						t.Errorf("%s: item without valid id/seriesId or UserData: %+v", f, it)
+					}
+				}
+			}
+		}
+	}
+	var movies struct{ Items []jellyfin.Item }
+	if !decode(t, "../../testdata/jellyfin/items-Movie.json", &movies) || len(movies.Items) == 0 || movies.Items[0].Name != "Inception" {
+		t.Fatalf("synthetic Jellyfin movies: %+v", movies.Items)
+	}
+	if tvdb, tmdb, imdb := movies.Items[0].ExternalIDs(); tvdb != 170 || tmdb != 27205 || imdb != "tt1375666" {
+		t.Errorf("Inception external ids: %d %d %q", tvdb, tmdb, imdb)
 	}
 }

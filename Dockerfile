@@ -56,7 +56,7 @@ FROM gcr.io/distroless/static-debian12:nonroot AS mock
 COPY --from=build /out/mockarr /mockarr
 COPY testdata /testdata
 USER 65532:65532
-EXPOSE 8989 7878 32400 8181
+EXPOSE 8989 7878 32400 8096 8181
 ENTRYPOINT ["/mockarr"]
 
 # --- runtime: what ships to Kubernetes --------------------------------------

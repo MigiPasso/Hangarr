@@ -29,7 +29,7 @@ test("first start without configuration", async ({ page }) => {
   await page.getByLabel("Confirmation").fill(newPassword);
   await page.getByRole("button", { name: "Enregistrer" }).click();
   await expect(page.getByRole("heading", { name: "Tableau de bord" })).toBeVisible();
-  await expect(page.locator(".config-banner")).toContainText("Services non configurés (Sonarr, Radarr, Plex)");
+  await expect(page.locator(".config-banner")).toContainText("Services non configurés (Sonarr, Radarr, Plex / Jellyfin)");
   await expect(page.getByRole("button", { name: "Synchroniser" })).toHaveCount(0);
 });
 
@@ -53,7 +53,7 @@ test("services are configured from the UI, credentials never come back", async (
   await expect(sonarr.locator(".badge")).toHaveText("Non configuré");
 
   await configure(page, "sonarr", { "URL de l'API": "http://mock:8989", "Clé d'API": mockKey });
-  await expect(page.locator(".config-banner")).toContainText("Services non configurés (Radarr, Plex)");
+  await expect(page.locator(".config-banner")).toContainText("Services non configurés (Radarr, Plex / Jellyfin)");
   await expect(sonarr.getByLabel("Clé d'API", { exact: true })).toHaveAttribute("placeholder", "••••-key (vide = conserver)");
   await expect(sonarr.getByLabel("Clé d'API", { exact: true })).toHaveValue("");
 

@@ -1,4 +1,4 @@
-// Package mockarr impersonates Sonarr, Radarr, Plex and Tautulli
+// Package mockarr impersonates Sonarr, Radarr, Plex, Jellyfin and Tautulli
 // from fixture files (see testdata/README.md). It backs `make dev`, the e2e
 // tests and the sync integration tests. Write calls (DELETE, PUT, POST) are
 // recorded and exposed on GET /_calls; POST /_reset clears them.
@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"image"
 	"image/color"
@@ -15,6 +16,7 @@ import (
 	"io"
 	"io/fs"
 	"net/http"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -44,6 +46,9 @@ type Mock struct {
 	// PlexDeletionDenied makes Plex refuse deletions (403), like a server
 	// without "Allow media deletion".
 	PlexDeletionDenied bool
+	// JellyfinDeletionDenied makes Jellyfin refuse deletions (403), like a key
+	// without the right.
+	JellyfinDeletionDenied bool
 	// DevExtras adds dev/{sonarr/series,radarr/movie}.json to the catalog
 	// (the series and movies of the calendars; `make dev` only, the tests
 	// rely on the synthetic catalog alone).
@@ -304,6 +309,136 @@ func (m *Mock) Plex() http.Handler {
 	return m.wrap("plex", func(r *http.Request) bool {
 		return r.Header.Get("X-Plex-Token") == m.APIKey || r.URL.Query().Get("X-Plex-Token") == m.APIKey
 	}, mux)
+}
+
+// Jellyfin returns the fake Jellyfin server.
+func (m *Mock) Jellyfin() http.Handler {
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /System/Info", func(w http.ResponseWriter, _ *http.Request) {
+		m.hit("jellyfin:info")
+		info := map[string]any{}
+		if err := m.readJSON("jellyfin/system-info.json", &info); err != nil {
+			http.Error(w, `{"error":"fixture not found"}`, http.StatusNotFound)
+			return
+		}
+		info["Version"] = "12.0.1-mock"
+		writeJSON(w, info)
+	})
+	mux.HandleFunc("GET /Users", func(w http.ResponseWriter, _ *http.Request) {
+		m.hit("jellyfin:users")
+		m.file(w, "jellyfin/users.json")
+	})
+	mux.HandleFunc("GET /Items", m.jellyfinItems)
+	mux.HandleFunc("GET /Items/{id}/Images/Primary", func(w http.ResponseWriter, r *http.Request) {
+		m.jellyfinImage(w, r, "poster")
+	})
+	mux.HandleFunc("GET /Items/{id}/Images/Backdrop/{index}", func(w http.ResponseWriter, r *http.Request) {
+		m.jellyfinImage(w, r, "fanart")
+	})
+	mux.HandleFunc("DELETE /Items/{id}", func(w http.ResponseWriter, _ *http.Request) {
+		m.hit("jellyfin:delete")
+		if m.JellyfinDeletionDenied {
+			http.Error(w, "Forbidden", http.StatusForbidden)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	})
+	mux.HandleFunc("POST /Library/Refresh", func(w http.ResponseWriter, _ *http.Request) {
+		m.hit("jellyfin:refresh")
+		w.WriteHeader(http.StatusNoContent)
+	})
+	return m.wrap("jellyfin", func(r *http.Request) bool {
+		return r.Header.Get("Authorization") == `MediaBrowser Token="`+m.APIKey+`"`
+	}, mux)
+}
+
+// jellyfinID matches the ids of Jellyfin items and users.
+var jellyfinID = regexp.MustCompile(`^[0-9a-f]{32}$`)
+
+// jellyfinListing is the envelope of GET /Items.
+type jellyfinListing struct {
+	Items            []map[string]any `json:"Items"`
+	TotalRecordCount int              `json:"TotalRecordCount"`
+	StartIndex       int              `json:"StartIndex"`
+}
+
+// jellyfinItems serves GET /Items: the played or resumable items of a user
+// (userId), or the items of one type (includeItemTypes).
+func (m *Mock) jellyfinItems(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	var name string
+	if q.Has("userId") {
+		user := q.Get("userId")
+		if !jellyfinID.MatchString(user) {
+			http.Error(w, `{"error":"invalid userId"}`, http.StatusBadRequest)
+			return
+		}
+		switch {
+		case q.Get("isPlayed") == "true":
+			m.hit("jellyfin:played")
+			name = "jellyfin/played-" + user + ".json"
+		case strings.Contains(q.Get("filters"), "IsResumable"):
+			m.hit("jellyfin:resumable")
+			name = "jellyfin/resumable-" + user + ".json"
+		default:
+			http.Error(w, `{"error":"unsupported filter"}`, http.StatusBadRequest)
+			return
+		}
+	} else {
+		itemType := q.Get("includeItemTypes")
+		if itemType != "Movie" && itemType != "Series" && itemType != "Season" {
+			http.Error(w, `{"error":"unsupported includeItemTypes"}`, http.StatusBadRequest)
+			return
+		}
+		m.hit("jellyfin:items")
+		name = "jellyfin/items-" + itemType + ".json"
+	}
+	m.jellyfinPage(w, r, name)
+}
+
+// jellyfinPage serves one page of a GET /Items fixture (startIndex and limit).
+// A missing fixture is an empty listing: an unknown user has no items.
+func (m *Mock) jellyfinPage(w http.ResponseWriter, r *http.Request, name string) {
+	doc := jellyfinListing{Items: []map[string]any{}}
+	if err := m.readJSON(name, &doc); err != nil && !errors.Is(err, fs.ErrNotExist) {
+		http.Error(w, `{"error":"fixture unreadable"}`, http.StatusInternalServerError)
+		return
+	}
+	items := doc.Items
+	for _, row := range items {
+		m.shiftISO(row)
+	}
+	start := min(intParam(r, "startIndex", 0), len(items))
+	end := min(start+intParam(r, "limit", len(items)), len(items))
+	writeJSON(w, jellyfinListing{Items: items[start:end], TotalRecordCount: len(items), StartIndex: start})
+}
+
+// shiftISO moves the last played date of a Jellyfin item by ShiftSeconds.
+func (m *Mock) shiftISO(row map[string]any) {
+	if m.ShiftSeconds == 0 {
+		return
+	}
+	userData, _ := row["UserData"].(map[string]any)
+	s, _ := userData["LastPlayedDate"].(string)
+	t, err := time.Parse(time.RFC3339Nano, s)
+	if err != nil {
+		return
+	}
+	userData["LastPlayedDate"] = t.Add(time.Duration(m.ShiftSeconds) * time.Second).UTC().Format("2006-01-02T15:04:05.0000000Z")
+}
+
+// jellyfinImage serves a generated poster or backdrop for an item id, seeded
+// by the last 15 hex digits of the id.
+func (m *Mock) jellyfinImage(w http.ResponseWriter, r *http.Request, cover string) {
+	m.hit("jellyfin:image")
+	id := r.PathValue("id")
+	if !jellyfinID.MatchString(id) {
+		http.NotFound(w, r)
+		return
+	}
+	n, _ := strconv.ParseInt(id[17:], 16, 64)
+	w.Header().Set("Content-Type", "image/png")
+	_ = png.Encode(w, coverImage("jellyfin", n, cover))
 }
 
 func tautulliError(w http.ResponseWriter, msg string) {

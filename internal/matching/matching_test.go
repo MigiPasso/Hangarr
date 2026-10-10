@@ -31,17 +31,17 @@ func TestMatchPriorityAndFuzzy(t *testing.T) {
 		{MediaID: 6, Kind: KindMovie, Title: "Remake", Year: 2020},
 		{MediaID: 7, Kind: KindMovie, TmdbID: 999, Title: "Only In Radarr", Year: 2001},
 	}
-	plex := []PlexItem{
-		{Kind: KindSeries, RatingKey: "a", TvdbID: 81189, Title: "Breaking Bad"},
-		{Kind: KindSeries, RatingKey: "b", TmdbID: 63639, Title: "Expanse"},
-		{Kind: KindSeries, RatingKey: "c", Title: "Shogun", Year: 2024},
-		{Kind: KindMovie, RatingKey: "d", TmdbID: 27205, Title: "Inception"},
-		{Kind: KindMovie, RatingKey: "e", ImdbID: "tt0816692", Title: "Interstellar"},
-		{Kind: KindMovie, RatingKey: "f", Title: "Remake", Year: 1985}, // too far
-		{Kind: KindMovie, RatingKey: "g", Title: "Remake", Year: 2021}, // ±1
-		{Kind: KindMovie, RatingKey: "h", Title: "Home Videos"},
+	plex := []ServerItem{
+		{Kind: KindSeries, Key: "a", TvdbID: 81189, Title: "Breaking Bad"},
+		{Kind: KindSeries, Key: "b", TmdbID: 63639, Title: "Expanse"},
+		{Kind: KindSeries, Key: "c", Title: "Shogun", Year: 2024},
+		{Kind: KindMovie, Key: "d", TmdbID: 27205, Title: "Inception"},
+		{Kind: KindMovie, Key: "e", ImdbID: "tt0816692", Title: "Interstellar"},
+		{Kind: KindMovie, Key: "f", Title: "Remake", Year: 1985}, // too far
+		{Kind: KindMovie, Key: "g", Title: "Remake", Year: 2021}, // ±1
+		{Kind: KindMovie, Key: "h", Title: "Home Videos"},
 		// Same tvdb id as a movie must not cross kinds.
-		{Kind: KindMovie, RatingKey: "i", TmdbID: 1396, Title: "Something"},
+		{Kind: KindMovie, Key: "i", TmdbID: 1396, Title: "Something"},
 	}
 	links, plexOnly := Match(arr, plex)
 	got := map[int64]Link{}
@@ -66,7 +66,7 @@ func TestMatchPriorityAndFuzzy(t *testing.T) {
 	}
 	keys := map[string]bool{}
 	for _, p := range plexOnly {
-		keys[p.RatingKey] = true
+		keys[p.Key] = true
 	}
 	if len(plexOnly) != 3 || !keys["f"] || !keys["h"] || !keys["i"] {
 		t.Errorf("plex only: %+v", plexOnly)
@@ -79,7 +79,7 @@ func TestIDMatchBeatsFuzzy(t *testing.T) {
 		{MediaID: 1, Kind: KindMovie, Title: "Twin", Year: 2000},
 		{MediaID: 2, Kind: KindMovie, TmdbID: 5, Title: "Twin", Year: 2000},
 	}
-	plex := []PlexItem{{Kind: KindMovie, RatingKey: "x", TmdbID: 5, Title: "Twin", Year: 2000}}
+	plex := []ServerItem{{Kind: KindMovie, Key: "x", TmdbID: 5, Title: "Twin", Year: 2000}}
 	links, _ := Match(arr, plex)
 	if len(links) != 1 || links[0].MediaID != 2 || links[0].Method != MethodTMDB {
 		t.Fatalf("links: %+v", links)
@@ -127,15 +127,15 @@ func TestMatchByFileAndFolder(t *testing.T) {
 		{MediaID: 4, Kind: KindMovie, Title: "Flat One", Year: 2001, Folder: "/movies"},
 		{MediaID: 5, Kind: KindMovie, Title: "Flat Two", Year: 2002, Folder: "/movies"},
 	}
-	plex := []PlexItem{
+	plex := []ServerItem{
 		// Different mount, file renamed: the folder still matches.
-		{Kind: KindMovie, RatingKey: "a", Title: "Anatomie d'une chute", Year: 1970,
+		{Kind: KindMovie, Key: "a", Title: "Anatomie d'une chute", Year: 1970,
 			Files: []string{`D:\Films\Anatomy of a Fall (2023)\anatomie.mkv`}},
 		// Same file name, different folder.
-		{Kind: KindMovie, RatingKey: "b", Title: "L'Amour c'est surcôté", Year: 2025,
+		{Kind: KindMovie, Key: "b", Title: "L'Amour c'est surcôté", Year: 2025,
 			Files: []string{"/mnt/media/films/Love/Love.Is.Overrated.2025.mkv"}},
-		{Kind: KindSeries, RatingKey: "c", Title: "Dix pour cent", Year: 2015, Folders: []string{"/media/tv/Call My Agent!/"}},
-		{Kind: KindMovie, RatingKey: "d", Title: "Autre", Year: 2001, Files: []string{"/movies/autre.mkv"}},
+		{Kind: KindSeries, Key: "c", Title: "Dix pour cent", Year: 2015, Folders: []string{"/media/tv/Call My Agent!/"}},
+		{Kind: KindMovie, Key: "d", Title: "Autre", Year: 2001, Files: []string{"/movies/autre.mkv"}},
 	}
 	links, only := Match(arr, plex)
 	got := map[int64]string{}
@@ -143,12 +143,12 @@ func TestMatchByFileAndFolder(t *testing.T) {
 		if l.Method != MethodFile {
 			t.Errorf("link %+v: want method file", l)
 		}
-		got[l.MediaID] = l.RatingKey
+		got[l.MediaID] = l.Key
 	}
 	if got[1] != "a" || got[2] != "b" || got[3] != "c" || len(got) != 3 {
 		t.Errorf("links: %v", got)
 	}
-	if len(only) != 1 || only[0].RatingKey != "d" {
+	if len(only) != 1 || only[0].Key != "d" {
 		t.Errorf("plex only: %+v", only)
 	}
 }
@@ -156,13 +156,13 @@ func TestMatchByFileAndFolder(t *testing.T) {
 func TestMatchByAlternateTitle(t *testing.T) {
 	arr := []ArrItem{{MediaID: 1, Kind: KindMovie, Title: "Anatomy of a Fall", Year: 2023,
 		AltTitles: []string{"Anatomie d'une chute"}}}
-	plex := []PlexItem{{Kind: KindMovie, RatingKey: "a", Title: "Anatomie d’une chute", Year: 2023}}
+	plex := []ServerItem{{Kind: KindMovie, Key: "a", Title: "Anatomie d’une chute", Year: 2023}}
 	links, _ := Match(arr, plex)
 	if len(links) != 1 || links[0].Method != MethodFuzzy {
 		t.Fatalf("links: %+v", links)
 	}
 	// Plex original title against the main title.
-	plex = []PlexItem{{Kind: KindMovie, RatingKey: "a", Title: "Anatomie d'une chute", OriginalTitle: "Anatomy of a Fall", Year: 2024}}
+	plex = []ServerItem{{Kind: KindMovie, Key: "a", Title: "Anatomie d'une chute", OriginalTitle: "Anatomy of a Fall", Year: 2024}}
 	if links, _ := Match([]ArrItem{{MediaID: 1, Kind: KindMovie, Title: "Anatomy of a Fall", Year: 2023}}, plex); len(links) != 1 {
 		t.Errorf("original title: %+v", links)
 	}

@@ -5,7 +5,7 @@
 <section class="card settings-section" aria-labelledby="settings-sync">
   <header class="settings-head">
     <h2 id="settings-sync">{{t "Synchronization"}}</h2>
-    <p>{{t "Sonarr, Radarr, Plex and Tautulli are read on this schedule. “Sync now” in the top bar runs one immediately."}}</p>
+    <p>{{if eq (server) "Jellyfin"}}{{t "Sonarr, Radarr and Jellyfin are read on this schedule. “Sync now” in the top bar runs one immediately."}}{{else}}{{t "Sonarr, Radarr, Plex and Tautulli are read on this schedule. “Sync now” in the top bar runs one immediately."}}{{end}}</p>
   </header>
   {{template "settings_form" .}}
 </section>
@@ -57,7 +57,7 @@
   <div class="setting">
     <div>
       <label for="sync_every" class="setting-label">{{t "Frequency"}}</label>
-      <p id="sync-every-help" class="setting-help">{{t "Each sync reads every library again: a few a day is plenty, Tautulli's webhook already refreshes the history after each play."}}</p>
+      <p id="sync-every-help" class="setting-help">{{if eq (server) "Jellyfin"}}{{t "Each sync reads every library again: a few a day is plenty."}}{{else}}{{t "Each sync reads every library again: a few a day is plenty, Tautulli's webhook already refreshes the history after each play."}}{{end}}</p>
     </div>
     <div class="setting-control">
       <select id="sync_every" name="sync_every" aria-describedby="sync-every-help">

@@ -1,5 +1,5 @@
 // Package upstream holds the effective configuration of the upstream services
-// (Sonarr, Radarr, Plex, Tautulli) and the clients built from it.
+// (Sonarr, Radarr, Plex or Jellyfin, Tautulli) and the clients built from it.
 //
 // A value comes from the environment when the variable is set (it then wins
 // and is locked in the UI), otherwise from the database (Configuration page;
@@ -14,6 +14,7 @@ import (
 	"sync/atomic"
 
 	"hangarr/internal/clients/httpx"
+	"hangarr/internal/clients/jellyfin"
 	"hangarr/internal/clients/plex"
 	"hangarr/internal/clients/radarr"
 	"hangarr/internal/clients/sonarr"
@@ -21,16 +22,18 @@ import (
 	"hangarr/internal/config"
 )
 
-// Service names.
+// Service names. Plex and Jellyfin are also the media server names
+// (store.ServerPlex, store.ServerJellyfin).
 const (
 	Sonarr   = "sonarr"
 	Radarr   = "radarr"
 	Plex     = "plex"
+	Jellyfin = "jellyfin"
 	Tautulli = "tautulli"
 )
 
 // Services lists the services in display order.
-var Services = []string{Sonarr, Radarr, Plex, Tautulli}
+var Services = []string{Sonarr, Radarr, Plex, Jellyfin, Tautulli}
 
 // ServiceLabel is the display name of a service.
 func ServiceLabel(svc string) string {
@@ -41,6 +44,8 @@ func ServiceLabel(svc string) string {
 		return "Radarr"
 	case Plex:
 		return "Plex"
+	case Jellyfin:
+		return "Jellyfin"
 	case Tautulli:
 		return "Tautulli"
 	}
@@ -66,20 +71,23 @@ type Field struct {
 
 // Field keys.
 const (
-	SonarrURL        = "sonarr.url"
-	SonarrPublicURL  = "sonarr.public_url"
-	SonarrAPIKey     = "sonarr.api_key" //nolint:gosec // G101: field name, not a credential
-	RadarrURL        = "radarr.url"
-	RadarrPublicURL  = "radarr.public_url"
-	RadarrAPIKey     = "radarr.api_key" //nolint:gosec // G101: field name, not a credential
-	PlexURL          = "plex.url"
-	PlexPublicURL    = "plex.public_url"
-	PlexToken        = "plex.token"
-	TautulliURL      = "tautulli.url"
-	TautulliAPIKey   = "tautulli.api_key" //nolint:gosec // G101: field name, not a credential
-	TautulliWebhook  = "tautulli.webhook_secret"
-	MinWebhookSecret = 32
-	publicURLHelp    = "Address your browser opens for the “open in” links. Default: the API URL."
+	SonarrURL         = "sonarr.url"
+	SonarrPublicURL   = "sonarr.public_url"
+	SonarrAPIKey      = "sonarr.api_key" //nolint:gosec // G101: field name, not a credential
+	RadarrURL         = "radarr.url"
+	RadarrPublicURL   = "radarr.public_url"
+	RadarrAPIKey      = "radarr.api_key" //nolint:gosec // G101: field name, not a credential
+	PlexURL           = "plex.url"
+	PlexPublicURL     = "plex.public_url"
+	PlexToken         = "plex.token"
+	JellyfinURL       = "jellyfin.url"
+	JellyfinPublicURL = "jellyfin.public_url"
+	JellyfinAPIKey    = "jellyfin.api_key" //nolint:gosec // G101: field name, not a credential
+	TautulliURL       = "tautulli.url"
+	TautulliAPIKey    = "tautulli.api_key" //nolint:gosec // G101: field name, not a credential
+	TautulliWebhook   = "tautulli.webhook_secret"
+	MinWebhookSecret  = 32
+	publicURLHelp     = "Address your browser opens for the “open in” links. Default: the API URL."
 )
 
 // Fields lists every configurable value.
@@ -97,6 +105,10 @@ var Fields = []Field{
 		Help: "Plex Web address for the “open in Plex” links. Default: app.plex.tv."},
 	{Key: PlexToken, Service: Plex, Env: "PLEX_TOKEN", Label: "Token (X-Plex-Token)", Kind: KindSecret, Required: true,
 		Help: "Plex Web: ⋯ → Get Info → View XML; the URL contains X-Plex-Token=…"},
+	{Key: JellyfinURL, Service: Jellyfin, Env: "JELLYFIN_URL", Label: "Server URL", Kind: KindURL, Required: true},
+	{Key: JellyfinPublicURL, Service: Jellyfin, Env: "JELLYFIN_PUBLIC_URL", Label: "Public URL", Help: publicURLHelp, Kind: KindURL},
+	{Key: JellyfinAPIKey, Service: Jellyfin, Env: "JELLYFIN_API_KEY", Label: "API key", Kind: KindSecret, Required: true,
+		Help: "Dashboard → API Keys → +."},
 	{Key: TautulliURL, Service: Tautulli, Env: "TAUTULLI_URL", Label: "API URL", Kind: KindURL, Required: true},
 	{Key: TautulliAPIKey, Service: Tautulli, Env: "TAUTULLI_API_KEY", Label: "API key", Kind: KindSecret, Required: true,
 		Help: "Settings → Web Interface → API (check “Enable API”)."},
@@ -124,6 +136,7 @@ func EnvValues(c *config.Config) Values {
 		SonarrURL: c.SonarrURL, SonarrPublicURL: c.SonarrPublicURL, SonarrAPIKey: c.SonarrAPIKey,
 		RadarrURL: c.RadarrURL, RadarrPublicURL: c.RadarrPublicURL, RadarrAPIKey: c.RadarrAPIKey,
 		PlexURL: c.PlexURL, PlexPublicURL: c.PlexPublicURL, PlexToken: c.PlexToken,
+		JellyfinURL: c.JellyfinURL, JellyfinPublicURL: c.JellyfinPublicURL, JellyfinAPIKey: c.JellyfinAPIKey,
 		TautulliURL: c.TautulliURL, TautulliAPIKey: c.TautulliAPIKey, TautulliWebhook: c.TautulliWebhookSecret,
 	}
 	for k, val := range v {
@@ -144,6 +157,27 @@ func (v Values) complete(svc string) bool {
 	return true
 }
 
+// Disabled returns why svc cannot be configured with the effective values v
+// (an English key, shown as is), "" when it can. One media server at a time:
+// Plex and Jellyfin exclude each other, and Tautulli only feeds Plex.
+func Disabled(v Values, svc string) string {
+	switch svc {
+	case Jellyfin:
+		if v.complete(Plex) {
+			return "Plex is configured: clear it to use Jellyfin."
+		}
+	case Plex:
+		if v.complete(Jellyfin) {
+			return "Jellyfin is configured: clear it to use Plex."
+		}
+	case Tautulli:
+		if v.complete(Jellyfin) {
+			return "Tautulli only works with Plex: it is not read while Jellyfin is used."
+		}
+	}
+	return ""
+}
+
 // Clients is an immutable snapshot of the effective configuration and the
 // clients built from it. A client is nil when its service is incomplete.
 type Clients struct {
@@ -151,8 +185,14 @@ type Clients struct {
 	Sonarr   *sonarr.Client
 	Radarr   *radarr.Client
 	Plex     *plex.Client
+	Jellyfin *jellyfin.Client
 	Tautulli *tautulli.Client
-	// HistorySource is "merged", "tautulli" or "plex" (resolved HISTORY_SOURCE).
+	// MediaServer is the media server the sync reads, Plex or Jellyfin (Plex
+	// unless Jellyfin is the only one configured).
+	MediaServer    string
+	ServerConflict bool // Plex and Jellyfin are both configured: nothing is synced until one is cleared
+	// HistorySource is "merged", "tautulli" or "plex" (resolved
+	// HISTORY_SOURCE), or "jellyfin" when Jellyfin is the media server.
 	HistorySource string
 	// Missing lists the services the synchronization still needs.
 	Missing []string
@@ -171,10 +211,20 @@ func Build(v Values, mode string) *Clients {
 	if v.complete(Plex) {
 		c.Plex = plex.New(v[PlexURL], v[PlexToken])
 	}
+	if v.complete(Jellyfin) {
+		c.Jellyfin = jellyfin.New(v[JellyfinURL], v[JellyfinAPIKey])
+	}
 	if v.complete(Tautulli) {
 		c.Tautulli = tautulli.New(v[TautulliURL], v[TautulliAPIKey])
 	}
+	c.MediaServer = Plex
+	if c.Jellyfin != nil && c.Plex == nil {
+		c.MediaServer = Jellyfin
+	}
+	c.ServerConflict = c.Plex != nil && c.Jellyfin != nil
 	switch {
+	case c.MediaServer == Jellyfin:
+		c.HistorySource = config.HistoryJellyfin
 	case mode == config.HistoryPlex:
 		c.HistorySource = config.HistoryPlex
 	case mode == config.HistoryTautulli:
@@ -184,24 +234,30 @@ func Build(v Values, mode string) *Clients {
 	default:
 		c.HistorySource = config.HistoryPlex
 	}
-	for _, svc := range []string{Sonarr, Radarr, Plex} {
+	for _, svc := range []string{Sonarr, Radarr} {
 		if !v.complete(svc) {
 			c.Missing = append(c.Missing, ServiceLabel(svc))
 		}
 	}
-	if c.HistorySource != config.HistoryPlex && c.Tautulli == nil {
+	if c.Plex == nil && c.Jellyfin == nil {
+		c.Missing = append(c.Missing, ServiceLabel(Plex)+" / "+ServiceLabel(Jellyfin))
+	}
+	if c.MediaServer == Plex && c.HistorySource != config.HistoryPlex && c.Tautulli == nil {
 		c.Missing = append(c.Missing, ServiceLabel(Tautulli))
 	}
 	return c
 }
 
 // Ready reports whether the synchronization can run.
-func (c *Clients) Ready() bool { return len(c.Missing) == 0 }
+func (c *Clients) Ready() bool { return len(c.Missing) == 0 && !c.ServerConflict }
+
+// ServerLabel is the display name of the media server.
+func (c *Clients) ServerLabel() string { return ServiceLabel(c.MediaServer) }
 
 // HistoryClient returns the Tautulli client when Tautulli feeds the history
-// (tautulli or merged).
+// (tautulli or merged, Plex being the media server).
 func (c *Clients) HistoryClient() *tautulli.Client {
-	if c.HistorySource == config.HistoryPlex {
+	if c.HistorySource != config.HistoryTautulli && c.HistorySource != config.HistoryMerged {
 		return nil
 	}
 	return c.Tautulli
@@ -209,11 +265,22 @@ func (c *Clients) HistoryClient() *tautulli.Client {
 
 // PlexHistory reports whether the Plex history is read (plex or merged).
 func (c *Clients) PlexHistory() bool {
-	return c.Plex != nil && c.HistorySource != config.HistoryTautulli
+	return c.Plex != nil && (c.HistorySource == config.HistoryPlex || c.HistorySource == config.HistoryMerged)
 }
 
-// Merged reports whether both histories are read and merged.
+// JellyfinHistory reports whether the Jellyfin history is read.
+func (c *Clients) JellyfinHistory() bool {
+	return c.Jellyfin != nil && c.HistorySource == config.HistoryJellyfin
+}
+
+// Merged reports whether both Plex histories are read and merged.
 func (c *Clients) Merged() bool { return c.HistorySource == config.HistoryMerged }
+
+// NoDurations reports whether the history has no play durations (Plex or
+// Jellyfin alone).
+func (c *Clients) NoDurations() bool {
+	return c.HistorySource == config.HistoryPlex || c.HistorySource == config.HistoryJellyfin
+}
 
 // SonarrWebURL is the Sonarr URL for browser links.
 func (c *Clients) SonarrWebURL() string {
@@ -227,6 +294,11 @@ func (c *Clients) RadarrWebURL() string {
 
 // PlexWebURL is the Plex Web base URL ("" means app.plex.tv).
 func (c *Clients) PlexWebURL() string { return c.Values[PlexPublicURL] }
+
+// JellyfinWebURL is the Jellyfin URL for browser links.
+func (c *Clients) JellyfinWebURL() string {
+	return firstNonEmpty(c.Values[JellyfinPublicURL], c.Values[JellyfinURL])
+}
 
 // WebhookSecret is the Tautulli webhook secret ("" disables the webhook).
 func (c *Clients) WebhookSecret() string { return c.Values[TautulliWebhook] }
@@ -260,7 +332,7 @@ func (r *Registry) Get() *Clients {
 }
 
 // ImageHTTP returns the HTTP client serving images: Sonarr ("series"),
-// Radarr ("movie") or Plex ("plex"),
+// Radarr ("movie"), Plex ("plex") or Jellyfin ("jellyfin"),
 // nil when the service is not configured (image proxy).
 func (r *Registry) ImageHTTP(kind string) *httpx.Client {
 	c := r.Get()
@@ -271,6 +343,8 @@ func (r *Registry) ImageHTTP(kind string) *httpx.Client {
 		return c.Sonarr.HTTP
 	case kind == "plex" && c.Plex != nil:
 		return c.Plex.HTTP
+	case kind == "jellyfin" && c.Jellyfin != nil:
+		return c.Jellyfin.HTTP
 	}
 	return nil
 }
@@ -295,10 +369,15 @@ func mask(v string) string {
 func normalizeURL(v string) string { return strings.TrimRight(strings.TrimSpace(v), "/") }
 
 // TestValues returns complete values for the four services at urls (keyed
-// by service name), all with the same credential (tests and mockarr).
+// by service name), all with the same credential (tests and mockarr). Plex
+// is the media server; Jellyfin is added when urls has it.
 func TestValues(urls map[string]string, key string) Values {
-	return Values{
+	v := Values{
 		SonarrURL: urls[Sonarr], SonarrAPIKey: key, RadarrURL: urls[Radarr], RadarrAPIKey: key,
 		PlexURL: urls[Plex], PlexToken: key, TautulliURL: urls[Tautulli], TautulliAPIKey: key,
 	}
+	if urls[Jellyfin] != "" {
+		v[JellyfinURL], v[JellyfinAPIKey] = urls[Jellyfin], key
+	}
+	return v
 }

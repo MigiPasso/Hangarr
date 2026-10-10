@@ -2,7 +2,7 @@
 
 # Hangarr
 
-Tour de contrôle auto-hébergée (Go + HTMX) d'une stack *arr : elle croise Tautulli, Plex, Sonarr et Radarr pour
+Tour de contrôle auto-hébergée (Go + HTMX) d'une stack *arr : elle croise Tautulli, Plex ou Jellyfin, Sonarr et Radarr pour
 savoir ce qui est regardé, par qui, ce qui ne l'est jamais, ce qui arrive bientôt, si tout va bien, et faire le ménage
 proprement. Comme un hangar, on y range un peu tout. Spécification complète : [SPEC.md](SPEC.md).
 
@@ -11,9 +11,9 @@ proprement. Comme un hangar, on y range un peu tout. Spécification complète : 
 - **Tableau de bord** : volumes, espace récupérable, temps de visionnage, dernières lectures.
 - **Séries / Films** : grille d'affiches ou tableau, recherche, défilement infini. Filtres « une question = un
   filtre » : *Qui ?* (tout le monde ou un spectateur : états et dernières vues deviennent les siens), *État*, *Pas
-  regardé depuis* (jamais vu : depuis l'ajout), *Ajouté*, *Taille*, *Statut*, *Présent dans* (Plex et/ou Sonarr/Radarr) ;
+  regardé depuis* (jamais vu : depuis l'ajout), *Ajouté*, *Taille*, *Statut*, *Présent dans* (Plex ou Jellyfin, et/ou Sonarr/Radarr) ;
   genres, année, note, tags, profil et réseau/studio sous « Plus de filtres ».
-- **Fiche** : progression par saison et par spectateur, historique, liens vers Sonarr, Radarr et Plex.
+- **Fiche** : progression par saison et par spectateur, historique, liens vers Sonarr, Radarr et Plex ou Jellyfin.
 - **À venir** : calendrier des sorties de ce qui est monitoré (épisodes Sonarr, sorties cinéma / numérique / physique
   Radarr), lu en direct, en liste ou en grille d'affiches paginées (30 jours, 3 mois ou 1 an ; 10, 25, 50 ou 100 par page), ou en calendrier
   mensuel ; épisodes sortis le même jour regroupés, premières et finales
@@ -21,10 +21,12 @@ proprement. Comme un hangar, on y range un peu tout. Spécification complète : 
 - **Nettoyage** : ce que personne n'a regardé depuis N jours (réglable), trié par taille avec la raison, filtrable par
   type, état, lectures, taille et ancienneté ; saisons jamais vues des séries regardées par ailleurs.
 - **Suppressions** par Sonarr/Radarr (série, saison, film ; fichiers puis démonitorage pour une saison), une par une ou
-  par lot. Un élément que **seul Plex connaît** (retiré de Sonarr/Radarr) est supprimé par Plex, fichiers compris :
-  activer *Paramètres › Bibliothèque › Autoriser la suppression des médias* sur le serveur Plex.
-- **Protection** : tag Sonarr/Radarr (premier de `PROTECTED_TAGS`) ; pour un élément Plex seul, protection gardée
-  dans Hangarr uniquement (rien n'est envoyé à Plex). Un élément protégé n'est jamais proposé ni supprimé.
+  par lot. Un élément que **seul le serveur multimédia connaît** (Plex ou Jellyfin, retiré de Sonarr/Radarr) est supprimé
+  par ce serveur, fichiers compris. Sur Plex, activer *Paramètres › Bibliothèque › Autoriser la suppression des médias* ;
+  sur Jellyfin, la suppression passe par la clé d'API (un refus de Jellyfin est signalé).
+- **Protection** : tag Sonarr/Radarr (premier de `PROTECTED_TAGS`) ; pour un élément que seul le serveur multimédia
+  connaît, protection gardée dans Hangarr uniquement (rien n'est envoyé au serveur). Un élément protégé n'est jamais
+  proposé ni supprimé.
 - Garde-fous côté serveur : `DRY_RUN=true` par défaut (tout est simulé et journalisé), tag relu en direct, titre à
   saisir pour une série entière, journal de toutes les tentatives.
 - **Stats** (par période et par spectateur), **Santé** (services vérifiés en direct, historique des synchronisations,
@@ -55,10 +57,20 @@ conteneurs.
 | `make sync` | `docker compose -f compose.dev.yml exec app hangarr sync --once` |
 | `make deploy-check` | valide `compose.yml` puis le démarre tel quel contre le mock (projet séparé) et lance `deploy/check.sh` |
 | `make capture-fixtures` | `HANGARR_ENV_FILE=.env docker compose -f compose.dev.yml --profile real run --rm capture` |
+| `make jellyfin-lab` | `docker compose -f deploy/jellyfin-lab/compose.yml up -d --wait jellyfin`, puis `docker compose -f deploy/jellyfin-lab/compose.yml run --rm seed` |
+| `make jellyfin-lab-capture` | `HOST_UID=$(id -u) HOST_GID=$(id -g) docker compose -f deploy/jellyfin-lab/compose.yml --profile capture run --rm capture` |
+| `make jellyfin-lab-down` | `docker compose -f deploy/jellyfin-lab/compose.yml --profile capture down -v --remove-orphans` |
 | `make clean` | `docker compose -f compose.dev.yml --profile real --profile tools --profile e2e down -v` |
 
 `make dev` lance l'application en hot reload sur http://localhost:8080 contre `mockarr`, de faux
 Sonarr/Radarr/Plex/Tautulli. `DRY_RUN=true` est toujours actif par défaut.
+
+`MEDIA` choisit le serveur multimédia de cette instance : `MEDIA=jellyfin make dev` (Jellyfin du mock, sans Plex ni
+Tautulli) ou `MEDIA=none make dev` (aucun serveur : Plex ou Jellyfin se configurent ensuite dans la page Configuration).
+Sans `MEDIA`, c'est Plex et Tautulli du mock.
+
+Le laboratoire Jellyfin (un vrai serveur avec le scénario de test) est décrit dans
+[deploy/jellyfin-lab/README.md](deploy/jellyfin-lab/README.md).
 
 Pour travailler contre les vraies instances : `cp .env.example .env`, remplir les URL et les clés, puis `make dev-real`.
 Pour valider les structs sur vos vraies réponses : `make capture-fixtures`, qui écrit des réponses anonymisées dans
@@ -96,6 +108,7 @@ En dev, `compose.dev.yml` la fixe : connexion directe avec **`admin` / `Hangarr-
   `X-Plex-Token=…`. Voir aussi la documentation officielle « Finding an authentication token / X-Plex-Token ».
   Utiliser le token du propriétaire du serveur (nécessaire pour l'historique de tous les comptes et les suppressions
   par Plex).
+- **Jellyfin** : *Tableau de bord → Clés API → +*, puis copier la clé.
 
 ## Anciennement Cleanarr
 
@@ -105,7 +118,7 @@ anciennes variables `CLEANARR_MASTER_KEY*` et en-tête `X-Cleanarr-Token` encore
 
 ## Déploiement
 
-Guide complet, de la publication de l'image à la connexion de Sonarr, Radarr, Plex et Tautulli, avec le dépannage :
+Guide complet, de la publication de l'image à la connexion de Sonarr, Radarr, Plex (ou Jellyfin) et Tautulli, avec le dépannage :
 [docs/deploiement.md](docs/deploiement.md). Les sections ci-dessous en sont l'essentiel.
 
 ## Déploiement avec Docker
@@ -119,7 +132,7 @@ docker compose up -d --build
 docker compose logs hangarr | grep -A4 "INITIAL ADMIN"   # mot de passe initial, affiché une seule fois
 ```
 
-Ouvrir `http://<hôte>:8080`, changer le mot de passe, puis configurer Sonarr, Radarr, Plex et Tautulli dans
+Ouvrir `http://<hôte>:8080`, changer le mot de passe, puis configurer Sonarr, Radarr, Plex (ou Jellyfin) et Tautulli dans
 **Configuration** (bouton « Tester la connexion »). La première synchronisation part dès que la configuration est complète.
 
 - **Sans HTTPS** (test sur le réseau local) : mettre `COOKIE_SECURE=false` dans `.env`, sinon le navigateur refuse le
@@ -186,7 +199,7 @@ navigateur). `DEFAULT_LANG=fr` fait démarrer une instance en français.
 
 ## Configuration des services
 
-Sonarr, Radarr, Plex et Tautulli se configurent dans la page **Configuration** (URL, URL publique, clé d'API ou token,
+Sonarr, Radarr, Plex (ou Jellyfin) et Tautulli se configurent dans la page **Configuration** (URL, URL publique, clé d'API ou token,
 bouton « Tester la connexion »). Sans configuration, l'application démarre quand même : la synchronisation est
 désactivée et un bandeau invite à configurer. La première synchronisation part dès que la configuration est complète.
 
@@ -202,6 +215,38 @@ désactivée et un bandeau invite à configurer. La première synchronisation pa
   valeur définie dans l'environnement est utilisée telle quelle et verrouillée dans l'UI.
 - Les secrets ne sont jamais renvoyés au navigateur (seuls `••••` et les 4 derniers caractères s'affichent). Un champ
   laissé vide conserve la valeur actuelle. Chaque modification est inscrite dans le journal (onglet Sécurité).
+
+### Plex ou Jellyfin
+
+Hangarr lit un seul serveur multimédia à la fois : Plex ou Jellyfin. Tautulli et `HISTORY_SOURCE` ne concernent que
+Plex : avec Jellyfin, Tautulli n'est pas nécessaire et `HISTORY_SOURCE` est ignoré.
+
+- **Choix** : configurez Plex **ou** Jellyfin, pas les deux ; celui qui est configuré est utilisé. Sur **Configuration**, la
+  carte de l'autre est grisée (« Plex est configuré : videz sa configuration pour utiliser Jellyfin. ») ; Tautulli ne
+  sert qu'avec Plex, sa carte est donc grisée avec Jellyfin. Vider une valeur reste toujours possible, et le serveur
+  vérifie aussi le choix : il refuse l'enregistrement. Pour changer de serveur, videz la configuration de l'un puis
+  configurez l'autre. Définir `PLEX_*` et `JELLYFIN_*` en même temps dans l'environnement empêche le démarrage
+  (« PLEX_* and JELLYFIN_* are both set… »).
+  Si les deux se retrouvent configurés quand même (l'un par l'environnement, l'autre dans l'interface), rien n'est
+  synchronisé et aucune suppression via le serveur n'est faite tant que l'un des deux n'est pas vidé ; un bandeau le
+  signale. Le serveur utilisé est rappelé par une pastille dans la barre du haut.
+- **Données de l'autre serveur** : rien n'est supprimé. Les éléments qu'il est seul à connaître sont masqués (ni dans la
+  bibliothèque, ni supprimables), leurs protections locales sont gardées, et ils reviennent quand on le réutilise.
+  L'historique déjà lu reste dans les statistiques.
+- **Pas de double comptage** : quand l'état « vu » passe d'un serveur à l'autre (outil de synchronisation entre Plex et
+  Jellyfin, ou migration), une lecture Jellyfin du même spectateur, du même élément (même épisode), datée de 30 min
+  avant à 24 h après une lecture Plex/Tautulli, est la même lecture : seule celle de Plex/Tautulli est gardée (elle a
+  les durées), et elle passe à « vu » si Jellyfin le dit et qu'aucune autre lecture Plex ne l'explique. Les éléments
+  marqués vus en masse (au moins 20 dans la même minute, typique d'une migration datée du jour de l'import) sont
+  rapprochés des lectures Plex quelle que soit leur date. Une vraie relecture le lendemain sur l'autre serveur est
+  donc absorbée.
+- **Spectateurs** : les utilisateurs Jellyfin sont rattachés par nom aux spectateurs existants ; un nom inconnu crée un
+  nouveau spectateur.
+- **Historique Jellyfin** : il vient de Jellyfin lui-même. Jellyfin ne garde que la dernière lecture de chaque élément
+  par utilisateur, sans durées : une lecture rejouée ne compte qu'une fois. Les lectures commencées et non terminées y
+  figurent, avec leur progression.
+- **Synchronisation** : il n'existe pas de webhook Jellyfin pour l'instant. L'historique suit la synchronisation
+  planifiée ou le bouton « Synchroniser ».
 
 ## Webhook Tautulli (recommandé)
 
@@ -227,6 +272,10 @@ Toutes les variables sont décrites dans [SPEC.md §10](SPEC.md#10-configuration
   se règlent ensuite dans Réglages ;
 - pas de Prowlarr : les variables `PROWLARR_*` n'existent pas.
 
-Ajouts : `SONARR_PUBLIC_URL`, `RADARR_PUBLIC_URL` et `PLEX_PUBLIC_URL` (optionnels) donnent les adresses utilisées par les
-liens « Ouvrir dans Sonarr/Radarr/Plex » quand les URL d'API ne sont pas joignables depuis le navigateur (Service
-Kubernetes interne). Par défaut : les URL d'API, et app.plex.tv pour Plex.
+Ajouts : `SONARR_PUBLIC_URL`, `RADARR_PUBLIC_URL`, `PLEX_PUBLIC_URL` et `JELLYFIN_PUBLIC_URL` (optionnels) donnent les
+adresses utilisées par les liens « Ouvrir dans Sonarr/Radarr/Plex/Jellyfin » quand les URL d'API ne sont pas joignables
+depuis le navigateur (Service Kubernetes interne). Par défaut : les URL d'API, et app.plex.tv pour Plex.
+
+Jellyfin se configure avec `JELLYFIN_URL`, `JELLYFIN_API_KEY` (ou `JELLYFIN_API_KEY_FILE`), à la place de Plex (voir
+« Plex ou Jellyfin »). `PLEX_REFRESH_AFTER_DELETE` (`true` par défaut) demande au serveur utilisé de rescanner après une
+suppression de fichiers : Plex, ou toutes les bibliothèques Jellyfin.

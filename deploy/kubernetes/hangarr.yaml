@@ -11,8 +11,8 @@
 #   4. Initial admin password (shown once):
 #        kubectl -n <ns> logs deploy/hangarr | grep -A4 "INITIAL ADMIN"
 #   5. Open the app (port-forward, or the Service / Ingress you choose), then
-#      configure Sonarr, Radarr, Plex and Tautulli in « Services » with their
-#      in-cluster addresses, e.g. http://sonarr:8989 in the same namespace.
+#      configure Sonarr, Radarr, Plex (or Jellyfin) and Tautulli in « Services »
+#      with their in-cluster addresses, e.g. http://sonarr:8989 in the same namespace.
 #
 # One replica only (SQLite on a ReadWriteOnce volume), Recreate strategy.
 apiVersion: v1

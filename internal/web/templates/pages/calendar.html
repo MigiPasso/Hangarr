@@ -46,7 +46,7 @@
   <article class="media-card cal-card{{if .HasFile}} cal-done{{end}}">
     {{if .MediaID}}<a class="card-link" href="{{mediaPath .Kind}}/{{.MediaID}}" hx-get="{{mediaPath .Kind}}/{{.MediaID}}" hx-target="#modal-body" aria-label="{{.Title}}">{{end}}
     <div class="poster">
-      {{if .MediaID}}<img src="{{imgURL .Kind .ArrID "" "poster"}}" alt="" loading="lazy" decoding="async" width="200" height="300">{{else}}<div class="poster-fallback">{{.Title}}</div>{{end}}
+      {{if .MediaID}}<img src="{{imgURL .Kind .ArrID "" "" "poster"}}" alt="" loading="lazy" decoding="async" width="200" height="300">{{else}}<div class="poster-fallback">{{.Title}}</div>{{end}}
       <span class="badge state">{{.What}}</span>
     </div>
     <div class="media-meta">
@@ -67,7 +67,7 @@
     <ul class="recent">
       {{range .Entries}}
       <li>
-        {{if .MediaID}}<img src="{{imgURL .Kind .ArrID "" "poster"}}" alt="" width="36" height="54" loading="lazy" decoding="async">{{else}}<span class="thumb-fallback"></span>{{end}}
+        {{if .MediaID}}<img src="{{imgURL .Kind .ArrID "" "" "poster"}}" alt="" width="36" height="54" loading="lazy" decoding="async">{{else}}<span class="thumb-fallback"></span>{{end}}
         <div class="cal-entry">
           <div>
             {{if .MediaID}}<a href="{{mediaPath .Kind}}/{{.MediaID}}" hx-get="{{mediaPath .Kind}}/{{.MediaID}}" hx-target="#modal-body">{{.Title}}</a>{{else}}<span>{{.Title}}</span>{{end}}

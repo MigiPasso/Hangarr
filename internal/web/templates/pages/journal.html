@@ -13,7 +13,7 @@
     {{range $d.Actions}}
       <tr>
         <td>{{datetime .At}}</td>
-        <td>{{if eq .Action "delete_series"}}{{t "Series deleted"}}{{else if eq .Action "delete_season"}}{{t "Season deleted"}}{{else if eq .Action "delete_movie"}}{{t "Movie deleted"}}{{else if eq .Action "delete_plex"}}{{t "Deleted through Plex"}}{{else if eq .Action "protect"}}{{t "Protected"}}{{else if eq .Action "unprotect"}}{{t "Protection removed"}}{{else}}{{.Action}}{{end}}</td>
+        <td>{{if eq .Action "delete_series"}}{{t "Series deleted"}}{{else if eq .Action "delete_season"}}{{t "Season deleted"}}{{else if eq .Action "delete_movie"}}{{t "Movie deleted"}}{{else if eq .Action "delete_plex"}}{{t "Deleted through Plex"}}{{else if eq .Action "delete_jellyfin"}}{{t "Deleted through Jellyfin"}}{{else if eq .Action "protect"}}{{t "Protected"}}{{else if eq .Action "unprotect"}}{{t "Protection removed"}}{{else}}{{.Action}}{{end}}</td>
         <td>{{.Title}}{{if .SeasonNumber}} · {{t "season %d" (deref .SeasonNumber)}}{{end}}</td>
         <td class="num">{{if .SizeFreedBytes}}{{bytes .SizeFreedBytes}}{{else}}–{{end}}</td>
         <td class="small">{{if or (eq .Action "protect") (eq .Action "unprotect")}}–{{else}}{{if .DeleteFiles}}{{t "files"}}{{else}}{{t "without files"}}{{end}}{{if .ImportExclusion}} · {{t "exclusion"}}{{end}}{{end}}</td>

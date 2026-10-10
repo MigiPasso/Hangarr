@@ -216,88 +216,134 @@ func (s *Store) ListArrMedia(ctx context.Context) ([]ArrMedia, error) {
 	return out, rows.Err()
 }
 
-// PlexLink attaches a Plex rating key to an arr media row.
-type PlexLink struct {
-	MediaID   int64
-	RatingKey string
-	Method    string
+// Media servers: the server whose catalog the sync reads (one at a time).
+const (
+	ServerPlex     = "plex"
+	ServerJellyfin = "jellyfin"
+)
+
+// serverColumns maps a server to its key column (whitelist: the name is
+// concatenated into SQL).
+var serverColumns = map[string]string{ServerPlex: "plex_rating_key", ServerJellyfin: "jellyfin_id"}
+
+// SettingCatalogServer records the server of the last catalog match: the
+// match states describe that server.
+const SettingCatalogServer = "catalog_server"
+
+// ServerLink attaches a media server key (Plex rating key or Jellyfin id)
+// to an arr media row.
+type ServerLink struct {
+	MediaID int64
+	Key     string
+	Method  string
 }
 
-// PlexOnlyItem is a Plex item not managed by Sonarr/Radarr.
-type PlexOnlyItem struct {
-	Kind      string
-	RatingKey string
-	Title     string
-	Year      int
-	TvdbID    int64
-	TmdbID    int64
-	ImdbID    string
-	AddedAt   int64
+// ServerOnlyItem is a media server item not managed by Sonarr/Radarr.
+type ServerOnlyItem struct {
+	Kind    string
+	Key     string
+	Title   string
+	Year    int
+	TvdbID  int64
+	TmdbID  int64
+	ImdbID  string
+	AddedAt int64
 }
 
-// PlexSeason maps a Plex season to its show.
-type PlexSeason struct {
-	ShowRatingKey string
-	Number        int
-	RatingKey     string
+// ServerSeason maps a media server season to its show.
+type ServerSeason struct {
+	ShowKey string
+	Number  int
+	Key     string
 }
 
-// ApplyPlexMatches stores the result of a matching pass in one transaction:
-// arr rows get their link (or become arr_only), plex_only rows are upserted
-// and stale ones deleted, and Sonarr seasons get their Plex rating keys.
-func (s *Store) ApplyPlexMatches(ctx context.Context, links []PlexLink, plexOnly []PlexOnlyItem, seasons []PlexSeason, now time.Time) error {
+// ApplyServerMatches stores the result of a matching pass against server in
+// one transaction: arr rows get their link to it (or become arr_only), its
+// server_only rows are upserted and stale ones deleted, and Sonarr seasons
+// get its season keys. The keys of the other server are left as they are
+// (its history stays linked) and the items only it knows are hidden, with
+// their local protection, until it is the catalog server again.
+func (s *Store) ApplyServerMatches(ctx context.Context, server string, links []ServerLink, only []ServerOnlyItem,
+	seasons []ServerSeason, now time.Time) error {
+	col, ok := serverColumns[server]
+	if !ok {
+		return fmt.Errorf("unknown media server %q", server)
+	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	if _, err := tx.ExecContext(ctx, `UPDATE media SET plex_rating_key = NULL, match_state = 'arr_only',
+	//nolint:gosec // G202: col comes from the serverColumns whitelist
+	if _, err := tx.ExecContext(ctx, `UPDATE media SET `+col+` = NULL, match_state = 'arr_only',
 		match_method = NULL WHERE arr_id IS NOT NULL`); err != nil {
 		return err
 	}
 	for _, l := range links {
-		if _, err := tx.ExecContext(ctx, `UPDATE media SET plex_rating_key = ?, match_state = 'matched',
-			match_method = ? WHERE id = ?`, l.RatingKey, l.Method, l.MediaID); err != nil {
+		//nolint:gosec // G202: col comes from the serverColumns whitelist
+		if _, err := tx.ExecContext(ctx, `UPDATE media SET `+col+` = ?, match_state = 'matched',
+			match_method = ? WHERE id = ?`, l.Key, l.Method, l.MediaID); err != nil {
 			return err
 		}
 	}
+	//nolint:gosec // G202: col comes from the serverColumns whitelist
+	if _, err := tx.ExecContext(ctx, `UPDATE media SET match_state = 'hidden'
+		WHERE arr_id IS NULL AND `+col+` IS NULL`); err != nil {
+		return err
+	}
 
-	keys := make([]string, 0, len(plexOnly))
-	for _, p := range plexOnly {
+	keys := make([]string, 0, len(only))
+	for _, p := range only {
 		var added sql.NullInt64
 		if p.AddedAt > 0 {
 			added = sql.NullInt64{Int64: p.AddedAt, Valid: true}
 		}
-		if _, err := tx.ExecContext(ctx, `INSERT INTO media(kind, plex_rating_key, title, year, tvdb_id, tmdb_id,
-			imdb_id, added_at, match_state, updated_at, title_norm) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'plex_only', ?, ?)
-			ON CONFLICT(kind, plex_rating_key) WHERE arr_id IS NULL DO UPDATE SET title = excluded.title,
-			  title_norm = excluded.title_norm,
+		//nolint:gosec // G202: col comes from the serverColumns whitelist
+		if _, err := tx.ExecContext(ctx, `INSERT INTO media(kind, `+col+`, title, year, tvdb_id, tmdb_id,
+			imdb_id, added_at, match_state, updated_at, title_norm) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'server_only', ?, ?)
+			ON CONFLICT(kind, `+col+`) WHERE arr_id IS NULL DO UPDATE SET title = excluded.title,
+			  title_norm = excluded.title_norm, match_state = 'server_only',
 			  year = excluded.year, tvdb_id = excluded.tvdb_id, tmdb_id = excluded.tmdb_id,
 			  imdb_id = excluded.imdb_id, added_at = excluded.added_at, updated_at = excluded.updated_at`,
-			p.Kind, p.RatingKey, p.Title, nullPositive(int64(p.Year)), nullPositive(p.TvdbID), nullPositive(p.TmdbID),
+			p.Kind, p.Key, p.Title, nullPositive(int64(p.Year)), nullPositive(p.TvdbID), nullPositive(p.TmdbID),
 			nullString(p.ImdbID), added, now.Unix(), matching.NormalizeTitle(p.Title)); err != nil {
 			return err
 		}
-		keys = append(keys, p.Kind+"|"+p.RatingKey)
+		keys = append(keys, p.Kind+"|"+p.Key)
 	}
 	b, _ := json.Marshal(keys)
-	if _, err := tx.ExecContext(ctx, `DELETE FROM media WHERE arr_id IS NULL
-		AND kind || '|' || plex_rating_key NOT IN (SELECT value FROM json_each(?))`, string(b)); err != nil {
+	//nolint:gosec // G202: col comes from the serverColumns whitelist
+	if _, err := tx.ExecContext(ctx, `DELETE FROM media WHERE arr_id IS NULL AND `+col+` IS NOT NULL
+		AND kind || '|' || `+col+` NOT IN (SELECT value FROM json_each(?))`, string(b)); err != nil {
 		return err
 	}
 
-	if _, err := tx.ExecContext(ctx, `UPDATE seasons SET plex_rating_key = NULL`); err != nil {
+	//nolint:gosec // G202: col comes from the serverColumns whitelist
+	if _, err := tx.ExecContext(ctx, `UPDATE seasons SET `+col+` = NULL`); err != nil {
 		return err
 	}
 	for _, se := range seasons {
-		if _, err := tx.ExecContext(ctx, `UPDATE seasons SET plex_rating_key = ? WHERE season_number = ?
-			AND media_id IN (SELECT id FROM media WHERE kind = 'series' AND plex_rating_key = ?)`,
-			se.RatingKey, se.Number, se.ShowRatingKey); err != nil {
+		//nolint:gosec // G202: col comes from the serverColumns whitelist
+		if _, err := tx.ExecContext(ctx, `UPDATE seasons SET `+col+` = ? WHERE season_number = ?
+			AND media_id IN (SELECT id FROM media WHERE kind = 'series' AND `+col+` = ?)`,
+			se.Key, se.Number, se.ShowKey); err != nil {
 			return err
 		}
 	}
+	if _, err := tx.ExecContext(ctx, `INSERT INTO app_settings(key, value, updated_at) VALUES (?, ?, ?)
+		ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
+		SettingCatalogServer, server, now.Unix()); err != nil {
+		return err
+	}
 	return tx.Commit()
+}
+
+// CatalogServer returns the server the match states describe: that of the
+// last catalog sync (Plex before any).
+func (s *Store) CatalogServer(ctx context.Context) string {
+	v, _ := s.Setting(ctx, SettingCatalogServer, ServerPlex)
+	return v
 }
 
 // MatchCounts reports how many media rows are in each match state.

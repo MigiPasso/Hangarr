@@ -49,7 +49,7 @@
   {{template "select_box" .}}
   <a class="card-link" href="{{mediaPath .Kind}}/{{.ID}}" hx-get="{{mediaPath .Kind}}/{{.ID}}" hx-target="#modal-body" aria-label="{{.Title}}">
   <div class="poster">
-    {{with imgURL .Kind .ArrID .PlexRatingKey "poster"}}
+    {{with imgURL .Kind .ArrID .PlexRatingKey .JellyfinID "poster"}}
       <img src="{{.}}" alt="" loading="lazy" decoding="async" width="200" height="300">
     {{else}}
       <div class="poster-fallback">{{.Title}}</div>
@@ -59,7 +59,7 @@
   </div>
   <div class="media-meta">
     <h3 title="{{.Title}}">{{.Title}}</h3>
-    <p class="small muted">{{if .Year}}{{.Year}} · {{end}}{{if .SizeBytes}}{{bytes .SizeBytes}}{{else}}{{t "no file"}}{{end}}{{if eq .MatchState "plex_only"}} · {{t "Plex only"}}{{else if eq .MatchState "arr_only"}} · {{t "not in Plex"}}{{end}}</p>
+    <p class="small muted">{{if .Year}}{{.Year}} · {{end}}{{if .SizeBytes}}{{bytes .SizeBytes}}{{else}}{{t "no file"}}{{end}}{{if eq .MatchState "server_only"}} · {{t "%s only" (server)}}{{else if eq .MatchState "arr_only"}} · {{t "not in %s" (server)}}{{end}}</p>
     <p class="small">{{if .LastViewedAt}}{{if .LastViewedBy}}{{t "Watched %s by %s" (relptr .LastViewedAt) .LastViewedBy}}{{else}}{{t "Watched %s" (relptr .LastViewedAt)}}{{end}}{{else}}<span class="muted">{{t "Never watched"}}</span>{{end}}</p>
     <p class="small muted">{{tn .Plays "%d play" "%d plays"}} · {{tn .Viewers "%d viewer" "%d viewers"}}</p>
   </div>

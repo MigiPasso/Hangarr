@@ -1,7 +1,8 @@
 // Package actions performs deletions through Sonarr/Radarr (SPEC §7.4) with
 // server-side safeguards: dry-run, protection tags checked on live *arr
 // data, typed confirmation for whole series, and a journal entry for every
-// attempt. Items that only Plex still knows are deleted through Plex.
+// attempt. Items that only the media server (Plex or Jellyfin) still knows
+// are deleted through it.
 package actions
 
 import (
@@ -22,10 +23,11 @@ import (
 
 // Action names stored in action_log.
 const (
-	DeleteSeries = "delete_series"
-	DeleteSeason = "delete_season"
-	DeleteMovie  = "delete_movie"
-	DeletePlex   = "delete_plex" // movie or series known by Plex only
+	DeleteSeries   = "delete_series"
+	DeleteSeason   = "delete_season"
+	DeleteMovie    = "delete_movie"
+	DeletePlex     = "delete_plex"     // movie or series known by Plex only
+	DeleteJellyfin = "delete_jellyfin" // movie or series known by Jellyfin only
 )
 
 // Errors explained to the user (the web layer translates them).
@@ -43,7 +45,39 @@ var (
 	// ErrPlexDeletionDenied: the Plex server does not allow media deletion
 	// (Settings > Library > Allow media deletion).
 	ErrPlexDeletionDenied = errors.New("deletion refused by Plex: media deletion is not allowed on the server")
+	// ErrJellyfinDeletionDenied: the Jellyfin API key may not delete media.
+	ErrJellyfinDeletionDenied = errors.New("deletion refused by Jellyfin")
+	// ErrInactiveServer: only the media server not in use knows the item
+	// (hidden until that server is used again).
+	ErrInactiveServer = errors.New("known by the media server not in use")
+	// ErrServerConflict: Plex and Jellyfin are both configured, so which
+	// one owns the item is not settled; nothing is done through either.
+	ErrServerConflict = errors.New("both media servers are configured")
 )
+
+// serverKey returns the item's key on the media server in use ("" when that
+// server does not know it).
+func serverKey(up *upstream.Clients, m *store.Media) string {
+	if up.MediaServer == upstream.Jellyfin {
+		return m.JellyfinID
+	}
+	return m.PlexRatingKey
+}
+
+// serverOnly checks that an item Sonarr/Radarr does not manage is known by
+// the media server in use: the items of the other one are hidden, nothing is
+// done to them, nor to any while both servers are configured.
+func serverOnly(up *upstream.Clients, m *store.Media, notManaged error) error {
+	switch {
+	case up.ServerConflict:
+		return ErrServerConflict
+	case m.MatchState == "hidden" || (serverKey(up, m) == "" && (m.PlexRatingKey != "" || m.JellyfinID != "")):
+		return ErrInactiveServer
+	case serverKey(up, m) == "":
+		return notManaged
+	}
+	return nil
+}
 
 // Refresher updates local data after a deletion (implemented by the syncer).
 type Refresher interface {
@@ -54,14 +88,16 @@ type Refresher interface {
 // Service deletes media.
 type Service struct {
 	Store           *store.Store
-	Upstreams       *upstream.Registry // a nil Plex client disables the Plex refresh
+	Upstreams       *upstream.Registry
 	Refresher       Refresher
 	DryRun          bool
 	ProtectedTags   []string
 	ConfirmByTyping bool
-	PlexRefresh     bool
-	Log             *slog.Logger
-	Now             func() time.Time
+	// PlexRefresh (PLEX_REFRESH_AFTER_DELETE) rescans the media server in
+	// use, Plex or Jellyfin, after a deletion of files.
+	PlexRefresh bool
+	Log         *slog.Logger
+	Now         func() time.Time
 }
 
 // Request describes a deletion.
@@ -73,9 +109,9 @@ type Request struct {
 	ConfirmTitle    string // required for a whole series when ConfirmByTyping
 	// Confirmed: the batch confirmation replaces ConfirmTitle.
 	Confirmed bool
-	// SkipPlexRefresh: the caller refreshes Plex once (batch).
-	SkipPlexRefresh bool
-	Username        string // app user, for the journal
+	// SkipServerRefresh: the caller refreshes the media server once (batch).
+	SkipServerRefresh bool
+	Username          string // app user, for the journal
 }
 
 // Result describes what was (or would have been) deleted.
@@ -152,10 +188,13 @@ func (s *Service) Delete(ctx context.Context, req Request) (*Result, error) {
 		return nil, err
 	}
 	if m.ArrID == 0 {
-		if m.PlexRatingKey == "" || req.Season != nil {
+		if err := serverOnly(up, m, ErrNotDeletable); err != nil {
+			return nil, err
+		}
+		if req.Season != nil {
 			return nil, ErrNotDeletable
 		}
-		return s.deleteFromPlex(ctx, up, m, req)
+		return s.deleteFromServer(ctx, up, m, req)
 	}
 	res := &Result{Kind: m.Kind, MediaID: m.ID, Title: m.Title, SizeFreed: m.SizeBytes, DryRun: s.DryRun}
 	switch {
@@ -216,30 +255,37 @@ func (s *Service) journal(ctx context.Context, m *store.Media, req Request, res 
 		"delete_files", req.DeleteFiles, "success", err == nil, "err", err, "user", req.Username)
 }
 
-// deleteFromPlex deletes an item that only Plex still knows (removed from
-// Sonarr/Radarr, or never managed): Plex deletes it with its files. No
-// Sonarr/Radarr tag applies, but the item may be protected in Hangarr.
-// Whole series still need the typed title.
-func (s *Service) deleteFromPlex(ctx context.Context, up *upstream.Clients, m *store.Media, req Request) (*Result, error) {
+// deleteFromServer deletes an item that only the media server in use still
+// knows (removed from Sonarr/Radarr, or never managed): the server deletes it
+// with its files. No Sonarr/Radarr tag applies, but the item may be
+// protected in Hangarr. Whole series still need the typed title.
+func (s *Service) deleteFromServer(ctx context.Context, up *upstream.Clients, m *store.Media, req Request) (*Result, error) {
 	if m.Kind == "series" && s.ConfirmByTyping && !req.Confirmed &&
 		!strings.EqualFold(strings.TrimSpace(req.ConfirmTitle), strings.TrimSpace(m.Title)) {
 		return nil, ErrConfirmMismatch
 	}
-	req.DeleteFiles, req.ImportExclusion = true, false // Plex always deletes the files
+	req.DeleteFiles, req.ImportExclusion = true, false // the server always deletes the files
 	res := &Result{Action: DeletePlex, Kind: m.Kind, MediaID: m.ID, Title: m.Title, SizeFreed: m.SizeBytes, DryRun: s.DryRun}
+	denied := ErrPlexDeletionDenied
+	del := func() error { return up.Plex.DeleteItem(ctx, m.PlexRatingKey) }
+	configured := up.Plex != nil
+	if up.MediaServer == upstream.Jellyfin {
+		res.Action, denied, configured = DeleteJellyfin, ErrJellyfinDeletionDenied, up.Jellyfin != nil
+		del = func() error { return up.Jellyfin.DeleteItem(ctx, m.JellyfinID) }
+	}
 	var err error
 	switch {
 	case m.ProtectedLocal:
 		err = ErrProtectedLocal
-	case up.Plex == nil:
-		err = fmt.Errorf("%w: Plex", ErrUnconfigured)
+	case !configured:
+		err = fmt.Errorf("%w: %s", ErrUnconfigured, up.ServerLabel())
 	case !s.DryRun:
-		err = up.Plex.DeleteItem(ctx, m.PlexRatingKey)
+		err = del()
 		var se *httpx.StatusError
 		if errors.As(err, &se) && (se.Status == http.StatusUnauthorized || se.Status == http.StatusForbidden) {
-			err = ErrPlexDeletionDenied
+			err = denied
 		} else if isNotFound(err) {
-			err = fmt.Errorf("%w in Plex", ErrNotFound)
+			err = fmt.Errorf("%w in %s", ErrNotFound, up.ServerLabel())
 		}
 	}
 	s.journal(ctx, m, req, res, err)
@@ -329,8 +375,8 @@ func arrName(kind string) string {
 	return "Sonarr"
 }
 
-// afterDelete updates local data and optionally asks Plex to rescan.
-// Failures are logged: the deletion itself succeeded.
+// afterDelete updates local data and optionally asks the media server to
+// rescan. Failures are logged: the deletion itself succeeded.
 func (s *Service) afterDelete(ctx context.Context, up *upstream.Clients, m *store.Media, req Request, res *Result) {
 	var err error
 	if res.Action == DeleteSeason {
@@ -341,8 +387,24 @@ func (s *Service) afterDelete(ctx context.Context, up *upstream.Clients, m *stor
 	if err != nil {
 		s.Log.Warn("local refresh after deletion failed", "media_id", m.ID, "err", err)
 	}
-	if s.PlexRefresh && up.Plex != nil && req.DeleteFiles && !req.SkipPlexRefresh {
-		s.refreshPlex(ctx, up.Plex, m.Kind)
+	if s.PlexRefresh && req.DeleteFiles && !req.SkipServerRefresh {
+		s.refreshServer(ctx, up, []string{m.Kind})
+	}
+}
+
+// refreshServer rescans the media server in use after a deletion of files of
+// the given kinds: the Plex sections of those kinds, or every Jellyfin
+// library (Jellyfin scans them all at once).
+func (s *Service) refreshServer(ctx context.Context, up *upstream.Clients, kinds []string) {
+	switch {
+	case up.MediaServer == upstream.Jellyfin && up.Jellyfin != nil:
+		if err := up.Jellyfin.RefreshLibrary(ctx); err != nil {
+			s.Log.Warn("jellyfin refresh failed", "err", err)
+		}
+	case up.MediaServer == upstream.Plex && up.Plex != nil:
+		for _, kind := range kinds {
+			s.refreshPlex(ctx, up.Plex, kind)
+		}
 	}
 }
 

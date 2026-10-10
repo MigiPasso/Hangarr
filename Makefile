@@ -6,6 +6,8 @@ COMPOSE      := docker compose -f compose.dev.yml
 E2E_COMPOSE  := MOCK_DEV_EXTRAS=false MOCK_REAL_POSTERS=false docker compose -p hangarr-e2e -f compose.dev.yml --profile e2e
 # compose.yml as shipped, plus the mock and a smoke test (separate project).
 DEPLOY_COMPOSE := docker compose -p hangarr-deploy-check -f compose.yml -f deploy/compose.check.yml
+# Real Jellyfin with the test scenario (separate project, see deploy/jellyfin-lab/README.md).
+LAB_COMPOSE  := docker compose -f deploy/jellyfin-lab/compose.yml
 ALL_PROFILES := --profile real --profile tools --profile e2e
 VERSION      ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 IMAGE        ?= hangarr
@@ -14,15 +16,21 @@ BUILDER      ?= hangarr-builder
 HTMX_VERSION ?= 2.0.11
 ALPINE_VERSION ?= 3.22
 COMMON_PASSWORDS_URL ?= https://raw.githubusercontent.com/danielmiessler/SecLists/master/Passwords/Common-Credentials/10k-most-common.txt
+# Media server of `make dev`: the variables read by compose.dev.yml (empty = unset for the app).
+MEDIA        ?= plex
+DEV_ENV_plex     := DEV_PLEX_URL=http://mock:32400 DEV_PLEX_TOKEN=mock-api-key DEV_TAUTULLI_URL=http://mock:8181 DEV_TAUTULLI_API_KEY=mock-api-key DEV_JELLYFIN_URL= DEV_JELLYFIN_API_KEY=
+DEV_ENV_jellyfin := DEV_PLEX_URL= DEV_PLEX_TOKEN= DEV_TAUTULLI_URL= DEV_TAUTULLI_API_KEY= DEV_JELLYFIN_URL=http://mock:8096 DEV_JELLYFIN_API_KEY=mock-api-key
+DEV_ENV_none     := DEV_PLEX_URL= DEV_PLEX_TOKEN= DEV_TAUTULLI_URL= DEV_TAUTULLI_API_KEY= DEV_JELLYFIN_URL= DEV_JELLYFIN_API_KEY=
 
 .DEFAULT_GOAL := help
-.PHONY: help dev dev-real down logs test lint e2e image image-load reset-admin clean deps vendor-assets deploy-check capture-fixtures sync icons
+.PHONY: help dev dev-real down logs test lint e2e image image-load reset-admin clean deps vendor-assets deploy-check capture-fixtures jellyfin-lab jellyfin-lab-capture jellyfin-lab-down sync icons
 
 help: ## List targets
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-18s %s\n", $$1, $$2}'
 
-dev: ## Run app (hot reload) + mock upstreams on http://localhost:8080
-	$(COMPOSE) up --build app mock
+dev: ## Run app (hot reload) + mock on http://localhost:8080. MEDIA=plex (default: Plex + Tautulli of the mock), jellyfin (Jellyfin of the mock) or none (server set in the UI)
+	$(if $(filter plex jellyfin none,$(MEDIA)),,$(error MEDIA must be plex, jellyfin or none, not "$(MEDIA)"))
+	$(DEV_ENV_$(MEDIA)) $(COMPOSE) up --build app mock
 
 dev-real: ## Run app against the real instances from .env (DRY_RUN=true by default)
 	@test -f .env || { echo ".env missing: copy .env.example and fill it" >&2; exit 1; }
@@ -44,9 +52,9 @@ lint: ## go vet + golangci-lint
 
 e2e: ## Playwright against the runtime image on a blank database
 	@$(E2E_COMPOSE) down --remove-orphans >/dev/null 2>&1 || true
-	$(E2E_COMPOSE) build app-e2e app-e2e-live app-e2e-config mock
+	$(E2E_COMPOSE) build app-e2e app-e2e-live app-e2e-config app-e2e-jellyfin mock
 	@status=0; \
-	$(E2E_COMPOSE) up -d --wait app-e2e app-e2e-live app-e2e-config mock || status=$$?; \
+	$(E2E_COMPOSE) up -d --wait app-e2e app-e2e-live app-e2e-config app-e2e-jellyfin mock || status=$$?; \
 	if [ $$status -eq 0 ]; then \
 	  pw=$$($(E2E_COMPOSE) logs --no-log-prefix app-e2e | sed -n 's/^ Password : //p' | head -n 1); \
 	  pwcfg=$$($(E2E_COMPOSE) logs --no-log-prefix app-e2e-config | sed -n 's/^ Password : //p' | head -n 1); \
@@ -59,7 +67,7 @@ e2e: ## Playwright against the runtime image on a blank database
 	      $(E2E_COMPOSE) run --rm e2e || status=$$?; \
 	  fi; \
 	fi; \
-	if [ $$status -ne 0 ]; then $(E2E_COMPOSE) logs --tail 50 app-e2e app-e2e-live app-e2e-config mock; fi; \
+	if [ $$status -ne 0 ]; then $(E2E_COMPOSE) logs --tail 50 app-e2e app-e2e-live app-e2e-config app-e2e-jellyfin mock; fi; \
 	$(E2E_COMPOSE) down --remove-orphans; \
 	exit $$status
 
@@ -110,6 +118,16 @@ deploy-check: ## Validate compose.yml and smoke-test it (as shipped) against the
 capture-fixtures: ## Record anonymized responses of the real instances (.env) into testdata/captured/
 	@test -f .env || { echo ".env missing: copy .env.example and fill it" >&2; exit 1; }
 	HANGARR_ENV_FILE=.env $(COMPOSE) --profile real run --rm capture
+
+jellyfin-lab: ## Real Jellyfin (pinned) with the test scenario on http://localhost:8096
+	$(LAB_COMPOSE) up -d --wait jellyfin
+	$(LAB_COMPOSE) run --rm seed
+
+jellyfin-lab-capture: ## Record anonymized responses of the Jellyfin lab into testdata/captured/jellyfin/
+	HOST_UID=$(shell id -u) HOST_GID=$(shell id -g) $(LAB_COMPOSE) --profile capture run --rm capture
+
+jellyfin-lab-down: ## Remove the Jellyfin lab (containers and volumes)
+	$(LAB_COMPOSE) --profile capture down -v --remove-orphans
 
 sync: ## Run one synchronization in the running dev app and print a summary
 	$(COMPOSE) exec app hangarr sync --once

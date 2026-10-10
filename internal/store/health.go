@@ -23,11 +23,11 @@ type HealthList struct {
 
 // DataHealth lists catalog inconsistencies (SPEC §7.7).
 type DataHealth struct {
-	PlexOnly  HealthList // in Plex, not in Sonarr/Radarr
-	NoFile    HealthList // in Sonarr/Radarr without any file
-	NotInPlex HealthList // in Sonarr/Radarr with files but not found in Plex
-	Fuzzy     HealthList // matched by title and year only
-	Orphans   int        // history sessions whose media disappeared
+	ServerOnly  HealthList // in the media server, not in Sonarr/Radarr
+	NoFile      HealthList // in Sonarr/Radarr without any file
+	NotInServer HealthList // in Sonarr/Radarr with files but not found in the media server
+	Fuzzy       HealthList // matched by title and year only
+	Orphans     int        // history sessions whose media disappeared
 }
 
 // DataHealth returns each list capped at limit items, by title.
@@ -37,9 +37,9 @@ func (s *Store) DataHealth(ctx context.Context, limit int) (*DataHealth, error) 
 		dst   *HealthList
 		where string
 	}{
-		{&d.PlexOnly, `match_state = 'plex_only'`},
+		{&d.ServerOnly, `match_state = 'server_only'`},
 		{&d.NoFile, `arr_id IS NOT NULL AND size_bytes = 0`},
-		{&d.NotInPlex, `match_state = 'arr_only' AND size_bytes > 0`},
+		{&d.NotInServer, `match_state = 'arr_only' AND size_bytes > 0`},
 		{&d.Fuzzy, `match_method = 'fuzzy'`},
 	}
 	for _, l := range lists {

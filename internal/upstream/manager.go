@@ -201,7 +201,8 @@ type ServiceState struct {
 	Label      string
 	Fields     []FieldState
 	Configured bool
-	Locked     bool // every field comes from the environment
+	Locked     bool   // every field comes from the environment
+	Disabled   string // why the service cannot be configured now (English key), "" when it can
 }
 
 // State describes every service for the Configuration page.
@@ -214,6 +215,7 @@ func (m *Manager) State(ctx context.Context) ([]ServiceState, error) {
 	out := make([]ServiceState, 0, len(Services))
 	for _, svc := range Services {
 		s := ServiceState{Service: svc, Label: ServiceLabel(svc), Configured: eff.complete(svc), Locked: true}
+		s.Disabled = Disabled(eff, svc)
 		for _, f := range FieldsOf(svc) {
 			fs := FieldState{Field: f, Locked: m.Env[f.Key] != ""}
 			fs.Broken = !fs.Locked && broken[f.Key]
@@ -277,7 +279,7 @@ func pageOfTheApp(svc, raw string) bool {
 	switch last := segs[len(segs)-1]; {
 	case last == "login" || last == "logout" || last == "index.html":
 		return true
-	case svc == Plex && last == "web":
+	case (svc == Plex || svc == Jellyfin) && last == "web":
 		return true
 	}
 	for i := 0; i+1 < len(segs); i++ {
@@ -408,6 +410,10 @@ func (m *Manager) Save(ctx context.Context, svc string, in Input, ev store.AuthE
 	if err != nil || len(changed) == 0 {
 		return nil, err
 	}
+	// Clearing a service is always allowed; only a value written is refused.
+	if reason := Disabled(m.effective(saved), svc); len(set) > 0 && reason != "" {
+		return nil, ValidationError{svc + ".url": reason}
+	}
 	ev.Event = "config_" + svc
 	ev.At = now.Unix()
 	if err := m.Store.ApplySettings(ctx, set, del, now, ev); err != nil {
@@ -428,6 +434,9 @@ func (m *Manager) Test(ctx context.Context, svc string, in Input) (string, error
 		return "", err
 	}
 	v := m.effective(saved)
+	if reason := Disabled(v, svc); reason != "" {
+		return "", ValidationError{svc + ".url": reason}
+	}
 	if verr := m.keptCredentials(svc, v, in); len(verr) > 0 {
 		return "", verr
 	}
@@ -481,6 +490,18 @@ func Check(ctx context.Context, c *Clients, svc string) (string, error) {
 			return "", ErrNotConfigured
 		}
 		return c.Plex.Check(ctx)
+	case Jellyfin:
+		if c.Jellyfin == nil {
+			return "", ErrNotConfigured
+		}
+		info, err := c.Jellyfin.SystemInfo(ctx)
+		if err != nil {
+			return "", err
+		}
+		if info.ProductName != "" && !strings.Contains(strings.ToLower(info.ProductName), "jellyfin") {
+			return "", &WrongServiceError{Want: ServiceLabel(Jellyfin), Got: info.ProductName}
+		}
+		return info.Version, nil
 	case Tautulli:
 		if c.Tautulli == nil {
 			return "", ErrNotConfigured

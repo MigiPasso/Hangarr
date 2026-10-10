@@ -12,17 +12,18 @@
 <div class="config-grid">
 {{range .Data.Services}}{{template "service_section" .}}{{end}}
 </div>
-<p class="small muted config-intro">{{t "History source:"}} {{if eq .Data.HistorySource "merged"}}Plex + Tautulli{{else if eq .Data.HistorySource "tautulli"}}Tautulli{{else}}Plex{{end}}{{template "info" (t "Set by HISTORY_SOURCE. Plex + Tautulli: Plex says what was watched, Tautulli adds durations and devices. Plex only knows the plays still in its library.")}}</p>
+<p class="small muted config-intro">{{t "History source:"}} {{if eq .Data.HistorySource "merged"}}Plex + Tautulli{{else if eq .Data.HistorySource "tautulli"}}Tautulli{{else if eq .Data.HistorySource "jellyfin"}}Jellyfin{{else}}Plex{{end}}{{if eq .Data.HistorySource "jellyfin"}}{{template "info" (t "HISTORY_SOURCE only concerns Plex. Jellyfin gives the last play of each item per user, without durations.")}}{{else}}{{template "info" (t "Set by HISTORY_SOURCE. Plex + Tautulli: Plex says what was watched, Tautulli adds durations and devices. Plex only knows the plays still in its library.")}}{{end}}</p>
 {{end}}
 
 {{define "service_section"}}
-<section class="card config-card" id="service-{{.Service}}" aria-labelledby="service-{{.Service}}-title">
+<section class="card config-card{{if .Disabled}} is-disabled{{end}}" id="service-{{.Service}}" aria-labelledby="service-{{.Service}}-title"{{if .OOB}} hx-swap-oob="true"{{end}}>
   <div class="config-head">
     <h2 id="service-{{.Service}}-title">{{.Label}}</h2>
     {{if .Configured}}<span class="badge badge-ok">{{t "Configured"}}</span>{{else}}<span class="badge badge-muted">{{t "Not configured"}}</span>{{end}}
   </div>
   <form method="post" action="/config/{{.Service}}" class="stack"
         hx-post="/config/{{.Service}}" hx-target="closest section" hx-swap="outerHTML">
+    {{if .Disabled}}<p class="small muted config-disabled" role="note">{{t .Disabled}}</p>{{end}}
     <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
     {{range .Fields}}
     <div class="config-field">
@@ -33,13 +34,13 @@
         <p id="f-{{.Key}}-env" class="small muted">{{t "Set by the environment"}} (<code>{{.Env}}</code>)</p>
       {{else if eq .Kind "url"}}
         <input id="f-{{.Key}}" name="{{.Key}}" type="url" value="{{.Value}}" placeholder="http://…" autocomplete="off"
-               spellcheck="false"{{if index $.Errors .Key}} aria-invalid="true"{{end}}>
+               spellcheck="false"{{if $.Disabled}} disabled{{end}}{{if index $.Errors .Key}} aria-invalid="true"{{end}}>
       {{else}}
         <input id="f-{{.Key}}" name="{{.Key}}" type="password" autocomplete="new-password" spellcheck="false"
                placeholder="{{if .Hint}}{{t "%s (empty = keep)" .Hint}}{{else}}{{t "Not set"}}{{end}}"
-               {{if not $.CanStoreSecrets}}disabled{{end}}{{if index $.Errors .Key}} aria-invalid="true"{{end}}>
+               {{if or (not $.CanStoreSecrets) $.Disabled}}disabled{{end}}{{if index $.Errors .Key}} aria-invalid="true"{{end}}>
         {{if .Broken}}<p class="field-error">{{t "Saved value unreadable (master key changed?): enter it again."}}</p>{{end}}
-        {{if or .Hint .Broken}}<label class="check small"><input type="checkbox" name="{{.Key}}.clear" value="1"> {{t "Clear the saved value"}}</label>{{end}}
+        {{if and (or .Hint .Broken) (not $.Disabled)}}<label class="check small"><input type="checkbox" name="{{.Key}}.clear" value="1"> {{t "Clear the saved value"}}</label>{{end}}
       {{end}}
       {{with index $.Errors .Key}}<p class="field-error" role="alert">{{t .}}</p>{{end}}
     </div>
@@ -47,9 +48,14 @@
     {{if .Saved}}<p class="small ok-text" role="status">{{t "Saved."}}{{if .SyncStarted}} {{t "First sync started."}}{{end}}</p>{{end}}
     {{if .NothingChanged}}<p class="small muted" role="status">{{t "No change."}}</p>{{end}}
     <div class="config-actions">
-      {{if not .Locked}}<button type="submit" class="primary">{{t "Save"}}</button>{{end}}
-      <button type="submit" formaction="/config/{{.Service}}/test"
-              hx-post="/config/{{.Service}}/test" hx-target="#test-{{.Service}}" hx-swap="outerHTML">{{t "Test connection"}}</button>
+      {{if .Disabled}}
+        {{if .Recorded}}<button type="submit" name="clear_all" value="1" class="danger">{{t "Clear this configuration"}}</button>
+        {{else if .AnyLocked}}<p class="small muted">{{t "Set by the environment: change it there."}}</p>{{end}}
+      {{else}}
+        {{if not .Locked}}<button type="submit" class="primary">{{t "Save"}}</button>{{end}}
+        <button type="submit" formaction="/config/{{.Service}}/test"
+                hx-post="/config/{{.Service}}/test" hx-target="#test-{{.Service}}" hx-swap="outerHTML">{{t "Test connection"}}</button>
+      {{end}}
     </div>
     <p id="test-{{.Service}}" class="test-result" role="status">{{with .Test}}{{template "test_msg" .}}{{end}}</p>
     {{if eq .Service "tautulli"}}{{template "webhook_box" .}}{{end}}
@@ -74,7 +80,7 @@
     <li>{{t "Data, for both triggers, JSON Headers:"}} <code>{"X-Hangarr-Token": "…"}</code></li>
   </ol>
   {{if .WebhookLocked}}<p class="small muted">{{t "Secret set by the environment"}} (<code>TAUTULLI_WEBHOOK_SECRET</code>)</p>
-  {{else if not .CanStoreSecrets}}
+  {{else if or (not .CanStoreSecrets) .Disabled}}
   {{else}}
   <button type="submit" formaction="/config/tautulli/webhook-secret" hx-post="/config/tautulli/webhook-secret"
           hx-target="closest section" hx-swap="outerHTML">{{if .WebhookSet}}{{t "Generate a new secret"}}{{else}}{{t "Generate a secret"}}{{end}}</button>
@@ -87,4 +93,4 @@
 
 {{define "test_result"}}{{with .Data}}<p id="test-{{.Service}}" class="test-result" role="status">{{template "test_msg" .}}</p>{{end}}{{end}}
 
-{{define "config_saved"}}{{template "service_section" .Data}}{{template "config_banner" .}}{{template "sync_status" .}}{{end}}
+{{define "config_saved"}}{{template "service_section" .Data.Form}}{{range .Data.Others}}{{template "service_section" .}}{{end}}{{template "config_banner" .}}{{template "sync_status" .}}{{end}}

@@ -186,7 +186,15 @@ func serve() error {
 	} else if n > 0 {
 		log.Warn("syncs interrupted by the previous stop marked as such", "runs", n)
 	}
-	lookup := func(ctx context.Context, kind string, arrID int64, variant string) (images.Info, bool, error) {
+	lookup := func(ctx context.Context, kind, id, variant string) (images.Info, bool, error) {
+		if kind == "plex" || kind == "jellyfin" {
+			title, ok, err := st.ServerItemTitle(ctx, kind, id)
+			return images.Info{Title: title}, ok, err
+		}
+		arrID, err := strconv.ParseInt(id, 10, 64)
+		if err != nil || arrID <= 0 {
+			return images.Info{}, false, nil
+		}
 		title, remote, ok, err := st.ImageInfo(ctx, kind, arrID, variant)
 		return images.Info{Title: title, RemoteURL: remote}, ok, err
 	}
@@ -434,7 +442,7 @@ func printSummary(w io.Writer, res *syncer.Result) {
 		}
 		fmt.Fprintf(w, "  %-13s %6d items  %8s  %s\n", s.Source, s.Items, s.Duration.Round(time.Millisecond), status)
 	}
-	fmt.Fprintf(w, "\nMatching: %d matched, %d only in Sonarr/Radarr, %d only in Plex\n",
-		res.Matches["matched"], res.Matches["arr_only"], res.Matches["plex_only"])
+	fmt.Fprintf(w, "\nMatching: %d matched, %d only in Sonarr/Radarr, %d only in the media server\n",
+		res.Matches["matched"], res.Matches["arr_only"], res.Matches["server_only"])
 	fmt.Fprintf(w, "History : %d sessions linked, %d orphans (deleted media)\n", res.Linked, res.Orphans)
 }

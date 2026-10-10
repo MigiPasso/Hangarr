@@ -56,7 +56,12 @@ type Server struct {
 
 // New builds the server and parses templates.
 func New(d Deps) (*Server, error) {
-	v, err := newViews(d.Config.Location, d.Config.ProtectedTags, d.Config.AbandonDays)
+	// The registry is set below, before any render: the label is read at render time.
+	v, err := newViews(d.Config.Location, d.Config.ProtectedTags, d.Config.AbandonDays,
+		func() (string, bool) {
+			up := d.Upstreams.Get()
+			return up.ServerLabel(), up.Plex != nil || up.Jellyfin != nil
+		})
 	if err != nil {
 		return nil, err
 	}

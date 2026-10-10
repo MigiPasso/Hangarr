@@ -8,7 +8,8 @@ import (
 	"time"
 )
 
-// WatchEvent is one raw session (Tautulli) or history entry (Plex).
+// WatchEvent is one raw session (Tautulli), history entry (Plex) or last
+// play of an item by a user (Jellyfin).
 type WatchEvent struct {
 	Source               string
 	SourceID             int64
@@ -122,6 +123,44 @@ func (s *Store) UpsertPlexAccounts(ctx context.Context, accounts []PlexAccount) 
 	return tx.Commit()
 }
 
+// AccountIDsByName maps the lowercased user and display names of the stored
+// accounts to their ids, so that the users of another source (Jellyfin) are
+// matched to the same viewers. A user name wins over a display name; on a
+// tie the smallest id wins.
+func (s *Store) AccountIDsByName(ctx context.Context) (map[string]int64, error) {
+	out := map[string]int64{}
+	err := s.queryEach(ctx, `SELECT account_id, LOWER(COALESCE(username, '')), LOWER(COALESCE(friendly_name, ''))
+		FROM plex_accounts ORDER BY account_id DESC`, func(rows *sql.Rows) error {
+		var id int64
+		var user, friendly string
+		if err := rows.Scan(&id, &user, &friendly); err != nil {
+			return err
+		}
+		if friendly != "" {
+			out["d:"+friendly] = id
+		}
+		if user != "" {
+			out["u:"+user] = id
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	names := map[string]int64{}
+	for k, id := range out {
+		if k[0] == 'd' {
+			names[k[2:]] = id
+		}
+	}
+	for k, id := range out {
+		if k[0] == 'u' {
+			names[k[2:]] = id
+		}
+	}
+	return names, nil
+}
+
 // StartSyncRun records the start of a source sync and returns its id.
 func (s *Store) StartSyncRun(ctx context.Context, source string, now time.Time) (int64, error) {
 	res, err := s.db.ExecContext(ctx, `INSERT INTO sync_runs(started_at, source, status) VALUES (?, ?, 'running')`,
@@ -211,20 +250,25 @@ func (s *Store) LatestSyncRuns(ctx context.Context) ([]SyncRun, error) {
 	return out, rows.Err()
 }
 
-// DropOtherHistory keeps a single history source: it deletes the watch
-// events of every source but keep, the given cursors of those sources (so
-// that switching back re-imports their whole history), and the accounts
-// left without any event. Plex and Tautulli number the server owner
-// differently (1 vs the plex.tv id): stale accounts would show the same
-// person twice. The caller upserts the users of the kept source right after.
-// It returns the number of events deleted.
+// plexSources are the history sources of a Plex server: Tautulli and the
+// Plex history describe the same plays, the others (Jellyfin) do not.
+const plexSources = `('tautulli', 'plex_history')`
+
+// DropOtherHistory keeps a single history source of the Plex server: it
+// deletes the watch events of the other Plex source (the Jellyfin history is
+// kept: those plays are real), the given cursors of that source (so that
+// switching back re-imports its whole history), and the accounts left
+// without any event. Plex and Tautulli number the server owner differently
+// (1 vs the plex.tv id): stale accounts would show the same person twice.
+// The caller upserts the users of the kept source right after. It returns
+// the number of events deleted.
 func (s *Store) DropOtherHistory(ctx context.Context, keep string, otherCursors ...string) (int64, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return 0, err
 	}
 	defer func() { _ = tx.Rollback() }()
-	res, err := tx.ExecContext(ctx, `DELETE FROM watch_events WHERE source <> ?`, keep)
+	res, err := tx.ExecContext(ctx, `DELETE FROM watch_events WHERE source <> ? AND source IN `+plexSources, keep)
 	if err != nil {
 		return 0, err
 	}
@@ -246,7 +290,8 @@ func (s *Store) DropOtherHistory(ctx context.Context, keep string, otherCursors 
 
 // RemapHistoryUsers moves the events of source from one account id to
 // another (Plex numbers the server owner 1, Tautulli uses the plex.tv id)
-// and deletes the accounts that were moved away from.
+// and deletes the accounts that were moved away from. The Jellyfin history
+// follows: its users were matched by name to those accounts.
 func (s *Store) RemapHistoryUsers(ctx context.Context, source string, ids map[int64]int64) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -257,8 +302,8 @@ func (s *Store) RemapHistoryUsers(ctx context.Context, source string, ids map[in
 		if from == to {
 			continue
 		}
-		if _, err := tx.ExecContext(ctx, `UPDATE watch_events SET user_id = ? WHERE source = ? AND user_id = ?`,
-			to, source, from); err != nil {
+		if _, err := tx.ExecContext(ctx, `UPDATE watch_events SET user_id = ?
+			WHERE source IN (?, 'jellyfin_history') AND user_id = ?`, to, source, from); err != nil {
 			return err
 		}
 		if _, err := tx.ExecContext(ctx, `DELETE FROM plex_accounts WHERE account_id = ?`, from); err != nil {
@@ -268,9 +313,10 @@ func (s *Store) RemapHistoryUsers(ctx context.Context, source string, ids map[in
 	return tx.Commit()
 }
 
-// KeepViewers deletes the accounts not in keep and their plays (merged
+// KeepViewers deletes the Plex plays of the accounts not in keep (merged
 // mode: users Tautulli remembers but who no longer have access to the Plex
-// server). Events without a user are kept. It returns the deleted events.
+// server), then those accounts unless they still have plays (Jellyfin).
+// Events without a user are kept. It returns the deleted events.
 func (s *Store) KeepViewers(ctx context.Context, keep []int64) (int64, error) {
 	if len(keep) == 0 {
 		return 0, nil // never empty the history on an empty account list
@@ -285,7 +331,9 @@ func (s *Store) KeepViewers(ctx context.Context, keep []int64) (int64, error) {
 		return 0, err
 	}
 	defer func() { _ = tx.Rollback() }()
-	res, err := tx.ExecContext(ctx, `DELETE FROM watch_events WHERE user_id IS NOT NULL AND user_id NOT IN (`+in+`)`, args...) //nolint:gosec // placeholders only
+	//nolint:gosec // placeholders only
+	res, err := tx.ExecContext(ctx, `DELETE FROM watch_events WHERE source IN `+plexSources+`
+		AND user_id IS NOT NULL AND user_id NOT IN (`+in+`)`, args...)
 	if err != nil {
 		return 0, err
 	}
@@ -293,7 +341,9 @@ func (s *Store) KeepViewers(ctx context.Context, keep []int64) (int64, error) {
 	if err != nil {
 		return 0, err
 	}
-	if _, err := tx.ExecContext(ctx, `DELETE FROM plex_accounts WHERE account_id NOT IN (`+in+`)`, args...); err != nil { //nolint:gosec // placeholders only
+	//nolint:gosec // placeholders only
+	if _, err := tx.ExecContext(ctx, `DELETE FROM plex_accounts WHERE account_id NOT IN (`+in+`)
+		AND account_id NOT IN (SELECT DISTINCT user_id FROM watch_events WHERE user_id IS NOT NULL)`, args...); err != nil {
 		return 0, err
 	}
 	return n, tx.Commit()
@@ -362,6 +412,86 @@ func (s *Store) MergePlexHistory(ctx context.Context) (MergeStats, error) {
 		return st, err
 	}
 	if st.Estimated, err = res.RowsAffected(); err != nil {
+		return st, err
+	}
+	return st, tx.Commit()
+}
+
+// Merge of the Jellyfin history into the Plex one (MergeServerHistories).
+const (
+	// ServerMergeBefore and ServerMergeAfter bound how far the Jellyfin play
+	// of an item may be from a Plex play of it to be the same one: a tool
+	// that syncs watched states between the servers copies it some time
+	// later (at most a day for a daily sync).
+	ServerMergeBefore = 30 * 60
+	ServerMergeAfter  = 24 * 60 * 60
+	// BulkImportSize is how many items a viewer must have marked played in
+	// Jellyfin within the same minute for them to be an import (migration
+	// from Plex), not plays.
+	BulkImportSize = 20
+)
+
+// serverMatch is true when the Jellyfin event j and the Plex or Tautulli
+// event p (alias) are the same play: same viewer, same item (same episode of
+// a series), and either a compatible time or a bulk import (table bulk). It
+// takes the two window bounds as arguments.
+func serverMatch(p string) string {
+	return `j.source = 'jellyfin_history' AND ` + p + `.source IN ` + plexSources + `
+	AND j.user_id = ` + p + `.user_id AND j.media_id IS NOT NULL AND j.media_id = ` + p + `.media_id
+	AND COALESCE(j.season_number, -1) = COALESCE(` + p + `.season_number, -1)
+	AND COALESCE(j.episode_number, -1) = COALESCE(` + p + `.episode_number, -1)
+	AND (j.stopped_at BETWEEN ` + p + `.started_at - ? AND ` + p + `.stopped_at + ?
+	  OR (j.watched = 1 AND EXISTS (SELECT 1 FROM bulk WHERE bulk.user_id = j.user_id AND bulk.minute = j.stopped_at / 60)))`
+}
+
+// bulkImports lists the minutes in which a viewer marked BulkImportSize
+// items or more as played in Jellyfin.
+const bulkImports = `WITH bulk AS (SELECT user_id, stopped_at / 60 AS minute FROM watch_events
+	WHERE source = 'jellyfin_history' AND watched = 1 AND user_id IS NOT NULL
+	GROUP BY user_id, stopped_at / 60 HAVING COUNT(*) >= ?) `
+
+// ServerMergeStats describes a merge of the Jellyfin history into the Plex one.
+type ServerMergeStats struct {
+	Completed int64 // Plex or Tautulli plays marked watched because Jellyfin says so
+	Merged    int64 // Jellyfin events dropped: Plex or Tautulli has the same play
+}
+
+// MergeServerHistories drops the Jellyfin events that repeat a Plex or
+// Tautulli play (watched states copied between the servers by a sync tool,
+// or imported when migrating from Plex), so that the play counts once; the
+// Plex or Tautulli event is kept (durations, devices). A partial one is
+// completed when Jellyfin says the item was watched, unless a finished Plex
+// or Tautulli play already explains it (a session left then finished in
+// another one). It runs after the events are linked to media; a dropped
+// event comes back at a later sync and is merged again.
+func (s *Store) MergeServerHistories(ctx context.Context) (ServerMergeStats, error) {
+	var st ServerMergeStats
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return st, err
+	}
+	defer func() { _ = tx.Rollback() }()
+	//nolint:gosec // G202: constant fragments only
+	res, err := tx.ExecContext(ctx, bulkImports+`UPDATE watch_events AS p SET watched = 1
+		WHERE p.source IN `+plexSources+` AND p.watched = 0
+		  AND EXISTS (SELECT 1 FROM watch_events AS j WHERE j.watched = 1 AND `+serverMatch("p")+`
+		    AND NOT EXISTS (SELECT 1 FROM watch_events AS q WHERE q.watched = 1 AND `+serverMatch("q")+`))`,
+		BulkImportSize, ServerMergeBefore, ServerMergeAfter, ServerMergeBefore, ServerMergeAfter)
+	if err != nil {
+		return st, err
+	}
+	if st.Completed, err = res.RowsAffected(); err != nil {
+		return st, err
+	}
+	//nolint:gosec // G202: constant fragments only
+	res, err = tx.ExecContext(ctx, bulkImports+`DELETE FROM watch_events AS j
+		WHERE j.source = 'jellyfin_history'
+		  AND EXISTS (SELECT 1 FROM watch_events AS p WHERE `+serverMatch("p")+`)`,
+		BulkImportSize, ServerMergeBefore, ServerMergeAfter)
+	if err != nil {
+		return st, err
+	}
+	if st.Merged, err = res.RowsAffected(); err != nil {
 		return st, err
 	}
 	return st, tx.Commit()

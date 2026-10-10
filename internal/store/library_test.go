@@ -109,7 +109,7 @@ func TestLibraryFilters(t *testing.T) {
 		{"nobody watched", series(store.LibraryFilter{States: []string{"never"}}), []string{"Arcane", "Severance"}},
 		{"alice never watched", movies(store.LibraryFilter{User: 1001, States: []string{"never"}}),
 			[]string{"Avatar: Fire and Ash", "Tenet", "Vacances 2019"}},
-		{"match state", movies(store.LibraryFilter{Match: []string{"arr_only", "plex_only"}}),
+		{"match state", movies(store.LibraryFilter{Match: []string{"arr_only", "server_only"}}),
 			[]string{"Avatar: Fire and Ash", "Vacances 2019"}},
 		{"sort by size desc", movies(store.LibraryFilter{Sort: "size", Desc: true}),
 			[]string{"Dune", "Interstellar", "Tenet", "Inception", "Avatar: Fire and Ash", "Vacances 2019"}},

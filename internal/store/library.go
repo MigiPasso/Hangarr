@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
-	"strconv"
 	"strings"
 	"time"
 
@@ -33,7 +32,7 @@ type LibraryFilter struct {
 	Status       string // continuing | ended (series)
 	SizeMinGB    float64
 	SizeMaxGB    float64
-	Match        []string // matched | arr_only | plex_only
+	Match        []string // matched | arr_only | server_only
 	// User: "who?": states, progress, plays and last view become this
 	// user's (0: everyone).
 	User   int64
@@ -46,8 +45,9 @@ type LibraryFilter struct {
 // LibraryItem is one card / table row.
 type LibraryItem struct {
 	ID                 int64
-	ArrID              int64 // 0 for plex_only
+	ArrID              int64 // 0 for server_only
 	PlexRatingKey      string
+	JellyfinID         string
 	Kind               string
 	Title              string
 	Year               int
@@ -65,7 +65,7 @@ type LibraryItem struct {
 	Tags               []string
 	MatchState         string
 	Status             string
-	ProtectedLocal     bool // protected in Hangarr only (plex_only items)
+	ProtectedLocal     bool // protected in Hangarr only (server_only items)
 }
 
 // SortKeys maps sort names to their ORDER BY expression (whitelist).
@@ -116,11 +116,13 @@ func escapeLike(s string) string {
 // columns (eff_state, eff_plays, eff_last, eff_last_by, eff_watched), either
 // the stored all-users values or, with a perspective user, values computed
 // on the fly from that user's sessions (same rules as package scoring).
+// Items only the inactive media server knows (hidden) are left out.
 func libraryView(b *sqlBuilder, f LibraryFilter, now time.Time, abandonDays int) {
 	if f.User == 0 {
 		b.add(`WITH v AS (SELECT m.*, m.watch_state AS eff_state, m.play_count AS eff_plays,
 			m.last_viewed_at AS eff_last, m.last_viewed_by AS eff_last_by,
-			COALESCE(m.watched_episodes, 0) AS eff_watched FROM media m WHERE m.kind = ?)`, f.Kind)
+			COALESCE(m.watched_episodes, 0) AS eff_watched FROM media m
+			WHERE m.kind = ? AND m.match_state <> 'hidden')`, f.Kind)
 		return
 	}
 	recent := now.Unix() - int64(abandonDays)*day
@@ -165,7 +167,7 @@ func libraryView(b *sqlBuilder, f LibraryFilter, now time.Time, abandonDays int)
 			         WHEN up.last >= ? THEN 'in_progress' ELSE 'abandoned' END
 			  END AS eff_state
 			FROM media m LEFT JOIN up ON up.media_id = m.id LEFT JOIN uw ON uw.media_id = m.id
-			WHERE m.kind = ?)`,
+			WHERE m.kind = ? AND m.match_state <> 'hidden')`,
 		f.User, f.Kind, f.User, recent, recent, f.Kind)
 }
 
@@ -233,7 +235,7 @@ func libraryWhere(b *sqlBuilder, f LibraryFilter, now time.Time) {
 func LibraryQuery(f LibraryFilter, now time.Time, abandonDays int) (string, []any) {
 	b := &sqlBuilder{}
 	libraryView(b, f, now, abandonDays)
-	b.add(` SELECT v.id, COALESCE(v.arr_id, 0), COALESCE(v.plex_rating_key, ''), v.kind, v.title, COALESCE(v.year, 0), v.eff_state, v.eff_plays,
+	b.add(` SELECT v.id, COALESCE(v.arr_id, 0), COALESCE(v.plex_rating_key, ''), COALESCE(v.jellyfin_id, ''), v.kind, v.title, COALESCE(v.year, 0), v.eff_state, v.eff_plays,
 		v.distinct_viewers, v.eff_watched, COALESCE(v.downloaded_episodes, 0), COALESCE(v.total_episodes, 0),
 		v.eff_last, COALESCE(NULLIF(a.friendly_name, ''), a.username, ''), v.size_bytes, v.added_at,
 		COALESCE(v.rating, 0), v.tags, v.match_state, COALESCE(v.status, ''), v.protected_local,
@@ -289,7 +291,7 @@ func (s *Store) LibraryPage(ctx context.Context, f LibraryFilter, now time.Time,
 		var it LibraryItem
 		var last, added sql.NullInt64
 		var tags string
-		if err := rows.Scan(&it.ID, &it.ArrID, &it.PlexRatingKey, &it.Kind, &it.Title, &it.Year, &it.State, &it.Plays, &it.Viewers,
+		if err := rows.Scan(&it.ID, &it.ArrID, &it.PlexRatingKey, &it.JellyfinID, &it.Kind, &it.Title, &it.Year, &it.State, &it.Plays, &it.Viewers,
 			&it.WatchedEpisodes, &it.DownloadedEpisodes, &it.TotalEpisodes, &last, &it.LastViewedBy, &it.SizeBytes,
 			&added, &it.Rating, &tags, &it.MatchState, &it.Status, &it.ProtectedLocal, &p.Count, &p.SizeBytes); err != nil {
 			return nil, err
@@ -383,21 +385,28 @@ func (s *Store) Accounts(ctx context.Context) ([]Account, error) {
 func (s *Store) LastSyncAt(ctx context.Context) (*int64, error) {
 	var v sql.NullInt64
 	err := s.db.QueryRowContext(ctx, `SELECT MAX(finished_at) FROM sync_runs
-		WHERE source IN ('sonarr', 'radarr', 'plex') AND status <> 'interrupted'`).Scan(&v)
+		WHERE source IN ('sonarr', 'radarr', 'plex', 'jellyfin') AND status <> 'interrupted'`).Scan(&v)
 	return ptrInt(v), err
 }
 
-// ImageInfo returns the title and remote image URL of a Sonarr/Radarr item;
-// ok is false when no such item exists.
-func (s *Store) ImageInfo(ctx context.Context, kind string, arrID int64, variant string) (title, remote string, ok bool, err error) {
-	if kind == "plex" { // arrID is a Plex rating key
-		err = s.db.QueryRowContext(ctx, `SELECT title FROM media WHERE plex_rating_key = ? LIMIT 1`,
-			strconv.FormatInt(arrID, 10)).Scan(&title)
-		if errors.Is(err, sql.ErrNoRows) {
-			return "", "", false, nil
-		}
-		return title, "", err == nil, err
+// ServerItemTitle returns the title of the item a media server key (Plex
+// rating key, Jellyfin id) belongs to; ok is false when no item has it.
+func (s *Store) ServerItemTitle(ctx context.Context, server, key string) (title string, ok bool, err error) {
+	col, known := serverColumns[server]
+	if !known || key == "" {
+		return "", false, nil
 	}
+	//nolint:gosec // G202: col comes from the serverColumns whitelist
+	err = s.db.QueryRowContext(ctx, `SELECT title FROM media WHERE `+col+` = ? LIMIT 1`, key).Scan(&title)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", false, nil
+	}
+	return title, err == nil, err
+}
+
+// ImageInfo returns the title and remote image URL of a Sonarr/Radarr item;
+// ok is false when no such item exists (media server items: ServerItemTitle).
+func (s *Store) ImageInfo(ctx context.Context, kind string, arrID int64, variant string) (title, remote string, ok bool, err error) {
 	col := "poster_remote_url"
 	if variant == "fanart" {
 		col = "fanart_remote_url"

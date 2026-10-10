@@ -162,11 +162,11 @@ func TestDataHealth(t *testing.T) {
 	}
 	// Home Videos and Vacances 2019 are in Plex only; Arcane and Avatar have
 	// no file; Shōgun ↔ Shogun is the fuzzy match; Lost's history is orphan.
-	if d.PlexOnly.Count != 2 || len(d.PlexOnly.Items) != 1 || d.PlexOnly.Items[0].Title != "Home Videos" {
-		t.Errorf("plex only: %+v", d.PlexOnly)
+	if d.ServerOnly.Count != 2 || len(d.ServerOnly.Items) != 1 || d.ServerOnly.Items[0].Title != "Home Videos" {
+		t.Errorf("server only: %+v", d.ServerOnly)
 	}
-	if d.NoFile.Count != 2 || d.NotInPlex.Count != 0 {
-		t.Errorf("no file: %+v, not in plex: %+v", d.NoFile, d.NotInPlex)
+	if d.NoFile.Count != 2 || d.NotInServer.Count != 0 {
+		t.Errorf("no file: %+v, not in server: %+v", d.NoFile, d.NotInServer)
 	}
 	if d.Fuzzy.Count != 1 || d.Fuzzy.Items[0].Title != "Shōgun" {
 		t.Errorf("fuzzy: %+v", d.Fuzzy)

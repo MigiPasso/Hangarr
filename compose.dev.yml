@@ -21,6 +21,13 @@ services:
     working_dir: /src
     environment:
       <<: *upstreams-mock
+      # Media server, set by `MEDIA=plex|jellyfin|none make dev` (an empty value is unset).
+      PLEX_URL: ${DEV_PLEX_URL-http://mock:32400}
+      PLEX_TOKEN: ${DEV_PLEX_TOKEN-mock-api-key}
+      TAUTULLI_URL: ${DEV_TAUTULLI_URL-http://mock:8181}
+      TAUTULLI_API_KEY: ${DEV_TAUTULLI_API_KEY-mock-api-key}
+      JELLYFIN_URL: ${DEV_JELLYFIN_URL-}
+      JELLYFIN_API_KEY: ${DEV_JELLYFIN_API_KEY-}
       DATA_DIR: /data
       DRY_RUN: "true"
       COOKIE_SECURE: "false"
@@ -207,6 +214,37 @@ services:
     depends_on:
       - mock
 
+  # Jellyfin only (no Plex, no Tautulli): the e2e checks Jellyfin is the server in use.
+  app-e2e-jellyfin:
+    profiles: [e2e]
+    build:
+      context: .
+      target: runtime
+    read_only: true
+    user: "65532:65532"
+    tmpfs:
+      - /data:uid=65532,gid=65532,mode=0700
+    environment:
+      SONARR_URL: http://mock:8989
+      SONARR_API_KEY: mock-api-key
+      RADARR_URL: http://mock:7878
+      RADARR_API_KEY: mock-api-key
+      JELLYFIN_URL: http://mock:8096
+      JELLYFIN_API_KEY: mock-api-key
+      DRY_RUN: "true"
+      HANGARR_ADMIN_PASSWORD: &jellyfin-admin-password Jellyfin-Solide-Mot-De-Passe-42!
+      COOKIE_SECURE: "false"
+      LOG_FORMAT: json
+      LOGIN_MAX_PER_IP: "50"
+      DEFAULT_LANG: fr
+    healthcheck:
+      test: ["CMD", "/hangarr", "healthcheck"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    depends_on:
+      - mock
+
   e2e:
     profiles: [e2e]
     image: mcr.microsoft.com/playwright:v1.63.0-noble
@@ -215,10 +253,12 @@ services:
       BASE_URL: http://app-e2e:8080
       BASE_URL_LIVE: http://app-e2e-live:8080
       BASE_URL_CONFIG: http://app-e2e-config:8080
+      BASE_URL_JELLYFIN: http://app-e2e-jellyfin:8080
       MOCK_URL: http://mock:8989
       ADMIN_USERNAME: admin
       ADMIN_INITIAL_PASSWORD: ${ADMIN_INITIAL_PASSWORD:-}
       ADMIN_PASSWORD_LIVE: *live-admin-password
+      ADMIN_PASSWORD_JELLYFIN: *jellyfin-admin-password
       ADMIN_INITIAL_PASSWORD_CONFIG: ${ADMIN_INITIAL_PASSWORD_CONFIG:-}
       CI: "1"
     volumes:

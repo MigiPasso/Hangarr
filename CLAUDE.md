@@ -19,7 +19,7 @@ Rien ne s'exécute sur la machine hôte en dehors de `docker`, `docker compose`,
 
 | Besoin | Commande |
 |---|---|
-| Lancer l'app (hot reload + mocks) | `make dev` → http://localhost:8080 (`DEV_PORT=8081 make dev` si le port est pris) |
+| Lancer l'app (hot reload + mocks) | `make dev` → http://localhost:8080 (`DEV_PORT=8081 make dev` si le port est pris ; `MEDIA=jellyfin` (Jellyfin du mock) ou `MEDIA=none` (serveur configuré dans l'UI)) |
 | Contre les vraies instances | `make dev-real` (lit `.env`, `DRY_RUN=true` par défaut) |
 | Tests unitaires et d'intégration (`-race`) | `make test` |
 | `go vet` + golangci-lint | `make lint` |
@@ -81,6 +81,27 @@ Pas de framework web, pas de build Node pour l'app, pas de CDN.
 
 ## Invariants de sécurité et de données
 
+- **Serveur multimédia : Plex OU Jellyfin** (décision utilisateur, 2026-10-10). Un seul configuré à la fois : la carte de
+  l'autre (et Tautulli avec Jellyfin) est grisée, `Manager.Save`/`Test` refusent (`upstream.Disabled`), vider reste permis ;
+  `PLEX_*` + `JELLYFIN_*` dans l'env = refus de démarrer ; les deux configurés quand même (env + interface) =
+  `Clients.ServerConflict` : pas de sync (`Ready()` faux), suppressions via le serveur refusées, bandeau ; mode migration
+  envisagé plus tard. Pastille du serveur utilisé dans la barre du haut (`server-chip`,
+  dans `sync_status`, donc rafraîchie hors bande ; absente sans serveur). L'interface nomme le serveur actif (fonction de
+  template `server`, clés i18n à `%s`). **Rien n'est purgé au changement** : colonnes distinctes (`plex_rating_key`,
+  `jellyfin_id`, migration 0007), la sync ne réécrit que celles du serveur lu (`store.ApplyServerMatches`), les éléments
+  connus du seul autre serveur passent en `match_state = 'hidden'` (gelés, masqués de la Bibliothèque / Santé / lot,
+  protection locale et historique conservés, aucune action possible : `actions.ErrInactiveServer`). `plex_only` est
+  devenu `server_only` (alias accepté dans `?match=`). Historique Jellyfin natif (`jellyfin_history`) : dernière
+  lecture de chaque élément par utilisateur (`Played` + lectures en cours `IsResumable`), pas de durées, curseur par
+  utilisateur ; utilisateurs rattachés **par nom** aux spectateurs existants (`store.AccountIDsByName`), sinon id
+  `jellyfin.AccountID` (≥ 1<<62). Le ménage de l'historique Plex (`DropOtherHistory`, `KeepViewers`) ne touche que
+  `tautulli`/`plex_history`. Dédoublonnage Plex ↔ Jellyfin (décision utilisateur) : `store.MergeServerHistories` à
+  chaque sync (après `MergePlexHistory`, quel que soit le serveur actif) supprime l'événement Jellyfin qui répète une
+  lecture Plex/Tautulli (même spectateur, élément, épisode ; de 30 min avant à 24 h après, ou import en masse :
+  ≥ 20 éléments vus dans la même minute, sans condition de date) et complète la lecture Plex partielle si aucune lecture
+  Plex terminée ne l'explique. Tautulli et `HISTORY_SOURCE` : Plex seulement. Client Jellyfin : en-tête
+  `Authorization: MediaBrowser Token="…"` (pas `X-Emby-Token`/`api_key`, désactivés par Jellyfin 12) ; Emby refusé.
+  Labo réel : `make jellyfin-lab` (`deploy/jellyfin-lab`, image épinglée, projet `hangarr-jellyfin-lab`, port local).
 - `DRY_RUN=true` par défaut ; dry-run et tag de protection (`PROTECTED_TAGS`) vérifiés **côté serveur**.
 - Suppression de saison : supprimer les fichiers **puis** démonitorer la saison (`PUT` de la série complète).
 - Visionnage = **historique fusionné** (`HISTORY_SOURCE=auto` → `merged` si Tautulli est configuré, décision
@@ -116,7 +137,7 @@ Pas de framework web, pas de build Node pour l'app, pas de CDN.
 
 - `cmd/hangarr` : `serve`, `sync --once`, `admin reset-password`, `master-key`, `backup [PATH]`, `healthcheck`, `version`.
 - `internal/mockarr` (servi par `cmd/mockarr`) : faux upstreams (sonarr :8989, radarr :7878, plex :32400,
-  tautulli :8181) depuis `testdata/`, appels destructeurs exposés sur `GET /_calls`, `POST /_reset`.
+  jellyfin :8096, tautulli :8181) depuis `testdata/`, appels destructeurs exposés sur `GET /_calls`, `POST /_reset`.
   Les tests d'intégration l'utilisent via `httptest`. `MOCK_SHIFT_DATES=true` recale l'historique sur aujourd'hui.
   Dev seulement (`compose.dev.yml`) : `MOCK_DEV_EXTRAS` (catalogue `testdata/dev/`) et `MOCK_REAL_POSTERS` (vraies
   affiches de `testdata/posters.json` et vraies images de fond TMDB de `testdata/fanarts.json`, téléchargées par le
@@ -147,9 +168,11 @@ Pas de framework web, pas de build Node pour l'app, pas de CDN.
 - Suppressions : `internal/actions` (tag de protection relu en live sur Sonarr/Radarr, dry-run, titre à saisir pour une
   série, journal `action_log` pour toute tentative). Saison : fichiers (`DELETE episodefile/bulk`) PUIS `PUT` de l'objet
   série **brut** avec `monitored=false` (`sonarr.UnmonitorSeason`). Resync ciblée ensuite (`syncer.RefreshSeries`).
-- Suppression via Plex (`actions.deleteFromPlex`, action `delete_plex`) : élément connu de Plex seul (plus dans
-  Sonarr/Radarr, `plex_rating_key` présent) → `DELETE /library/metadata/{ratingKey}` (Plex supprime les fichiers ; refus
-  401/403 = « Autoriser la suppression des médias » désactivé côté Plex, expliqué). Fiche seulement (pas en lot, pas de
+- Suppression via le serveur multimédia actif (`actions.deleteFromServer`, actions `delete_plex` / `delete_jellyfin`) :
+  élément connu de ce serveur seul (plus dans Sonarr/Radarr, sa clé présente, pas `hidden`) → Plex
+  `DELETE /library/metadata/{ratingKey}` (refus 401/403 = « Autoriser la suppression des médias » désactivé côté Plex,
+  expliqué) ou Jellyfin `DELETE /Items/{id}` ; le serveur supprime les fichiers ; puis `PLEX_REFRESH_AFTER_DELETE`
+  rescanne le serveur actif (Jellyfin : `POST /Library/Refresh`, une fois par lot). Fiche seulement (pas en lot, pas de
   saison), dry-run et titre à saisir pour une série respectés. Protection de ces éléments **dans Hangarr seulement**
   (décision utilisateur) : colonne `media.protected_local` (migration 0006, jamais écrite par la sync), rien envoyé à
   Plex, appliquée même en dry-run, journalisée ; `protectedClause` et les templates (`.ProtectedLocal`) en tiennent compte.
@@ -250,7 +273,7 @@ Pas de framework web, pas de build Node pour l'app, pas de CDN.
   `static/favicon.svg` (suit le thème du système par `<style>` interne, CSP propre aux SVG dans `static()`). PNG
   (`favicon-32.png`, aussi servi sur `/favicon.ico` ; `apple-touch-icon.png`) générés par `make icons`.
 - Projets Compose : `hangarr` = `compose.yml` (prod), `hangarr-dev` = `compose.dev.yml`, `hangarr-e2e`,
-  `hangarr-deploy-check` : ne jamais leur donner le même nom (un `down` emporterait l'autre).
+  `hangarr-deploy-check`, `hangarr-jellyfin-lab` : ne jamais leur donner le même nom (un `down` emporterait l'autre).
 - `make e2e` tourne dans le projet compose `hangarr-e2e` (séparé) et lit le mot de passe initial dans les logs.
 
 ## Phase 6 : périmètre convenu avec l'utilisateur

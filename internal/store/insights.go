@@ -161,20 +161,22 @@ const playKeyW = `COALESCE('r' || w.reference_id, 'e' || w.id)`
 
 // RecentView is one of the last sessions.
 type RecentView struct {
-	MediaID   int64 // 0 when the media no longer exists
-	ArrID     int64
-	PlexKey   string // Plex rating key of the media (poster of plex_only items)
-	Kind      string
-	Title     string
-	Episode   string // "S01E02 · Title" for episodes
-	UserName  string
-	StoppedAt int64
+	MediaID    int64 // 0 when the media no longer exists
+	ArrID      int64
+	PlexKey    string // Plex rating key of the media (poster of server_only items)
+	JellyfinID string // Jellyfin id of the media (same)
+	Kind       string
+	Title      string
+	Episode    string // "S01E02 · Title" for episodes
+	UserName   string
+	StoppedAt  int64
 }
 
 // RecentViews returns the last plays (resumed sessions grouped), newest first,
 // looking back 90 days from the latest session.
 func (s *Store) RecentViews(ctx context.Context, limit int) ([]RecentView, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT COALESCE(m.id, 0), COALESCE(m.arr_id, 0), COALESCE(m.plex_rating_key, ''), COALESCE(m.kind, ''),
+	rows, err := s.db.QueryContext(ctx, `SELECT COALESCE(m.id, 0), COALESCE(m.arr_id, 0), COALESCE(m.plex_rating_key, ''),
+		COALESCE(m.jellyfin_id, ''), COALESCE(m.kind, ''),
 		COALESCE(m.title, NULLIF(w.grandparent_title, ''), w.title, ''), w.media_type, COALESCE(w.season_number, 0),
 		COALESCE(w.episode_number, 0), COALESCE(w.title, ''), COALESCE(NULLIF(a.friendly_name, ''), a.username, ''),
 		COALESCE(w.stopped_at, 0)
@@ -194,7 +196,7 @@ func (s *Store) RecentViews(ctx context.Context, limit int) ([]RecentView, error
 		var r RecentView
 		var mediaType, epTitle string
 		var season, episode int
-		if err := rows.Scan(&r.MediaID, &r.ArrID, &r.PlexKey, &r.Kind, &r.Title, &mediaType, &season, &episode, &epTitle,
+		if err := rows.Scan(&r.MediaID, &r.ArrID, &r.PlexKey, &r.JellyfinID, &r.Kind, &r.Title, &mediaType, &season, &episode, &epTitle,
 			&r.UserName, &r.StoppedAt); err != nil {
 			return nil, err
 		}
