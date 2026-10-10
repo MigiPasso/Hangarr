@@ -1,5 +1,5 @@
 # Real Jellyfin server (pinned version) with the scenario of testdata/jellyfin/.
-# Nothing here is installed on the host: see README.md and `make jellyfin-lab`.
+# Nothing here is installed on the host: see `make jellyfin-lab`.
 name: hangarr-jellyfin-lab
 
 services:

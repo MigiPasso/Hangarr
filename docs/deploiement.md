@@ -244,7 +244,7 @@ Il change si vous vous déconnectez de tous les appareils ou changez votre mot d
 ### Jellyfin
 
 Jellyfin remplace Plex comme serveur multimédia : configurez l'un ou l'autre, pas les deux (voir le
-[README](../README.md#plex-ou-jellyfin)). Tant que Plex est configuré, la carte Jellyfin est grisée : videz d'abord la
+[README](../README.md#plex-or-jellyfin)). Tant que Plex est configuré, la carte Jellyfin est grisée : videz d'abord la
 configuration de Plex. Sa configuration :
 
 - **Adresse du serveur** : l'adresse que Hangarr joint, par exemple `http://jellyfin:8096` dans le même namespace.

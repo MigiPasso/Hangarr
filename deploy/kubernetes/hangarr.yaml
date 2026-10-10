@@ -3,7 +3,7 @@
 # application.
 #
 #   1. Put the image in a registry the nodes can pull from, and set it below
-#      (search "image:"). See README, « Kubernetes ».
+#      (search "image:"). See README, "Kubernetes".
 #   2. Create the master key secret in the same namespace (never commit it):
 #        kubectl -n <ns> create secret generic hangarr-master-key \
 #          --from-literal=master-key="$(openssl rand -base64 32)"
@@ -11,7 +11,7 @@
 #   4. Initial admin password (shown once):
 #        kubectl -n <ns> logs deploy/hangarr | grep -A4 "INITIAL ADMIN"
 #   5. Open the app (port-forward, or the Service / Ingress you choose), then
-#      configure Sonarr, Radarr, Plex (or Jellyfin) and Tautulli in « Services »
+#      configure Sonarr, Radarr, Plex (or Jellyfin) and Tautulli in Settings › Services
 #      with their in-cluster addresses, e.g. http://sonarr:8989 in the same namespace.
 #
 # One replica only (SQLite on a ReadWriteOnce volume), Recreate strategy.

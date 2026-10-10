@@ -6,7 +6,7 @@ COMPOSE      := docker compose -f compose.dev.yml
 E2E_COMPOSE  := MOCK_DEV_EXTRAS=false MOCK_REAL_POSTERS=false docker compose -p hangarr-e2e -f compose.dev.yml --profile e2e
 # compose.yml as shipped, plus the mock and a smoke test (separate project).
 DEPLOY_COMPOSE := docker compose -p hangarr-deploy-check -f compose.yml -f deploy/compose.check.yml
-# Real Jellyfin with the test scenario (separate project, see deploy/jellyfin-lab/README.md).
+# Real Jellyfin with the test scenario (separate project, deploy/jellyfin-lab/compose.yml).
 LAB_COMPOSE  := docker compose -f deploy/jellyfin-lab/compose.yml
 ALL_PROFILES := --profile real --profile tools --profile e2e
 VERSION      ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
