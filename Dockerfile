@@ -63,7 +63,7 @@ ENTRYPOINT ["/mockarr"]
 FROM gcr.io/distroless/static-debian12:nonroot AS runtime
 ARG VERSION=dev
 LABEL org.opencontainers.image.title="hangarr" \
-      org.opencontainers.image.description="Plex / Tautulli / Sonarr / Radarr watch statistics and cleanup" \
+      org.opencontainers.image.description="Sonarr / Radarr watch statistics and cleanup, with Plex (+ Tautulli) or Jellyfin" \
       org.opencontainers.image.version="${VERSION}"
 COPY --from=build /out/hangarr /hangarr
 COPY --from=build --chown=65532:65532 /out/data /data
