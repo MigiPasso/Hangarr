@@ -43,12 +43,14 @@ func TestDuplicatesPage(t *testing.T) {
 }
 
 // Each version has a button that copies its path; the page script does the copy.
+// The button is in the actions cell, before the delete button.
 func TestDuplicatesCopyPath(t *testing.T) {
 	e := newLibEnv(t, 0)
 	r := e.do(e.c, "GET", "/duplicates", nil, nil)
 	const name = "Dune.2021.1080p.WEB-DL.DDP5.1.H.264-GRP.mkv"
 	row := duplicateRow(t, r.body, name)
 	for _, want := range []string{
+		`<td class="actions"><button type="button" class="small copy-btn"`,
 		`data-copy="/data/movies/Dune (2021)/` + name + `"`,
 		`data-copied="Copié ✓"`, `data-copy-failed="Copie impossible"`,
 		`aria-label="Copier le chemin de ` + name + `"`, `>Chemin</button>`,
@@ -56,6 +58,9 @@ func TestDuplicatesCopyPath(t *testing.T) {
 		if !strings.Contains(row, want) {
 			t.Errorf("WEB-DL row misses %q:\n%s", want, row)
 		}
+	}
+	if n := strings.Count(row, "copy-btn"); n != 1 {
+		t.Errorf("WEB-DL row has %d copy buttons, want 1:\n%s", n, row)
 	}
 }
 

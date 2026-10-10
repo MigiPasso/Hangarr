@@ -73,7 +73,7 @@
     <tbody>
     {{range $g.Versions}}
       <tr>
-        <td class="dup-file" title="{{.File}}"><div class="dup-file-name">{{.Name}}</div><button type="button" class="small copy-btn" data-copy="{{.File}}" data-copied="{{t "Copied"}}" data-copy-failed="{{t "Copy failed"}}" aria-label="{{t "Copy the path of %s" .Name}}">{{t "Path"}}</button>{{if .Radarr}} <span class="badge">Radarr</span> <span class="small muted">{{if .Monitored}}{{t "monitored|movie"}}{{else}}{{t "not monitored|movie"}}{{end}}</span>{{end}}</td>
+        <td class="dup-file" title="{{.File}}"><div class="dup-file-name">{{.Name}}</div>{{if .Radarr}} <span class="badge">Radarr</span> <span class="small muted">{{if .Monitored}}{{t "monitored|movie"}}{{else}}{{t "not monitored|movie"}}{{end}}</span>{{end}}</td>
         <td class="dup-short">{{.Quality}}</td>
         <td class="dup-short">{{.Resolution}}</td>
         <td class="dup-short">{{.Video}}</td>
@@ -81,7 +81,7 @@
         <td class="num dup-short">{{bytes .Size}}</td>
         <td>{{if not $g.Live}}<span class="muted">…</span>{{else if $g.Failed}}<span class="muted">—</span>{{else}}{{with .AudioTracks}}{{join . ", "}}{{else}}<span class="muted">—</span>{{end}}{{end}}</td>
         <td>{{if not $g.Live}}<span class="muted">…</span>{{else if $g.Failed}}<span class="muted">—</span>{{else}}{{with .Subtitles}}{{join . ", "}}{{else}}<span class="muted">—</span>{{end}}{{end}}</td>
-        <td class="actions">{{if .CanDelete}}<button type="button" class="danger small" hx-get="{{.DeleteURL}}" hx-target="#confirm-body" aria-label="{{t "Delete %s" .Name}}">{{t "Delete"}}</button>{{else if .WholeFolder}}<button type="button" class="danger small" disabled aria-describedby="{{$g.NoteID}}" aria-label="{{t "Delete %s" .Name}}">{{t "Delete"}}</button>{{end}}</td>
+        <td class="actions"><button type="button" class="small copy-btn" data-copy="{{.File}}" data-copied="{{t "Copied"}}" data-copy-failed="{{t "Copy failed"}}" aria-label="{{t "Copy the path of %s" .Name}}">{{t "Path"}}</button>{{if .CanDelete}}<button type="button" class="danger small" hx-get="{{.DeleteURL}}" hx-target="#confirm-body" aria-label="{{t "Delete %s" .Name}}">{{t "Delete"}}</button>{{else if .WholeFolder}}<button type="button" class="danger small" disabled aria-describedby="{{$g.NoteID}}" aria-label="{{t "Delete %s" .Name}}">{{t "Delete"}}</button>{{end}}</td>
       </tr>
     {{end}}
     {{if and $g.Live $g.Failed}}<tr><td colspan="9" class="small muted">{{t "Could not read the tracks from %s." (server)}}</td></tr>{{end}}
