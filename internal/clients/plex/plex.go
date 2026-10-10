@@ -8,6 +8,7 @@ package plex
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -57,16 +58,47 @@ type Item struct {
 	LegacyGUID string `json:"guid"`
 	GUIDs      []GUID `json:"Guid"`
 	// Files on disk: Media/Part for movies, Location for shows (when sent).
-	OriginalTitle string `json:"originalTitle"`
-	Media         []struct {
-		Part []struct {
-			File string `json:"file"`
-		} `json:"Part"`
-	} `json:"Media"`
-	Location []struct {
+	OriginalTitle string  `json:"originalTitle"`
+	Media         []Media `json:"Media"`
+	Location      []struct {
 		Path string `json:"path"`
 	} `json:"Location"`
 }
+
+// Media is one version of a movie (one or more files).
+type Media struct {
+	ID              httpx.Int    `json:"id"`
+	VideoResolution httpx.String `json:"videoResolution"` // "4k", "1080", "720", "sd"…
+	VideoCodec      string       `json:"videoCodec"`
+	AudioCodec      string       `json:"audioCodec"`
+	Container       string       `json:"container"`
+	Bitrate         httpx.Int    `json:"bitrate"` // kbit/s
+	Part            []Part       `json:"Part"`
+}
+
+// Part is one file of a version.
+type Part struct {
+	ID     httpx.Int `json:"id"`
+	File   string    `json:"file"`
+	Size   httpx.Int `json:"size"`   // bytes
+	Stream []Stream  `json:"Stream"` // only sent by /library/metadata/{key}
+}
+
+// Stream is a video, audio or subtitle track of a file.
+type Stream struct {
+	StreamType   httpx.Int `json:"streamType"` // StreamVideo, StreamAudio, StreamSubtitle
+	Codec        string    `json:"codec"`
+	LanguageCode string    `json:"languageCode"` // ISO 639-2 ("fra"), may be empty
+	DisplayTitle string    `json:"displayTitle"` // localized by Plex ("Français (AC3 5.1)")
+	Forced       bool      `json:"forced"`
+}
+
+// Stream types, as in Stream.StreamType.
+const (
+	StreamVideo    = 1
+	StreamAudio    = 2
+	StreamSubtitle = 3
+)
 
 // Files returns the paths of the media files of a movie.
 func (i Item) Files() []string {
@@ -212,6 +244,19 @@ func (c *Client) Items(ctx context.Context, sectionKey string, itemType int) ([]
 	}
 }
 
+// Metadata returns one item with its versions. Only this endpoint sends the
+// streams of each file.
+func (c *Client) Metadata(ctx context.Context, ratingKey string) (Item, error) {
+	var out container[Item]
+	if err := c.HTTP.JSON(ctx, httpx.Request{Path: "/library/metadata/" + url.PathEscape(ratingKey)}, &out); err != nil {
+		return Item{}, err
+	}
+	if len(out.MediaContainer.Metadata) == 0 {
+		return Item{}, fmt.Errorf("plex: no metadata for %s", ratingKey)
+	}
+	return out.MediaContainer.Metadata[0], nil
+}
+
 // Accounts lists the server's accounts (id → name).
 func (c *Client) Accounts(ctx context.Context) ([]Account, error) {
 	var out container[Account]
@@ -279,5 +324,12 @@ func (c *Client) EmptyTrash(ctx context.Context, key string) error {
 // (Settings > Library > Allow media deletion).
 func (c *Client) DeleteItem(ctx context.Context, ratingKey string) error {
 	_, err := c.HTTP.Do(ctx, httpx.Request{Method: http.MethodDelete, Path: "/library/metadata/" + url.PathEscape(ratingKey)})
+	return err
+}
+
+// DeleteMedia deletes one version of an item, with its files. Like DeleteItem,
+// it requires "Allow media deletion" on the server.
+func (c *Client) DeleteMedia(ctx context.Context, ratingKey, mediaID string) error {
+	_, err := c.HTTP.Do(ctx, httpx.Request{Method: http.MethodDelete, Path: "/library/metadata/" + url.PathEscape(ratingKey) + "/media/" + url.PathEscape(mediaID)})
 	return err
 }

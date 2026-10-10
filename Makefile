@@ -167,7 +167,7 @@ deploy-check: ## Validate compose.yml and smoke-test it (as shipped) against the
 
 capture-fixtures: ## Record anonymized responses of the real instances (.env) into testdata/captured/
 	@test -f .env || { echo ".env missing: copy .env.example and fill it" >&2; exit 1; }
-	HANGARR_ENV_FILE=.env $(COMPOSE) --profile real run --rm capture
+	HANGARR_ENV_FILE=.env HOST_UID=$(shell id -u) HOST_GID=$(shell id -g) $(COMPOSE) --profile real run --rm capture
 
 jellyfin-lab: ## Real Jellyfin (pinned) with the test scenario on http://localhost:8096
 	$(LAB_COMPOSE) up -d --wait jellyfin

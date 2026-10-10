@@ -1,0 +1,90 @@
+{{define "content"}}{{$d := .Data}}
+<div class="title-row"><h1>{{t "Duplicates"}}</h1>{{template "info" (t "Movies %s has more than once: several versions of one movie, or the same movie in several libraries. Updated at each sync." (server))}}</div>
+
+{{if $d.Conflict}}
+<p class="alert alert-warning" role="status">{{t "Plex and Jellyfin are both configured: clear one of them first."}}</p>
+{{else if $d.NoServer}}
+<p class="empty muted">{{t "No media server is configured."}}</p>
+{{else}}
+<nav class="tabs" aria-label="{{t "Tabs"}}">
+  <a href="/duplicates"{{if eq $d.Tab "review"}} aria-current="page"{{end}}>{{t "To review (%d)" $d.Review}}</a>
+  <a href="/duplicates?tab=acked"{{if eq $d.Tab "acked"}} aria-current="page"{{end}}>{{t "Acknowledged (%d)" $d.Acked}}</a>
+</nav>
+{{with $d.Error}}<p class="alert alert-error" role="alert">{{.}}</p>{{end}}
+{{if $d.Groups}}
+<div class="stack">
+  {{range $d.Groups}}{{template "duplicate_card" .}}{{end}}
+</div>
+{{else if eq $d.Tab "acked"}}
+<p class="empty muted">{{t "No acknowledged duplicate."}}</p>
+{{else}}
+<p class="empty muted">{{t "No movie is on %s more than once." (server)}}</p>
+{{end}}
+{{end}}
+{{end}}
+
+{{define "duplicate_card"}}
+<section class="card dup-card" aria-labelledby="dup-{{.Index}}">
+  <div class="dup-head">
+    <div class="poster dup-poster">
+      {{with .Poster}}<img src="{{.}}" alt="" loading="lazy" decoding="async" width="90" height="135">{{else}}<div class="poster-fallback">{{.Title}}</div>{{end}}
+    </div>
+    <div class="dup-main">
+      <h2 id="dup-{{.Index}}">{{if .MediaID}}<a href="/movies/{{.MediaID}}" hx-get="/movies/{{.MediaID}}" hx-target="#modal-body">{{.Title}}</a>{{else}}{{.Title}}{{end}}{{with .Year}} <span class="muted">({{.}})</span>{{end}}</h2>
+      <p class="small muted">{{tn .Count "%d version · %s" "%d versions · %s" (bytes .Size)}}</p>
+      {{if .Protected}}<p class="small"><span class="badge">{{t "Protected"}}</span> {{t "Remove its protection to delete a version."}}</p>{{end}}
+      <div class="dup-actions">
+        {{if .Acked}}
+        <span class="small muted">{{t "Acknowledged %s" (reltime .AckedUnix)}}</span>
+        <form method="post" action="{{.UnackURL}}" class="inline">
+          <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+          <input type="hidden" name="tab" value="{{.Tab}}">
+          <button type="submit">{{t "Review again"}}</button>
+        </form>
+        {{else}}
+        <span class="with-info">
+          <form method="post" action="{{.AckURL}}" class="inline">
+            <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+            <input type="hidden" name="fingerprint" value="{{.Fingerprint}}">
+            <input type="hidden" name="tab" value="{{.Tab}}">
+            <button type="submit">{{t "Keep all"}}</button>
+          </form>
+          {{template "info" (t "Hides this duplicate as long as its versions stay the same.")}}
+        </span>
+        {{end}}
+      </div>
+    </div>
+  </div>
+  {{template "duplicate_versions" .}}
+</section>
+{{end}}
+
+{{/* duplicate_versions: the files of a movie. On the page the table loads its
+     tracks by itself (hx-trigger="revealed"); the fragment is the table alone. */}}
+{{define "duplicate_versions"}}{{$g := .}}
+<div class="table-wrap"{{with $g.LiveURL}} hx-get="{{.}}" hx-trigger="revealed" hx-swap="outerHTML"{{end}}>
+  <table class="table">
+    <thead><tr>
+      <th scope="col">{{t "File"}}</th><th scope="col">{{t "Quality"}}</th><th scope="col">{{t "Resolution"}}</th><th scope="col">{{t "Video"}}</th><th scope="col">{{t "Audio"}}</th><th scope="col" class="num">{{t "Size"}}</th><th scope="col">{{t "Audio tracks"}}</th><th scope="col">{{t "Subtitles"}}</th><th scope="col"><span class="visually-hidden">{{t "Actions"}}</span></th>
+    </tr></thead>
+    <tbody>
+    {{range $g.Versions}}
+      <tr>
+        <td class="dup-file" title="{{.File}}"><div class="dup-file-name">{{.Name}}</div>{{if .Radarr}} <span class="badge">Radarr</span> <span class="small muted">{{if .Monitored}}{{t "monitored|movie"}}{{else}}{{t "not monitored|movie"}}{{end}}</span>{{end}}</td>
+        <td class="dup-short">{{.Quality}}</td>
+        <td class="dup-short">{{.Resolution}}</td>
+        <td class="dup-short">{{.Video}}</td>
+        <td class="dup-short">{{.Audio}}</td>
+        <td class="num dup-short">{{bytes .Size}}</td>
+        <td>{{if not $g.Live}}<span class="muted">…</span>{{else if $g.Failed}}<span class="muted">—</span>{{else}}{{with .AudioTracks}}{{join . ", "}}{{else}}<span class="muted">—</span>{{end}}{{end}}</td>
+        <td>{{if not $g.Live}}<span class="muted">…</span>{{else if $g.Failed}}<span class="muted">—</span>{{else}}{{with .Subtitles}}{{join . ", "}}{{else}}<span class="muted">—</span>{{end}}{{end}}</td>
+        <td class="actions">{{if .CanDelete}}<button type="button" class="danger small" hx-get="{{.DeleteURL}}" hx-target="#confirm-body" aria-label="{{t "Delete %s" .Name}}">{{t "Delete"}}</button>{{else if .WholeFolder}}<span class="with-info small">{{t "Jellyfin would delete the whole folder"}}{{template "info" (t "Delete the file on disk or through Radarr.")}}</span>{{end}}</td>
+      </tr>
+    {{end}}
+    {{if and $g.Live $g.Failed}}<tr><td colspan="9" class="small muted">{{t "Could not read the tracks from %s." (server)}}</td></tr>{{end}}
+    </tbody>
+  </table>
+</div>
+{{end}}
+
+{{define "duplicate_fragment"}}{{template "duplicate_versions" .Data}}{{end}}

@@ -25,7 +25,7 @@
     "tags": [],
     "added": "2024-05-10T12:00:00Z",
     "ratings": { "imdb": { "votes": 2500000, "value": 8.8, "type": "user" }, "tmdb": { "votes": 35000, "value": 8.4, "type": "user" } },
-    "movieFile": { "id": 11, "size": 12000000000, "quality": { "quality": { "name": "Bluray-1080p" } } }
+    "movieFile": { "id": 11, "size": 12000000000, "relativePath": "Inception (2010) Bluray-1080p.mkv", "quality": { "quality": { "name": "Bluray-1080p" } } }
   },
   {
     "id": 2,
@@ -51,7 +51,7 @@
     "tags": [],
     "added": "2025-11-01T20:00:00Z",
     "ratings": { "imdb": { "votes": 800000, "value": 8.0 }, "tmdb": { "votes": 12000, "value": 7.8 } },
-    "movieFile": { "id": 12, "size": 25000000000 }
+    "movieFile": { "id": 12, "size": 25000000000, "relativePath": "Dune (2021) Remux-2160p.mkv" }
   },
   {
     "id": 3,
@@ -75,7 +75,7 @@
     "tags": [],
     "added": "2025-01-05T08:00:00Z",
     "ratings": { "tmdb": { "votes": 9000, "value": 7.2 } },
-    "movieFile": { "id": 13, "size": 15000000000 }
+    "movieFile": { "id": 13, "size": 15000000000, "relativePath": "Tenet (2020) Bluray-2160p.mkv" }
   },
   {
     "id": 4,
@@ -99,7 +99,7 @@
     "tags": [],
     "added": "2024-02-02T10:00:00Z",
     "ratings": { "value": 8.6, "votes": 1000 },
-    "movieFile": { "id": 14, "size": 20000000000 }
+    "movieFile": { "id": 14, "size": 20000000000, "relativePath": "Interstellar (2014) Remux-2160p.mkv" }
   },
   {
     "id": 5,

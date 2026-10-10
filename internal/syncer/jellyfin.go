@@ -2,6 +2,8 @@ package syncer
 
 import (
 	"context"
+	"maps"
+	"slices"
 	"strings"
 
 	"hangarr/internal/clients/jellyfin"
@@ -26,6 +28,18 @@ func (s *Syncer) fetchJellyfin(ctx context.Context, c *jellyfin.Client) (*server
 	for _, it := range movies {
 		if it.ID != "" {
 			cat.items = append(cat.items, jellyfinItem(matching.KindMovie, it))
+		}
+	}
+	groups := jellyfinGroups(movies)
+	if len(groups) == 0 {
+		cat.versionsOK = true
+	} else {
+		items, err := c.Versions(ctx, slices.Sorted(maps.Keys(groups)))
+		if err != nil {
+			s.Log.Warn("duplicate versions not read", "err", err)
+		} else {
+			cat.versions = jellyfinVersions(items, groups)
+			cat.versionsOK = true
 		}
 	}
 	shows, err := c.Items(ctx, jellyfin.TypeSeries)

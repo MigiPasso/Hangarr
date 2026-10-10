@@ -189,3 +189,102 @@ func TestJellyfinImages(t *testing.T) {
 		t.Errorf("invalid id: status %d", rec.Code)
 	}
 }
+
+// plexCall sends one request to the fake Plex, with the token of the mock (key "k").
+func plexCall(h http.Handler, method, target string) *httptest.ResponseRecorder {
+	req := httptest.NewRequest(method, target, nil)
+	req.Header.Set("X-Plex-Token", "k")
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	return rec
+}
+
+// plexMetadataResponse is the part of GET /library/metadata/{key} the tests read.
+type plexMetadataResponse struct {
+	MediaContainer struct {
+		Size     int `json:"size"`
+		Metadata []struct {
+			RatingKey string `json:"ratingKey"`
+			Title     string `json:"title"`
+			Media     []struct {
+				ID   int `json:"id"`
+				Part []struct {
+					Stream []map[string]any `json:"Stream"`
+				} `json:"Part"`
+			} `json:"Media"`
+		} `json:"Metadata"`
+	} `json:"MediaContainer"`
+}
+
+func TestPlexMetadata(t *testing.T) {
+	h := New(os.DirFS("../../testdata"), "k").Plex()
+	// 102 has its own fixture: its two versions, with the streams of each file.
+	rec := plexCall(h, http.MethodGet, "/library/metadata/102")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("102: status %d", rec.Code)
+	}
+	var dune plexMetadataResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &dune); err != nil {
+		t.Fatal(err)
+	}
+	if len(dune.MediaContainer.Metadata) != 1 || dune.MediaContainer.Metadata[0].Title != "Dune" {
+		t.Fatalf("102: %+v", dune.MediaContainer)
+	}
+	media := dune.MediaContainer.Metadata[0].Media
+	if len(media) != 2 || len(media[0].Part[0].Stream) != 5 || len(media[1].Part[0].Stream) != 3 {
+		t.Errorf("102: media %+v, want 2 versions with 5 and 3 streams", media)
+	}
+
+	// 101 is served from the movie section: no streams.
+	rec = plexCall(h, http.MethodGet, "/library/metadata/101")
+	var inception plexMetadataResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &inception); err != nil || rec.Code != http.StatusOK {
+		t.Fatalf("101: status %d, %v", rec.Code, err)
+	}
+	if got := inception.MediaContainer.Metadata; len(got) != 1 || got[0].RatingKey != "101" || got[0].Title != "Inception" ||
+		len(got[0].Media) != 1 || len(got[0].Media[0].Part[0].Stream) != 0 {
+		t.Errorf("101: %+v", got)
+	}
+	for _, target := range []string{"/library/metadata/999", "/library/metadata/abc"} {
+		if rec := plexCall(h, http.MethodGet, target); rec.Code != http.StatusNotFound {
+			t.Errorf("%s: status %d", target, rec.Code)
+		}
+	}
+}
+
+func TestPlexDeleteMedia(t *testing.T) {
+	m := New(os.DirFS("../../testdata"), "k")
+	h := m.Plex()
+	const target = "/library/metadata/102/media/1022"
+	if rec := plexCall(h, http.MethodDelete, target); rec.Code != http.StatusOK {
+		t.Fatalf("delete: status %d", rec.Code)
+	}
+	calls := m.Calls()
+	if len(calls) != 1 || calls[0].Service != "plex" || calls[0].Method != http.MethodDelete || calls[0].Path != target {
+		t.Errorf("calls after delete: %+v", calls)
+	}
+	m.PlexDeletionDenied = true
+	if rec := plexCall(h, http.MethodDelete, target); rec.Code != http.StatusForbidden {
+		t.Errorf("denied delete: status %d", rec.Code)
+	}
+}
+
+func TestJellyfinVersionsByIDs(t *testing.T) {
+	m := New(os.DirFS("../../testdata"), "k")
+	h := m.Jellyfin()
+	// Dune (102) and the copy of Tenet (203): the copy is not in the library listing.
+	const dune, tenetCopy = "f0000000000000000000000000000102", "f0000000000000000000000000000203"
+	list := decodeJellyfinListing(t, jellyfinCall(h, http.MethodGet, "/Items?ids="+dune+","+tenetCopy+"&fields=MediaSources", jellyfinAuth))
+	if len(list.Items) != 2 || list.TotalRecordCount != 2 {
+		t.Fatalf("versions: %d items, total %d", len(list.Items), list.TotalRecordCount)
+	}
+	if list.Items[0]["Id"] != dune || list.Items[1]["Id"] != tenetCopy {
+		t.Errorf("versions: %v, %v", list.Items[0]["Id"], list.Items[1]["Id"])
+	}
+	if got := m.Hits("jellyfin:versions"); got != 1 {
+		t.Errorf("hits: %d", got)
+	}
+	if rec := jellyfinCall(h, http.MethodGet, "/Items?ids=../x", jellyfinAuth); rec.Code != http.StatusBadRequest {
+		t.Errorf("invalid id: status %d", rec.Code)
+	}
+}

@@ -1,0 +1,12 @@
+{"Items":[
+ {"Id":"f0000000000000000000000000000102","Name":"Dune","Type":"Movie","Path":"/data/movies/Dune (2021)/Dune (2021).mkv","ProviderIds":{"Imdb":"tt1160419","Tmdb":"438631"},"MediaSourceCount":2,"MediaSources":[
+  {"Id":"f0000000000000000000000000000102","Path":"/data/movies/Dune (2021)/Dune (2021).mkv","Name":"Dune (2021)","Size":60000000000,"Container":"mkv","Bitrate":60000000,"MediaStreams":[{"Type":"Video","Codec":"hevc","Width":3840,"Height":1600,"DisplayTitle":"4K HEVC"},{"Type":"Audio","Codec":"truehd","Language":"eng","DisplayTitle":"English - TrueHD 7.1"},{"Type":"Subtitle","Codec":"subrip","Language":"fre","DisplayTitle":"French - SUBRIP","IsForced":true}]},
+  {"Id":"f0000000000000000000000000000202","Path":"/data/movies/Dune (2021)/Dune (2021) - 1080p.mkv","Name":"Dune (2021) - 1080p","Size":8000000000,"Container":"mkv","Bitrate":8000000,"MediaStreams":[{"Type":"Video","Codec":"h264","Width":1920,"Height":800,"DisplayTitle":"1080p H264"},{"Type":"Audio","Codec":"eac3","Language":"fre","DisplayTitle":"French - EAC3 5.1"}]}
+ ]},
+ {"Id":"f0000000000000000000000000000103","Name":"Tenet","Type":"Movie","Path":"/data/movies/Tenet (2020)/Tenet (2020).mkv","ProviderIds":{"Imdb":"tt6723592","Tmdb":"577922"},"MediaSourceCount":1,"MediaSources":[
+  {"Id":"f0000000000000000000000000000103","Path":"/data/movies/Tenet (2020)/Tenet (2020).mkv","Name":"Tenet (2020)","Size":15000000000,"Container":"mkv","Bitrate":13000000,"MediaStreams":[{"Type":"Video","Codec":"hevc","Width":3840,"Height":2160,"DisplayTitle":"4K HEVC"},{"Type":"Audio","Codec":"truehd","Language":"eng","DisplayTitle":"English - TrueHD 7.1"}]}
+ ]},
+ {"Id":"f0000000000000000000000000000203","Name":"Tenet","Type":"Movie","Path":"/data/movies/Tenet (2020) [copie]/Tenet (2020).mkv","ProviderIds":{"Imdb":"tt6723592","Tmdb":"577922"},"MediaSourceCount":1,"MediaSources":[
+  {"Id":"f0000000000000000000000000000203","Path":"/data/movies/Tenet (2020) [copie]/Tenet (2020).mkv","Name":"Tenet (2020)","Size":9000000000,"Container":"mkv","Bitrate":8000000,"MediaStreams":[{"Type":"Video","Codec":"h264","Width":1920,"Height":1080,"DisplayTitle":"1080p H264"},{"Type":"Audio","Codec":"ac3","Language":"eng","DisplayTitle":"English - AC3 5.1"}]}
+ ]}
+],"TotalRecordCount":3}

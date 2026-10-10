@@ -110,11 +110,13 @@ services:
     env_file: ${HANGARR_ENV_FILE:-.env.example}
     environment:
       GOFLAGS: -buildvcs=false
+      HOST_UID:
+      HOST_GID:
     volumes:
       - .:/src
       - gomod:/go/pkg/mod
       - gocache:/root/.cache/go-build
-    command: ["go", "run", "./cmd/capture-fixtures", "-out", "testdata/captured"]
+    command: ["sh", "-c", "go run ./cmd/capture-fixtures -out testdata/captured && chown -R \"$$HOST_UID:$$HOST_GID\" testdata/captured"]
 
   # Go toolbox with the source mounted, for go mod tidy and friends. Plain
   # image (not the deps stage) so it works before go.sum exists; keep the tag
