@@ -3,7 +3,7 @@
 A real Jellyfin server with the scenario of `testdata/jellyfin/`, to check the Jellyfin client against an actual server.
 
 - `make jellyfin-lab`: starts it on http://localhost:8096 (`LAB_PORT` changes the port) and seeds it.
-- `make jellyfin-lab-capture`: records its anonymized responses into `testdata/captured/jellyfin/`. Review them before committing.
+- `make jellyfin-lab-capture`: records its anonymized responses into `testdata/captured/jellyfin/`. The folder is ignored by git.
 - `make jellyfin-lab-down`: removes the containers and volumes.
 
 Admin account: `admin` / `hangarr-lab-admin`. The other accounts (`alice`, `bob`, `carol`) use `hangarr-lab-user`.

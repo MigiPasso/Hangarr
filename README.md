@@ -74,7 +74,7 @@ Le laboratoire Jellyfin (un vrai serveur avec le scénario de test) est décrit 
 
 Pour travailler contre les vraies instances : `cp .env.example .env`, remplir les URL et les clés, puis `make dev-real`.
 Pour valider les structs sur vos vraies réponses : `make capture-fixtures`, qui écrit des réponses anonymisées dans
-`testdata/captured/` (à relire avant de commiter) ; `make test` vérifie ensuite qu'elles se décodent.
+`testdata/captured/` (ignoré par git, jamais commité) ; `make test` vérifie ensuite qu'elles se décodent.
 
 ### Premier démarrage
 
