@@ -13,13 +13,16 @@ endpoints:
 | `sonarr/calendar.json`, `radarr/calendar.json` | `GET /api/v3/calendar?start=…&end=…` (dates recalées sur aujourd'hui) |
 | `plex/sections.json` | `GET /library/sections` |
 | `plex/section-<key>-type-<n>.json` | `GET /library/sections/<key>/all?type=<n>&includeGuids=1` |
+| `plex/metadata-<ratingKey>.json` | `GET /library/metadata/<ratingKey>` (streams of each file; without that file, the movie of the section) |
 | `plex/accounts.json`, `plex/history.json` | `GET /accounts`, `GET /status/sessions/history/all` |
+| (none) | `DELETE /library/metadata/<ratingKey>/media/<id>`: one version, answered like `DELETE /library/metadata/<ratingKey>`, recorded on `/_calls` |
 | `tautulli/get_history.json`, `get_users.json` | `GET /api/v2?cmd=get_history&grouping=0…`, `cmd=get_users` |
 | `jellyfin/system-info.json` | `GET /System/Info` |
 | `jellyfin/users.json` | `GET /Users` |
 | `jellyfin/items-<Type>.json` | `GET /Items?recursive=true&includeItemTypes=<Type>…` |
 | `jellyfin/played-<userId>.json` | `GET /Items?userId=…&isPlayed=true&sortBy=DatePlayed…` |
 | `jellyfin/resumable-<userId>.json` | `GET /Items?userId=…&filters=IsResumable…` |
+| `jellyfin/versions.json` | `GET /Items?ids=…` (the versions of the movies, by id, with their media sources) |
 
 `mockarr` serves Jellyfin on `:8096`, from the `jellyfin/` files above.
 
@@ -35,6 +38,12 @@ Hand-written from the API documentation, timestamps anchored on **2026-10-01T00:
 - Arcane, Avatar: in Sonarr/Radarr only; Home Videos, Vacances 2019: in Plex only;
 - Inception: watched by bob, and by alice under an old rating key (555) → resolved by title + year;
 - Dune: two sessions with the same `reference_id` → one play, in progress; Interstellar: abandoned; Tenet: never;
+- Dune in two versions: on Plex, the Remux-2160p (60 GB, 4k, followed by Radarr through `movieFile.relativePath`)
+  and a WEB-DL 1080p (8 GB) beside it, in the same folder (`plex/metadata-102.json` gives the streams of both files);
+  on Jellyfin, two media sources of the same item, also in one folder. Both are stored as `media_versions` of the
+  group `tmdb:438631`. Tenet has one version;
+- `jellyfin/versions.json`: Dune, Tenet, and a copy of Tenet (`…0203`, in another folder) that is **not** in
+  `items-Movie.json`: it is reserved for the deletion tests, which prepare the database themselves;
 - calendar (always moved so that the anchor is today, filtered by `start`/`end`): Severance S02E01 (+2 days),
   S02E02, S02E10 (season finale, +65) and S03E01 (+120); Shōgun S02E01–E03 the same day (+20); Pluribus (not in
   the catalog, series premiere, +5); Avatar: Fire and Ash in cinemas (+10), digital (+100), physical (+130);

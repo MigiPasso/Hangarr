@@ -276,6 +276,14 @@ Pas de framework web, pas de build Node pour l'app, pas de CDN.
 - Projets Compose : `hangarr` = `compose.yml` (prod), `hangarr-dev` = `compose.dev.yml`, `hangarr-e2e`,
   `hangarr-deploy-check`, `hangarr-jellyfin-lab` : ne jamais leur donner le même nom (un `down` emporterait l'autre).
 - `make e2e` tourne dans le projet compose `hangarr-e2e` (séparé) et lit le mot de passe initial dans les logs.
+- Doublons (`/duplicates`, `internal/web/duplicates.go`) : versions des films en double du serveur actif stockées à la
+  sync (`media_versions`, migration 0008 ; groupe = même item ou même TMDB/IMDb, `syncer.duplicateGroups`, clé stable
+  `tmdb:N` / `imdb:ttN` / `item:KEY`), acquittement lié à l'empreinte des versions (`duplicate_acks`), pistes et fichier
+  Radarr lus en direct, suppression d'une version `Service.DeleteVersion` (`internal/actions/versions.go` : dry-run,
+  protection relue, relecture live, jamais la dernière version ; Radarr : fichier d'un film surveillé refusé, non
+  surveillé = confirmation, fichier inconnu + surveillé refusé ; Jellyfin : refus si une autre version est dans le même
+  dossier, Jellyfin 12 efface le dossier entier ; une suppression à la fois). Séries : hors périmètre (facultatif plus
+  tard).
 
 ## Phase 6 : périmètre convenu avec l'utilisateur
 

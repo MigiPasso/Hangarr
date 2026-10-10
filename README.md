@@ -19,6 +19,10 @@ clean up properly. Like a hangar, it stores a bit of everything. Full specificat
   monthly calendar; episodes released the same day are grouped, premieres and finales flagged.
 - **Cleanup**: what nobody has watched for N days (adjustable), sorted by size with the reason, filterable by type,
   state, plays, size and age; seasons never watched in series watched elsewhere.
+- **Duplicates**: movies the media server has more than once (several versions, or several libraries), with quality,
+  resolution, codecs, size, audio and subtitle tracks; keep them on purpose (acknowledged until the versions change) or
+  delete one version through Plex/Jellyfin (dry-run, protection, Radarr checks; Jellyfin: refused when another version
+  is in the same folder).
 - **Deletions** through Sonarr/Radarr (series, season, movie; for a season, files first, then unmonitoring), one at a
   time or in batches. An item that **only the media server knows** (Plex or Jellyfin, removed from Sonarr/Radarr) is
   deleted by that server, files included. On Plex, enable *Settings › Library › Allow media deletion*; on Jellyfin,

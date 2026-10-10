@@ -181,7 +181,7 @@ test("no page scrolls sideways on a phone", async ({ page }) => {
   await page.goto("/series");
   const detail = await page.locator(".media-card a.card-link", { hasText: "Breaking Bad" }).getAttribute("href");
   for (const path of ["/", "/series", "/movies?view=table", detail!, "/calendar", "/calendar?view=month", "/cleanup",
-    "/stats", "/health", "/journal", "/config", "/settings", "/account"]) {
+    "/duplicates", "/stats", "/health", "/journal", "/config", "/settings", "/account"]) {
     await page.goto(path);
     await page.waitForLoadState("networkidle");
     const [scroll, client] = await page.evaluate(() => [document.documentElement.scrollWidth, document.documentElement.clientWidth]);

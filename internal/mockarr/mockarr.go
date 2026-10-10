@@ -277,6 +277,10 @@ func (m *Mock) Plex() http.Handler {
 		w.Header().Set("Content-Type", "image/png")
 		_ = png.Encode(w, coverImage("plex", id, cover))
 	}
+	mux.HandleFunc("GET /library/metadata/{key}", func(w http.ResponseWriter, r *http.Request) {
+		m.hit("plex:metadata")
+		m.plexMetadata(w, r.PathValue("key"))
+	})
 	mux.HandleFunc("GET /library/metadata/{key}/{variant}", func(w http.ResponseWriter, r *http.Request) {
 		m.hit("plex:image")
 		plexImage(w, r.PathValue("key"), r.PathValue("variant"))
@@ -291,13 +295,15 @@ func (m *Mock) Plex() http.Handler {
 		}
 		plexImage(w, key, variant)
 	})
-	mux.HandleFunc("DELETE /library/metadata/{key}", func(w http.ResponseWriter, _ *http.Request) {
+	deleteMetadata := func(w http.ResponseWriter, _ *http.Request) {
 		if m.PlexDeletionDenied {
 			http.Error(w, "Forbidden", http.StatusForbidden)
 			return
 		}
 		w.WriteHeader(http.StatusOK)
-	})
+	}
+	mux.HandleFunc("DELETE /library/metadata/{key}", deleteMetadata)
+	mux.HandleFunc("DELETE /library/metadata/{key}/media/{id}", deleteMetadata)
 	mux.HandleFunc("GET /accounts", func(w http.ResponseWriter, _ *http.Request) {
 		m.hit("plex:accounts")
 		m.file(w, "plex/accounts.json")
@@ -309,6 +315,60 @@ func (m *Mock) Plex() http.Handler {
 	return m.wrap("plex", func(r *http.Request) bool {
 		return r.Header.Get("X-Plex-Token") == m.APIKey || r.URL.Query().Get("X-Plex-Token") == m.APIKey
 	}, mux)
+}
+
+// plexMetadata serves GET /library/metadata/{key} of a movie: its fixture
+// plex/metadata-<key>.json when there is one (with the streams of its files),
+// else the item of the movie sections.
+func (m *Mock) plexMetadata(w http.ResponseWriter, key string) {
+	if _, err := strconv.ParseInt(key, 10, 64); err != nil {
+		http.Error(w, `{"error":"fixture not found"}`, http.StatusNotFound)
+		return
+	}
+	if _, err := fs.Stat(m.Fixtures, "plex/metadata-"+key+".json"); err == nil {
+		m.file(w, "plex/metadata-"+key+".json")
+		return
+	}
+	item, ok := m.plexMovie(key)
+	if !ok {
+		http.Error(w, `{"error":"fixture not found"}`, http.StatusNotFound)
+		return
+	}
+	writeJSON(w, map[string]any{"MediaContainer": map[string]any{"size": 1, "Metadata": []map[string]any{item}}})
+}
+
+// plexMovie finds a movie of the movie sections (plex/sections.json) by rating key.
+func (m *Mock) plexMovie(key string) (map[string]any, bool) {
+	var sections struct {
+		MediaContainer struct {
+			Directory []struct {
+				Key  string `json:"key"`
+				Type string `json:"type"`
+			} `json:"Directory"`
+		} `json:"MediaContainer"`
+	}
+	if err := m.readJSON("plex/sections.json", &sections); err != nil {
+		return nil, false
+	}
+	for _, dir := range sections.MediaContainer.Directory {
+		if dir.Type != "movie" {
+			continue
+		}
+		var doc struct {
+			MediaContainer struct {
+				Metadata []map[string]any `json:"Metadata"`
+			} `json:"MediaContainer"`
+		}
+		if err := m.readJSON("plex/section-"+dir.Key+"-type-1.json", &doc); err != nil {
+			continue
+		}
+		for _, it := range doc.MediaContainer.Metadata {
+			if it["ratingKey"] == key {
+				return it, true
+			}
+		}
+	}
+	return nil, false
 }
 
 // Jellyfin returns the fake Jellyfin server.
@@ -363,7 +423,8 @@ type jellyfinListing struct {
 }
 
 // jellyfinItems serves GET /Items: the played or resumable items of a user
-// (userId), or the items of one type (includeItemTypes).
+// (userId), the versions of items (ids), or the items of one type
+// (includeItemTypes).
 func (m *Mock) jellyfinItems(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	var name string
@@ -384,6 +445,9 @@ func (m *Mock) jellyfinItems(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, `{"error":"unsupported filter"}`, http.StatusBadRequest)
 			return
 		}
+	} else if q.Has("ids") {
+		m.jellyfinVersions(w, q.Get("ids"))
+		return
 	} else {
 		itemType := q.Get("includeItemTypes")
 		if itemType != "Movie" && itemType != "Series" && itemType != "Season" {
@@ -394,6 +458,32 @@ func (m *Mock) jellyfinItems(w http.ResponseWriter, r *http.Request) {
 		name = "jellyfin/items-" + itemType + ".json"
 	}
 	m.jellyfinPage(w, r, name)
+}
+
+// jellyfinVersions serves GET /Items?ids=…: the items of versions.json with the
+// requested ids (the versions of the movies of a duplicate group).
+func (m *Mock) jellyfinVersions(w http.ResponseWriter, ids string) {
+	want := map[string]bool{}
+	for _, id := range strings.Split(ids, ",") {
+		if !jellyfinID.MatchString(id) {
+			http.Error(w, `{"error":"invalid id"}`, http.StatusBadRequest)
+			return
+		}
+		want[id] = true
+	}
+	m.hit("jellyfin:versions")
+	var doc jellyfinListing
+	if err := m.readJSON("jellyfin/versions.json", &doc); err != nil {
+		http.Error(w, `{"error":"fixture not found"}`, http.StatusNotFound)
+		return
+	}
+	items := []map[string]any{}
+	for _, it := range doc.Items {
+		if id, _ := it["Id"].(string); want[id] {
+			items = append(items, it)
+		}
+	}
+	writeJSON(w, jellyfinListing{Items: items, TotalRecordCount: len(items)})
 }
 
 // jellyfinPage serves one page of a GET /Items fixture (startIndex and limit).

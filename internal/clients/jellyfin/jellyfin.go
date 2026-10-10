@@ -3,6 +3,7 @@ package jellyfin
 
 import (
 	"context"
+	"fmt"
 	"hash/fnv"
 	"net/http"
 	"net/url"
@@ -52,6 +53,31 @@ type Item struct {
 	IndexNumber       httpx.Int         `json:"IndexNumber"`
 	ParentIndexNumber httpx.Int         `json:"ParentIndexNumber"`
 	UserData          *UserData         `json:"UserData"`
+	MediaSourceCount  httpx.Int         `json:"MediaSourceCount"`
+	MediaSources      []MediaSource     `json:"MediaSources"`
+}
+
+// MediaSource is one version of a video.
+type MediaSource struct {
+	ID           string        `json:"Id"` // item id of that version
+	Path         string        `json:"Path"`
+	Name         string        `json:"Name"`
+	Container    string        `json:"Container"`
+	Size         httpx.Int     `json:"Size"`
+	Bitrate      httpx.Int     `json:"Bitrate"`
+	MediaStreams []MediaStream `json:"MediaStreams"`
+}
+
+// MediaStream is a video, audio or subtitle track.
+type MediaStream struct {
+	Type         string    `json:"Type"` // "Video", "Audio", "Subtitle"
+	Codec        string    `json:"Codec"`
+	Language     string    `json:"Language"` // ISO 639-2 ("fra"), may be empty
+	DisplayTitle string    `json:"DisplayTitle"`
+	Height       httpx.Int `json:"Height"`
+	Width        httpx.Int `json:"Width"`
+	IsForced     bool      `json:"IsForced"`
+	IsExternal   bool      `json:"IsExternal"`
 }
 
 var (
@@ -169,7 +195,7 @@ func (c *Client) Items(ctx context.Context, itemType string) ([]Item, error) {
 	return collect[Item](ctx, c, url.Values{
 		"recursive":        {"true"},
 		"includeItemTypes": {itemType},
-		"fields":           {"ProviderIds,Path,DateCreated,OriginalTitle"},
+		"fields":           {"ProviderIds,Path,DateCreated,OriginalTitle,MediaSourceCount"},
 		"sortBy":           {"SortName"},
 		"enableImages":     {"false"},
 	})
@@ -200,6 +226,36 @@ func (c *Client) Resumable(ctx context.Context, userID string) ([]Item, error) {
 		"enableUserData":   {"true"},
 		"enableImages":     {"false"},
 	})
+}
+
+// versionsBatch is the number of ids sent per Versions request.
+const versionsBatch = 50
+
+// Versions returns the items with their versions (one media source per file).
+// The ids are sent in batches; every id must have the format of IsID.
+func (c *Client) Versions(ctx context.Context, ids []string) ([]Item, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	for _, id := range ids {
+		if !IsID(id) {
+			return nil, fmt.Errorf("jellyfin: invalid item id %q", id)
+		}
+	}
+	var all []Item
+	for start := 0; start < len(ids); start += versionsBatch {
+		batch := ids[start:min(start+versionsBatch, len(ids))]
+		items, _, err := query[Item](ctx, c, url.Values{
+			"ids":          {strings.Join(batch, ",")},
+			"fields":       {"Path,MediaSources,MediaSourceCount,ProviderIds"},
+			"enableImages": {"false"},
+		}, 0)
+		if err != nil {
+			return nil, err
+		}
+		all = append(all, items...)
+	}
+	return all, nil
 }
 
 // DeleteItem deletes an item and its files from disk.

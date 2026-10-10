@@ -45,6 +45,18 @@ func TestAnonymizerAccounts(t *testing.T) {
 	}
 }
 
+func TestAnonymizerPlexFile(t *testing.T) {
+	var doc any
+	if err := json.Unmarshal([]byte(`{"Media":[{"Part":[{"file":"/home/alice/films/Dune (2021)/Dune.2021.2160p.mkv"}]}]}`), &doc); err != nil {
+		t.Fatal(err)
+	}
+	out, _ := json.Marshal(newAnonymizer().walk(doc, false))
+	s := string(out)
+	if strings.Contains(s, "alice") || !strings.Contains(s, `"file":"/media/Dune.2021.2160p.mkv"`) {
+		t.Errorf("Plex part file: %s", s)
+	}
+}
+
 func TestAnonymizerJellyfin(t *testing.T) {
 	var users any
 	_ = json.Unmarshal([]byte(`[{"Name":"alice","Id":"aaaa","ServerId":"5e0c","Policy":{"IsDisabled":false}},{"Name":"bob","Id":"bbbb"}]`), &users)

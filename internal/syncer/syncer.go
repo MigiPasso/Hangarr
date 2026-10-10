@@ -334,6 +334,9 @@ func (s *Syncer) run(ctx context.Context, up *upstream.Clients) (*Result, error)
 			items = len(f.server.items)
 			err = s.applyMatches(ctx, f.server, matchHints(f.series, f.movies))
 		}
+		if err == nil && f.server.versionsOK {
+			err = s.Store.ReplaceVersions(ctx, f.server.server, f.server.versions)
+		}
 		finish(SourceResult{Source: serverSource, Items: items, Duration: time.Since(serverStart), Err: err})
 	}
 
@@ -552,6 +555,10 @@ type serverCatalog struct {
 	server  string // store.ServerPlex or store.ServerJellyfin
 	items   []matching.ServerItem
 	seasons []store.ServerSeason
+	// versions are stored only when versionsOK is set; otherwise the versions
+	// of the previous sync are kept.
+	versions   []store.MediaVersion
+	versionsOK bool
 }
 
 func (s *Syncer) fetchPlex(ctx context.Context, c *plex.Client) (*serverCatalog, error) {
@@ -565,6 +572,7 @@ func (s *Syncer) fetchPlex(ctx context.Context, c *plex.Client) (*serverCatalog,
 		return nil, err
 	}
 	cat := &serverCatalog{server: store.ServerPlex}
+	var films []plex.Item
 	for _, sec := range sections {
 		key := string(sec.Key)
 		switch sec.Type {
@@ -573,6 +581,7 @@ func (s *Syncer) fetchPlex(ctx context.Context, c *plex.Client) (*serverCatalog,
 			if err != nil {
 				return nil, err
 			}
+			films = append(films, items...)
 			for _, it := range items {
 				cat.items = append(cat.items, plexItem(matching.KindMovie, it))
 			}
@@ -594,6 +603,8 @@ func (s *Syncer) fetchPlex(ctx context.Context, c *plex.Client) (*serverCatalog,
 			}
 		}
 	}
+	cat.versions = plexVersions(films)
+	cat.versionsOK = true
 	return cat, nil
 }
 

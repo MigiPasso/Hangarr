@@ -83,6 +83,18 @@ func TestItemsPagination(t *testing.T) {
 	}
 }
 
+func TestItemsFields(t *testing.T) {
+	c := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		if fields := strings.Split(r.URL.Query().Get("fields"), ","); !slices.Contains(fields, "MediaSourceCount") {
+			t.Errorf("fields = %q", r.URL.Query().Get("fields"))
+		}
+		_, _ = w.Write([]byte(`{"Items":[],"TotalRecordCount":0}`))
+	})
+	if _, err := c.Items(context.Background(), TypeMovie); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestPlayedQuery(t *testing.T) {
 	c := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
 		q := r.URL.Query()
@@ -130,6 +142,93 @@ func TestResumableQuery(t *testing.T) {
 	}
 	if len(items) != 1 || items[0].UserData == nil || items[0].UserData.PlaybackPositionTicks != 6300000000 || items[0].UserData.PlayedPercentage != 7 {
 		t.Errorf("items = %+v", items)
+	}
+}
+
+const duneVersions = `{"Items":[{"Id":"ec240f20fb61ecc335c0ef480fb77a81","Name":"Dune","Type":"Movie","MediaSourceCount":2,"MediaSources":[{"Id":"ec240f20fb61ecc335c0ef480fb77a81","Path":"/media/movies/Dune (2021)/Dune (2021).mkv","Name":"Dune (2021)","Size":145349,"Container":"mkv","MediaStreams":[{"Type":"Video","Codec":"h264","DisplayTitle":"240p H264 SDR","Height":180}]},{"Id":"bfaf8877713717124b3264c6e8700384","Path":"/media/movies/Dune (2021)/Dune (2021) - 2160p.mkv","Name":"2160p","Size":473018,"Container":"mkv","MediaStreams":[{"Type":"Audio","Codec":"aac","Language":"fra","DisplayTitle":"French - AAC - Mono"},{"Type":"Subtitle","Codec":"subrip","Language":"eng","DisplayTitle":"English - SUBRIP"}]}]}],"TotalRecordCount":1}`
+
+func TestJellyfinVersions(t *testing.T) {
+	const id = "ec240f20fb61ecc335c0ef480fb77a81"
+	c := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		q := r.URL.Query()
+		if r.URL.Path != "/Items" || q.Get("ids") != id || !slices.Contains(strings.Split(q.Get("fields"), ","), "MediaSources") {
+			t.Errorf("unexpected query: %s", r.URL.RawQuery)
+		}
+		_, _ = w.Write([]byte(duneVersions))
+	})
+	items, err := c.Versions(context.Background(), []string{id})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(items) != 1 || items[0].MediaSourceCount != 2 || len(items[0].MediaSources) != 2 {
+		t.Fatalf("items = %+v", items)
+	}
+	if lang := items[0].MediaSources[1].MediaStreams[0].Language; lang != "fra" {
+		t.Errorf("audio language = %q, want fra", lang)
+	}
+}
+
+func TestJellyfinVersionsBatches(t *testing.T) {
+	var mu sync.Mutex
+	var sizes []int
+	c := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		ids := strings.Split(r.URL.Query().Get("ids"), ",")
+		mu.Lock()
+		sizes = append(sizes, len(ids))
+		mu.Unlock()
+		var items []map[string]string
+		for _, id := range ids {
+			items = append(items, map[string]string{"Id": id})
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"Items": items, "TotalRecordCount": len(items)})
+	})
+	ids := make([]string, 120)
+	for i := range ids {
+		ids[i] = fmt.Sprintf("%032x", i+1)
+	}
+	items, err := c.Versions(context.Background(), ids)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if !slices.Equal(sizes, []int{50, 50, 20}) {
+		t.Errorf("batch sizes = %v, want [50 50 20]", sizes)
+	}
+	if len(items) != len(ids) {
+		t.Fatalf("got %d items, want %d", len(items), len(ids))
+	}
+	for i, it := range items {
+		if it.ID != ids[i] {
+			t.Fatalf("item %d = %s, want %s", i, it.ID, ids[i])
+		}
+	}
+}
+
+func TestJellyfinVersionsInvalidID(t *testing.T) {
+	var calls atomic.Int32
+	c := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+	})
+	if _, err := c.Versions(context.Background(), []string{testDune, "../x"}); err == nil {
+		t.Error("want an error for an invalid id")
+	}
+	if calls.Load() != 0 {
+		t.Errorf("calls = %d, want none", calls.Load())
+	}
+}
+
+func TestJellyfinVersionsEmpty(t *testing.T) {
+	var calls atomic.Int32
+	c := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+	})
+	items, err := c.Versions(context.Background(), nil)
+	if err != nil || items != nil {
+		t.Errorf("items = %v, err = %v", items, err)
+	}
+	if calls.Load() != 0 {
+		t.Errorf("calls = %d, want none", calls.Load())
 	}
 }
 

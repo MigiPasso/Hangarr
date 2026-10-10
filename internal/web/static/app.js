@@ -326,3 +326,66 @@
   document.addEventListener("DOMContentLoaded", syncAll);
   document.addEventListener("htmx:afterSwap", syncAll);
 })();
+
+// Copy buttons (data-copy): the text goes to the clipboard and the button says
+// so for 2 s. Without a secure context (plain HTTP) the clipboard API is missing:
+// a hidden textarea and execCommand do the copy.
+(function () {
+  "use strict";
+
+  function fallbackCopy(text) {
+    var previous = document.activeElement;
+    var buffer = document.createElement("textarea");
+    buffer.className = "copy-buffer";
+    buffer.readOnly = true;
+    buffer.value = text;
+    document.body.appendChild(buffer);
+    try {
+      buffer.select();
+      return document.execCommand("copy");
+    } catch (err) {
+      return false;
+    } finally {
+      buffer.remove();
+      // select() moved the focus to the buffer: give it back to the button.
+      if (previous) { previous.focus(); }
+    }
+  }
+
+  function copy(text) {
+    if (navigator.clipboard && window.isSecureContext) {
+      return navigator.clipboard.writeText(text).then(function () { return true; }, function () { return false; });
+    }
+    return Promise.resolve(fallbackCopy(text));
+  }
+
+  var statusTimer;
+
+  // The button's aria-label hides its text from screen readers: the same message
+  // goes to the page's live region (#copy-status), if the page has one.
+  function announce(message) {
+    var status = document.getElementById("copy-status");
+    if (!status) { return; }
+    clearTimeout(statusTimer);
+    status.textContent = message;
+    statusTimer = setTimeout(function () { status.textContent = ""; }, 2000);
+  }
+
+  function feedback(btn, ok) {
+    var message = btn.getAttribute(ok ? "data-copied" : "data-copy-failed");
+    // The label is kept once, so a second click within 2 s does not keep the feedback.
+    if (!btn.hasAttribute("data-label")) { btn.setAttribute("data-label", btn.textContent); }
+    clearTimeout(btn.copyTimer);
+    btn.textContent = message;
+    announce(message);
+    btn.copyTimer = setTimeout(function () {
+      btn.textContent = btn.getAttribute("data-label");
+    }, 2000);
+  }
+
+  document.addEventListener("click", function (e) {
+    var btn = e.target.closest && e.target.closest("[data-copy]");
+    if (!btn) { return; }
+    copy(btn.getAttribute("data-copy")).then(function (ok) { feedback(btn, ok); });
+  });
+})();

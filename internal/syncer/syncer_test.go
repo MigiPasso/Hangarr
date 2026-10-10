@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"slices"
 	"strings"
 	"testing"
 	"testing/fstest"
@@ -764,5 +765,67 @@ func TestSwitchPlexToJellyfin(t *testing.T) {
 	// common id, items Sonarr does not manage).
 	if n := e.count(`SELECT COUNT(*) FROM watch_events WHERE source = 'jellyfin_history'`); n != 2 {
 		t.Errorf("jellyfin events left after the merge: %d, want 2", n)
+	}
+}
+
+// versionRow is one stored version of a duplicate movie.
+type versionRow struct {
+	VersionKey, ItemKey, GroupKey, Resolution string
+	SizeBytes, Bitrate                        int64
+}
+
+// versions returns the stored versions of a server, by version key.
+func (e *env) versions(server string) []versionRow {
+	e.t.Helper()
+	rows, err := e.store.DB().Query(`SELECT version_key, item_key, group_key, size_bytes, resolution, bitrate
+		FROM media_versions WHERE server = ? ORDER BY version_key`, server)
+	if err != nil {
+		e.t.Fatal(err)
+	}
+	defer func() { _ = rows.Close() }()
+	var out []versionRow
+	for rows.Next() {
+		var r versionRow
+		if err := rows.Scan(&r.VersionKey, &r.ItemKey, &r.GroupKey, &r.SizeBytes, &r.Resolution, &r.Bitrate); err != nil {
+			e.t.Fatal(err)
+		}
+		out = append(out, r)
+	}
+	if err := rows.Err(); err != nil {
+		e.t.Fatal(err)
+	}
+	return out
+}
+
+// Dune has two versions on Plex (the Remux that Radarr follows, and a WEB-DL
+// 1080p beside it): both are stored under the TMDB group of the movie.
+func TestFullSyncStoresDuplicateVersionsPlex(t *testing.T) {
+	e := newEnv(t)
+	if res := e.run(); res.Failed() {
+		t.Fatalf("sources failed: %+v", res.Sources)
+	}
+	want := []versionRow{
+		{VersionKey: "1021", ItemKey: "102", GroupKey: "tmdb:438631", SizeBytes: 60000000000, Resolution: "4k", Bitrate: 60000},
+		{VersionKey: "1022", ItemKey: "102", GroupKey: "tmdb:438631", SizeBytes: 8000000000, Resolution: "1080", Bitrate: 8000},
+	}
+	if got := e.versions("plex"); !slices.Equal(got, want) {
+		t.Errorf("plex versions: got %+v, want %+v", got, want)
+	}
+}
+
+// Dune has two versions in Jellyfin, media sources of the same item, in the
+// same folder: both are stored under the TMDB group of the movie.
+func TestFullSyncStoresDuplicateVersionsJellyfin(t *testing.T) {
+	e := newJellyfinEnv(t)
+	if res := e.run(); res.Failed() {
+		t.Fatalf("sources failed: %+v", res.Sources)
+	}
+	const dune = "f0000000000000000000000000000102"
+	want := []versionRow{
+		{VersionKey: dune, ItemKey: dune, GroupKey: "tmdb:438631", SizeBytes: 60000000000, Resolution: "4k", Bitrate: 60000},
+		{VersionKey: "f0000000000000000000000000000202", ItemKey: dune, GroupKey: "tmdb:438631", SizeBytes: 8000000000, Resolution: "1080", Bitrate: 8000},
+	}
+	if got := e.versions("jellyfin"); !slices.Equal(got, want) {
+		t.Errorf("jellyfin versions: got %+v, want %+v", got, want)
 	}
 }

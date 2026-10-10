@@ -1,0 +1,36 @@
+{{define "content"}}
+<section class="card narrow">{{template "version_delete_form" .}}</section>
+{{end}}
+
+{{define "version_delete_form"}}{{$d := .Data}}
+{{if $d.Done}}
+<div class="stack" role="status">
+  {{with $d.Message}}<p class="{{if $d.Simulated}}alert alert-warning{{else}}ok-text{{end}}">{{.}}</p>{{end}}
+  {{with $d.Error}}<p class="alert alert-error" role="alert">{{.}}</p>{{end}}
+  <p><a class="button" href="/duplicates">{{t "Back to the duplicates"}}</a></p>
+</div>
+{{else}}
+<form id="version-delete-form" class="stack" method="post" action="{{$d.ActionURL}}"
+      hx-post="{{$d.ActionURL}}" hx-target="this" hx-swap="outerHTML">
+  <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+  <input type="hidden" name="fingerprint" value="{{$d.Fingerprint}}">
+  <h2>{{t "Delete version"}}</h2>
+  <p><strong>{{$d.Title}}</strong></p>
+  <p title="{{$d.File}}">{{$d.Name}}</p>
+  <p class="small muted">{{$d.Quality}} · {{$d.Resolution}}</p>
+  <p>{{t "Space freed:"}} <strong>{{bytes $d.Size}}</strong>{{template "info" (t "If the file is deleted.")}}</p>
+  <p>{{t "%s deletes this file from disk." (server)}}</p>
+  {{if .DryRun}}<p class="alert alert-warning">{{t "Simulation (DRY_RUN): logged, nothing deleted."}}</p>{{end}}
+  {{if $d.Protected}}<p class="alert alert-error" role="alert">{{t "This movie is protected: remove its protection, delete the version, then protect it again."}}</p>{{end}}
+  {{with $d.Error}}<p class="alert alert-error" role="alert">{{.}}</p>{{end}}
+  {{if $d.NeedRadarr}}
+  <p class="alert alert-warning">{{t "Radarr does not monitor this movie but will show it as missing."}}</p>
+  <label class="check"><input type="checkbox" name="accept_radarr" value="1" required> {{t "I understand"}}</label>
+  {{end}}
+  <div class="form-actions">
+    <a class="button" href="/duplicates" data-close>{{t "Cancel"}}</a>
+    <button type="submit" class="danger-solid"{{if $d.Protected}} disabled{{end}}>{{if .DryRun}}{{t "Simulate deletion"}}{{else}}{{t "Delete permanently"}}{{end}}</button>
+  </div>
+</form>
+{{end}}
+{{end}}

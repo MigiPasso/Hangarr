@@ -17,6 +17,24 @@ video() {
     -c:v libx264 -preset ultrafast -pix_fmt yuv420p "$media/$1"
 }
 
+# video_av PATH: like video, with a French audio track and an English subtitle
+# track, unless the file exists.
+video_av() {
+  if [ -e "$media/$1" ]; then
+    return 0
+  fi
+  mkdir -p "$(dirname "$media/$1")"
+  srt=/tmp/hangarr-lab-$$.srt
+  printf '1\n00:00:00,000 --> 00:00:06,000\nLab subtitle\n\n' > "$srt"
+  "$ffmpeg" -v error -nostdin -f lavfi -i testsrc2=size=640x360:rate=5 \
+    -f lavfi -i "sine=frequency=440:duration=6" -i "$srt" -t 6 \
+    -map 0:v -map 1:a -map 2:s \
+    -c:v libx264 -preset ultrafast -pix_fmt yuv420p \
+    -c:a aac -metadata:s:a:0 language=fre \
+    -c:s srt -metadata:s:s:0 language=eng "$media/$1"
+  rm -f "$srt"
+}
+
 # nfo PATH XML: the metadata file of a video.
 nfo() {
   mkdir -p "$(dirname "$media/$1")"
@@ -36,6 +54,9 @@ video 'movies/Inception (2010)/Inception (2010).mkv'
 nfo 'movies/Inception (2010)/movie.nfo' '<movie><title>Inception</title><year>2010</year><uniqueid type="imdb" default="true">tt1375666</uniqueid><uniqueid type="tmdb">27205</uniqueid></movie>'
 video 'movies/Dune (2021)/Dune (2021).mkv'
 nfo 'movies/Dune (2021)/movie.nfo' '<movie><title>Dune</title><year>2021</year><uniqueid type="imdb" default="true">tt1160419</uniqueid><uniqueid type="tmdb">438631</uniqueid></movie>'
+video_av 'movies/Dune (2021)/Dune (2021) - 2160p.mkv'
+video 'movies/Tenet (2020) [copie]/Tenet (2020).mkv'
+nfo 'movies/Tenet (2020) [copie]/movie.nfo' '<movie><title>Tenet</title><year>2020</year><uniqueid type="imdb" default="true">tt6723592</uniqueid><uniqueid type="tmdb">577922</uniqueid></movie>'
 video 'movies/Tenet (2020)/Tenet (2020).mkv'
 nfo 'movies/Tenet (2020)/movie.nfo' '<movie><title>Tenet</title><year>2020</year><uniqueid type="imdb" default="true">tt6723592</uniqueid><uniqueid type="tmdb">577922</uniqueid></movie>'
 video 'movies/Interstellar (2014)/Interstellar (2014).mkv'

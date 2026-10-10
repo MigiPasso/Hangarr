@@ -55,6 +55,10 @@ type step struct {
 	trim   bool
 }
 
+// maxVersionDetails bounds the Plex movies with several versions recorded one
+// by one, per section.
+const maxVersionDetails = 5
+
 func run(out string, limit int) error {
 	cfg, err := config.Load(os.LookupEnv, os.ReadFile)
 	if err != nil {
@@ -152,6 +156,36 @@ func captureAll(cfg *config.Config, out string, limit int) error {
 				}
 			}
 		}
+
+		// Plex movies with several versions (files and streams), detailed one by
+		// one, and one single-version movie as a reference.
+		for _, sec := range sections.MediaContainer.Directory {
+			if sec.Type != "movie" {
+				continue
+			}
+			multi, single, err := c.plexMultiVersion(plex, string(sec.Key))
+			if err != nil {
+				return err
+			}
+			detailed := 0
+			for _, key := range multi {
+				if detailed == maxVersionDetails {
+					break
+				}
+				file := fmt.Sprintf("plex/metadata-%s.json", key)
+				if err := c.capture(file, plex, "/library/metadata/"+url.PathEscape(key), nil, false); err != nil {
+					return err
+				}
+				detailed++
+			}
+			if single != "" {
+				file := fmt.Sprintf("plex/metadata-%s.json", single)
+				if err := c.capture(file, plex, "/library/metadata/"+url.PathEscape(single), nil, false); err != nil {
+					return err
+				}
+			}
+			fmt.Printf("plex section %s: %d movies with several versions (%d detailed)\n", string(sec.Key), len(multi), detailed)
+		}
 	}
 
 	if tautulliOK {
@@ -218,6 +252,16 @@ func (c *capturer) captureJellyfin(jf *jellyfin.Client) error {
 			return err
 		}
 	}
+	versions := page(url.Values{
+		"recursive":        {"true"},
+		"includeItemTypes": {jellyfin.TypeMovie},
+		"fields":           {"ProviderIds,Path,DateCreated,OriginalTitle,MediaSources,MediaSourceCount"},
+		"sortBy":           {"SortName"},
+		"enableImages":     {"false"},
+	})
+	if err := c.capture("jellyfin/items-"+jellyfin.TypeMovie+"-versions.json", jf.HTTP, "/Items", versions, false); err != nil {
+		return err
+	}
 	movieAndEpisode := jellyfin.TypeMovie + "," + jellyfin.TypeEpisode
 	for _, u := range users {
 		played := page(url.Values{
@@ -246,6 +290,60 @@ func (c *capturer) captureJellyfin(jf *jellyfin.Client) error {
 		}
 	}
 	return nil
+}
+
+// plexMultiVersion scans a whole Plex movie section, page by page, and returns
+// the ratingKeys of the movies with several versions, and the first movie with
+// a single version (empty if none).
+func (c *capturer) plexMultiVersion(plex *httpx.Client, sectionKey string) (multi []string, single string, err error) {
+	const scanPage = 500
+	const maxPages = 200
+	type metadata struct {
+		RatingKey httpx.String `json:"ratingKey"`
+		Media     []struct {
+			ID httpx.Int `json:"id"`
+		} `json:"Media"`
+	}
+	type result struct {
+		MediaContainer struct {
+			Metadata []metadata `json:"Metadata"`
+		} `json:"MediaContainer"`
+	}
+	listPath := "/library/sections/" + url.PathEscape(sectionKey) + "/all"
+	var first string
+	for n := 0; n < maxPages; n++ {
+		var list result
+		q := url.Values{
+			"type":                   {"1"},
+			"X-Plex-Container-Start": {strconv.Itoa(n * scanPage)},
+			"X-Plex-Container-Size":  {strconv.Itoa(scanPage)},
+		}
+		if err := plex.JSON(c.ctx, httpx.Request{Path: listPath, Query: q}, &list); err != nil {
+			return nil, "", err
+		}
+		items := list.MediaContainer.Metadata
+		if len(items) > 0 {
+			if n == 0 {
+				first = string(items[0].RatingKey)
+			} else if string(items[0].RatingKey) == first {
+				fmt.Fprintf(os.Stderr, "warning: plex section %s: paging ignored, scan stopped after %d items\n", sectionKey, n*scanPage)
+				return multi, single, nil
+			}
+		}
+		for _, m := range items {
+			switch {
+			case len(m.Media) >= 2:
+				multi = append(multi, string(m.RatingKey))
+			case len(m.Media) == 1 && single == "":
+				single = string(m.RatingKey)
+			}
+		}
+		if len(items) < scanPage {
+			return multi, single, nil
+		}
+	}
+	fmt.Fprintf(os.Stderr, "warning: plex section %s: more than %d pages, scan stopped\n", sectionKey, maxPages)
+	return multi, single, nil
 }
 
 func (c *capturer) plexPage(q url.Values) url.Values {
@@ -343,7 +441,7 @@ func (a *anonymizer) walk(v any, accounts bool) any {
 				x[k] = a.ip(s)
 			case lk == "user_thumb" || (lk == "thumb" && strings.Contains(s, "plex.tv")):
 				x[k] = ""
-			case lk == "path" || lk == "folderpath" || lk == "rootfolderpath" || lk == "relativepath":
+			case lk == "path" || lk == "file" || lk == "folderpath" || lk == "rootfolderpath" || lk == "relativepath":
 				if s != "" {
 					x[k] = "/media/" + path.Base(s)
 				}

@@ -1,0 +1,16 @@
+{"MediaContainer":{"size":1,"Metadata":[
+ {"ratingKey":"102","key":"/library/metadata/102","guid":"plex://movie/5d776d1847dd6e001f6f002f","type":"movie","title":"Dune","year":2021,"duration":9300000,"addedAt":1762000000,"Guid":[{"id":"imdb://tt1160419"},{"id":"tmdb://438631"}],
+  "Media":[
+   {"id":1021,"videoResolution":"4k","videoCodec":"hevc","audioCodec":"truehd","container":"mkv","bitrate":60000,"Part":[
+    {"id":10211,"file":"/data/movies/Dune (2021)/Dune (2021) Remux-2160p.mkv","size":60000000000,"Stream":[
+     {"streamType":1,"codec":"hevc","languageCode":"eng","displayTitle":"4K DoVi/HDR10"},
+     {"streamType":2,"codec":"truehd","languageCode":"eng","displayTitle":"English (TRUEHD 7.1 + Atmos)"},
+     {"streamType":2,"codec":"ac3","languageCode":"fra","displayTitle":"Français (AC3 5.1)"},
+     {"streamType":3,"codec":"pgs","languageCode":"fra","displayTitle":"Français Forced","forced":true},
+     {"streamType":3,"codec":"pgs","languageCode":"eng","displayTitle":"English"}]}]},
+   {"id":1022,"videoResolution":"1080","videoCodec":"h264","audioCodec":"eac3","container":"mkv","bitrate":8000,"Part":[
+    {"id":10221,"file":"/data/movies/Dune (2021)/Dune.2021.1080p.WEB-DL.DDP5.1.H.264-GRP.mkv","size":8000000000,"Stream":[
+     {"streamType":1,"codec":"h264","displayTitle":"1080p"},
+     {"streamType":2,"codec":"eac3","languageCode":"fra","displayTitle":"Français (EAC3 5.1)"},
+     {"streamType":3,"codec":"srt","languageCode":"fra","displayTitle":"Français"}]}]}]}
+]}}

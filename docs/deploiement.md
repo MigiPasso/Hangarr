@@ -299,6 +299,10 @@ Sans secret configuré, la route répond 404.
 - **Series / Movies / Stats** : vos données.
 - **Cleanup** : ce que personne n'a regardé depuis 180 jours (réglable dans **Settings**). Tant que `DRY_RUN=true`,
   les suppressions sont simulées et visibles dans **Log**.
+- **Duplicates** : les films présents plusieurs fois sur le serveur multimédia (plusieurs versions, ou plusieurs
+  bibliothèques). Une version se supprime depuis sa ligne, avec le serveur : sur Plex, « Autoriser la suppression des
+  médias » doit être activé (Paramètres › Bibliothèque) ; sur Jellyfin, la suppression est refusée si une autre version
+  est rangée dans le même dossier (Jellyfin supprimerait le dossier entier). Tant que `DRY_RUN=true`, elle est simulée.
 - Pour protéger un élément : bouton **Protect** sur sa fiche (ajoute le tag `keep` dans Sonarr/Radarr).
 
 ---

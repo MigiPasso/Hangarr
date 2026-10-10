@@ -12,6 +12,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"hangarr/internal/clients/httpx"
@@ -98,6 +99,8 @@ type Service struct {
 	PlexRefresh bool
 	Log         *slog.Logger
 	Now         func() time.Time
+
+	versionMu sync.Mutex // one version deletion at a time (DeleteVersion)
 }
 
 // Request describes a deletion.
