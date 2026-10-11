@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1.7
 # Stages: deps, dev, test, lint, build, mock, runtime (default, last).
 
-ARG GO_VERSION=1.27.1
+ARG GO_VERSION=1.27.2
 ARG GOLANGCI_LINT_VERSION=v2.14.0
 ARG AIR_VERSION=v1.67.4
 
@@ -49,12 +49,14 @@ RUN --mount=type=cache,target=/root/.cache/go-build \
     go build -trimpath -ldflags "-s -w -X main.version=${VERSION}" -o /out/hangarr ./cmd/hangarr && \
     CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH \
     go build -trimpath -ldflags "-s -w" -o /out/mockarr ./cmd/mockarr && \
-    mkdir -p /out/data
+    mkdir -p /out/data && \
+    cp -r testdata /out/testdata && \
+    rm -rf /out/testdata/captured
 
 # --- mock: fake upstream services for dev and e2e ---------------------------
 FROM gcr.io/distroless/static-debian12:nonroot AS mock
 COPY --from=build /out/mockarr /mockarr
-COPY testdata /testdata
+COPY --from=build /out/testdata /testdata
 USER 65532:65532
 EXPOSE 8989 7878 32400 8096 8181
 ENTRYPOINT ["/mockarr"]

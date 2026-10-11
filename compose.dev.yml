@@ -105,7 +105,7 @@ services:
   # Records anonymized responses of the real instances: `make capture-fixtures`.
   capture:
     profiles: [real]
-    image: golang:1.27.1-bookworm
+    image: golang:1.27.2-bookworm
     working_dir: /src
     env_file: ${HANGARR_ENV_FILE:-.env.example}
     environment:
@@ -123,7 +123,7 @@ services:
   # in sync with GO_VERSION in the Dockerfile.
   gotools:
     profiles: [tools]
-    image: golang:1.27.1-bookworm
+    image: golang:1.27.2-bookworm
     environment:
       GOFLAGS: -buildvcs=false
     working_dir: /src

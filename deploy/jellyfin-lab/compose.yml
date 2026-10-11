@@ -45,7 +45,7 @@ services:
   # Records the anonymized responses of the lab: `make jellyfin-lab-capture`.
   capture:
     profiles: [capture]
-    image: golang:1.27.1-bookworm
+    image: golang:1.27.2-bookworm
     working_dir: /src
     environment:
       GOFLAGS: -buildvcs=false
