@@ -13,7 +13,7 @@ import (
 	"hangarr/internal/i18n"
 )
 
-// ServiceStatus is the live state of one service (Santé page).
+// ServiceStatus is the live state of one service (Health page).
 type ServiceStatus struct {
 	Service    string
 	Label      string
@@ -69,7 +69,7 @@ func alerts(ctx context.Context, c *Clients, svc string) []sonarr.HealthCheck {
 func IsIndexerAlert(a sonarr.HealthCheck) bool { return strings.HasPrefix(a.Source, "Indexer") }
 
 // alertsTTL keeps the health alerts of a service for the two sections of the
-// Santé page (services and trackers), loaded by two requests at once.
+// Health page (services and trackers), loaded by two requests at once.
 const alertsTTL = 15 * time.Second
 
 type alertsKey struct {

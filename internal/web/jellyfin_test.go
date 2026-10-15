@@ -16,7 +16,7 @@ import (
 
 // useJellyfin makes Jellyfin the only media server of the environment (Plex is
 // removed: one media server at a time): the registry is rebuilt, as the
-// Configuration page does.
+// Settings › Services page does.
 func useJellyfin(t *testing.T, e *libEnv) {
 	t.Helper()
 	jf := httptest.NewServer(e.mock.Jellyfin())

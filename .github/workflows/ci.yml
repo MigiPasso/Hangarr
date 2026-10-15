@@ -1,0 +1,63 @@
+# Checks for pushes to main and for pull requests. Everything runs through
+# make + Docker, exactly as on a contributor's machine (see CONTRIBUTING.md).
+# No secret is used: pull requests from forks run with a read-only token.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  verify:
+    name: gofmt, lint, tests, e2e
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: make verify E2E=1
+        run: make verify E2E=1
+      - name: Keep the logs of a failed run
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: verify-logs
+          path: .verify/
+          retention-days: 7
+
+  deploy:
+    name: compose.yml smoke test, Kubernetes manifest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: make deploy-check
+        run: make deploy-check
+      - name: make k8s-check
+        run: make k8s-check
+
+  security:
+    name: vulnerabilities and secrets
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0 # the secret scan covers the whole history
+      - name: make vulncheck
+        run: make vulncheck
+      - name: make secret-scan
+        run: make secret-scan

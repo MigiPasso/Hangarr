@@ -407,7 +407,7 @@ func TestJellyfinOnlyPosters(t *testing.T) {
 	}
 }
 
-// "Present in" sits right under the watch state, outside « More filters »,
+// "Present in" sits right under the watch state, outside "More filters",
 // and does not open that block.
 func TestLibraryPresentInFilter(t *testing.T) {
 	e := newLibEnv(t, 0)
@@ -418,7 +418,7 @@ func TestLibraryPresentInFilter(t *testing.T) {
 		t.Errorf("order: state %d, present in %d, more filters %d", state, present, more)
 	}
 	if strings.Contains(r.body, `class="more-filters" open`) {
-		t.Error("the presence filter must not open « More filters »")
+		t.Error("the presence filter must not open \"More filters\"")
 	}
 	// plex_only, the former name of server_only, still works in saved links.
 	if !slices.Equal(cardTitles(r.body), []string{"Vacances 2019"}) || !strings.Contains(r.body, `value="server_only" checked`) {

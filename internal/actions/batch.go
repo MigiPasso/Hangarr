@@ -26,7 +26,7 @@ type BatchOptions struct {
 	Username        string
 }
 
-// DeleteBatch deletes items one after the other (SPEC §7.4): each goes
+// DeleteBatch deletes items one after the other: each goes
 // through Delete (live protection check, dry-run, journal); the typed
 // confirmation was done once for the whole batch. The media server is
 // refreshed once at the end. A failure does not stop the others.

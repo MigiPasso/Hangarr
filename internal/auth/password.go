@@ -65,7 +65,7 @@ func IsCommonPassword(pw string) bool {
 	return ok
 }
 
-// CheckPolicy validates a new password against SPEC §11.2, except the
+// CheckPolicy validates a new password against the password policy, except the
 // "different from current" rule which needs the stored hash.
 func CheckPolicy(password, username string) []Violation {
 	pw := NormalizePassword(password)

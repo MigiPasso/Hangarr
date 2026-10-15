@@ -185,7 +185,7 @@ func (m *Manager) Reload(ctx context.Context) (*Clients, error) {
 	return c, nil
 }
 
-// FieldState is a field as shown in the Configuration page. Credentials are
+// FieldState is a field as shown in the Settings › Services page. Credentials are
 // never included, only a masked hint.
 type FieldState struct {
 	Field
@@ -195,7 +195,7 @@ type FieldState struct {
 	Broken bool   // saved credential that cannot be decrypted
 }
 
-// ServiceState is the Configuration page section of one service.
+// ServiceState is the Settings › Services page section of one service.
 type ServiceState struct {
 	Service    string
 	Label      string
@@ -205,7 +205,7 @@ type ServiceState struct {
 	Disabled   string // why the service cannot be configured now (English key), "" when it can
 }
 
-// State describes every service for the Configuration page.
+// State describes every service for the Settings › Services page.
 func (m *Manager) State(ctx context.Context) ([]ServiceState, error) {
 	saved, broken, err := m.stored(ctx)
 	if err != nil {

@@ -22,7 +22,7 @@ type settingsData struct {
 	Saved   bool
 }
 
-// settingsPage is the data of the Réglages page: two independent forms.
+// settingsPage is the data of the Settings page: two independent forms.
 type settingsPage struct {
 	Sync    settingsData
 	Cleanup cleanupSettings

@@ -7,3 +7,7 @@ deploy
 !internal/**/*.md
 master.key
 .verify
+.claude
+.codex
+.github
+*.db

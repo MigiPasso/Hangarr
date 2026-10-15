@@ -1,0 +1,12 @@
+# Secret scanning (make secret-scan, CI). Default rules, plus an allowlist
+# limited to the exact fake values the repository uses on purpose.
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Fake values: dev-only master key of compose.dev.yml (decodes to 'dev-only-master-key--do-not-use!') and test API keys"
+regexes = [
+  '''^ZGV2LW9ubHktbWFzdGVyLWtleS0tZG8tbm90LXVzZSE=$''',
+  '''^0123456789abcdef0123456789abcdef$''',
+  '''^env-key-0123456789$''',
+]

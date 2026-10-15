@@ -63,7 +63,7 @@ type detailData struct {
 	Protected  bool
 	Deletable  bool
 	CanProtect bool   // managed by Sonarr/Radarr and PROTECTED_TAGS not empty
-	ProtectTag string // first PROTECTED_TAGS entry, added by « Protéger »
+	ProtectTag string // first PROTECTED_TAGS entry, added by "Protect"
 	CSRFToken  string
 	Exact      bool // per-episode data from Sonarr
 	Modal      bool
@@ -578,8 +578,8 @@ func (s *Server) journal(w http.ResponseWriter, r *http.Request) {
 	s.render(w, r, http.StatusOK, "journal", "", s.page(r, "Log", "journal", d))
 }
 
-// protectSubmit adds or removes the protection tag (« Protéger » / « Ne plus
-// protéger » on the detail page).
+// protectSubmit adds or removes the protection tag ("Protect" / "Unprotect"
+// on the detail page).
 func (s *Server) protectSubmit(kind string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		m, ok := s.mediaFromPath(w, r, kind)

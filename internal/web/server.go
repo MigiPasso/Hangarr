@@ -39,7 +39,7 @@ type Deps struct {
 	PageSize      int                // library batch size, DefaultPageSize when 0
 	Actions       *actions.Service   // nil: deletion unavailable
 	Upstreams     *upstream.Registry // current upstream clients (never nil)
-	Services      *upstream.Manager  // nil: Configuration page read-only
+	Services      *upstream.Manager  // nil: Settings › Services page read-only
 }
 
 // Server holds handlers state.

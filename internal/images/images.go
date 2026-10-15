@@ -1,5 +1,5 @@
 // Package images proxies posters and fanarts from Sonarr/Radarr MediaCover
-// (SPEC §8), or from Plex or Jellyfin for items they alone know, with a disk
+// or from Plex or Jellyfin for items they alone know, with a disk
 // cache, so the browser never talks to the upstreams and API keys stay server
 // side.
 package images
@@ -324,7 +324,7 @@ func (p *Proxy) write(path string, b []byte) error {
 }
 
 func (p *Proxy) serveFile(w http.ResponseWriter, r *http.Request, path string) {
-	f, err := os.Open(path)
+	f, err := os.Open(path) //nolint:gosec // G304: cache dir + kind/variant allowlisted by the web handler, id checked by validID
 	if err != nil {
 		http.NotFound(w, r)
 		return

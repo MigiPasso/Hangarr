@@ -223,7 +223,7 @@ type libraryData struct {
 	ViewURLs  map[string]string
 	UserName  string
 	Active    bool // at least one filter set
-	More      bool // a filter of the « More filters » block is set (opens it)
+	More      bool // a filter of the "More filters" block is set (opens it)
 	Inactive  []int
 	// OOB: only #results is swapped (filter change), the view links and
 	// the reset link outside it are swapped out of band with the new filter.

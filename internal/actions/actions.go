@@ -1,4 +1,4 @@
-// Package actions performs deletions through Sonarr/Radarr (SPEC §7.4) with
+// Package actions performs deletions through Sonarr/Radarr with
 // server-side safeguards: dry-run, protection tags checked on live *arr
 // data, typed confirmation for whole series, and a journal entry for every
 // attempt. Items that only the media server (Plex or Jellyfin) still knows
@@ -337,7 +337,7 @@ func (s *Service) execute(ctx context.Context, up *upstream.Clients, m *store.Me
 }
 
 // deleteSeason deletes the season's files, THEN unmonitors the season, or
-// Sonarr would download it again (SPEC §3.1).
+// Sonarr would download it again.
 func (s *Service) deleteSeason(ctx context.Context, c *sonarr.Client, seriesID int64, season int, deleteFiles bool) error {
 	if deleteFiles {
 		files, err := c.EpisodeFiles(ctx, seriesID)

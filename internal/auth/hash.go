@@ -21,7 +21,7 @@ type HashParams struct {
 	KeyLen  uint32
 }
 
-// DefaultHashParams follow SPEC §11.4: m=64 MiB, t=3, p=2, 16-byte salt, 32-byte key.
+// DefaultHashParams: argon2id with m=64 MiB, t=3, p=2, 16-byte salt, 32-byte key.
 var DefaultHashParams = HashParams{Memory: 64 * 1024, Time: 3, Threads: 2, SaltLen: 16, KeyLen: 32}
 
 // MaxConcurrentHashes bounds memory use: each hash allocates Memory KiB.

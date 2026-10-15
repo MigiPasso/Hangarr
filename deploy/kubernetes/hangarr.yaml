@@ -76,7 +76,7 @@ spec:
       terminationGracePeriodSeconds: 30 # the app drains for 20 s on SIGTERM
       containers:
         - name: hangarr
-          image: ghcr.io/CHANGE-ME/hangarr:latest # set your registry / tag
+          image: ghcr.io/CHANGE-ME/hangarr:vX.Y.Z # set your registry and a release tag (avoid :latest)
           imagePullPolicy: IfNotPresent
           ports:
             - name: http

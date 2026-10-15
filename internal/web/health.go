@@ -7,7 +7,7 @@ import (
 	"hangarr/internal/upstream"
 )
 
-// healthListLimit caps each data list of the Santé page.
+// healthListLimit caps each data list of the Health page.
 const healthListLimit = 50
 
 type healthData struct {
@@ -18,7 +18,7 @@ type healthData struct {
 	Data     *store.DataHealth
 }
 
-// health is the Santé page; the live checks of the services and of the
+// health is the Health page; the live checks of the services and of the
 // trackers load separately (healthServices, healthTrackers) so that an
 // unreachable service never delays the page.
 func (s *Server) health(w http.ResponseWriter, r *http.Request) {

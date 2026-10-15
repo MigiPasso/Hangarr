@@ -94,7 +94,7 @@ func (s *Service) event(ctx context.Context, name string, userID *int64, usernam
 	s.Log.Log(ctx, level, "auth event", "event", name, "username", e.Username, "ip", meta.IP)
 }
 
-// Banner returns the one-time admin password banner (SPEC §11.1).
+// Banner returns the one-time admin password banner.
 func Banner(username, password string) string {
 	line := strings.Repeat("=", 64)
 	return fmt.Sprintf("%s\n HANGARR: INITIAL ADMIN ACCOUNT CREATED\n Username : %s\n Password : %s\n"+

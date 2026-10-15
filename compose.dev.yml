@@ -1,5 +1,5 @@
 # Development and test environment. Everything runs here: nothing is
-# installed on the host besides Docker (see CLAUDE.md / README.md).
+# installed on the host besides Docker (see CONTRIBUTING.md).
 name: hangarr-dev
 
 x-upstreams-mock: &upstreams-mock

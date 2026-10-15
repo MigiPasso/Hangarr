@@ -70,7 +70,7 @@ func (s *Server) tautulliWebhook(w http.ResponseWriter, r *http.Request) {
 	_, _ = io.WriteString(w, `{"status":"accepted"}`)
 }
 
-// webhookURL is the address shown in the Configuration page; Tautulli must
+// webhookURL is the address shown in the Settings › Services page; Tautulli must
 // use the address under which it reaches hangarr.
 func webhookURL(r *http.Request) string {
 	scheme := "http"

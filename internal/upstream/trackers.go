@@ -23,7 +23,7 @@ type Tracker struct {
 // Enabled reports whether the indexer is used at all (RSS or search).
 func (t Tracker) Enabled() bool { return t.RSS || t.Search }
 
-// TrackerStatus lists the indexers of one service (Santé page).
+// TrackerStatus lists the indexers of one service (Health page).
 type TrackerStatus struct {
 	Service    string
 	Label      string

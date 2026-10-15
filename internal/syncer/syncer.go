@@ -1,4 +1,4 @@
-// Package syncer orchestrates synchronization (SPEC §6): upstream catalogs
+// Package syncer orchestrates synchronization: upstream catalogs
 // and history are fetched in parallel, stored, matched, then watch
 // statistics and watch_state are recomputed.
 //

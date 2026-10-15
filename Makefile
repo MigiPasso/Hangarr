@@ -1,5 +1,5 @@
 # Every target is a docker / docker compose command: nothing runs on the host
-# besides Docker (see CLAUDE.md). Compatible with GNU Make 3.81 (macOS).
+# besides Docker (see CONTRIBUTING.md). Compatible with GNU Make 3.81 (macOS).
 
 COMPOSE      := docker compose -f compose.dev.yml
 # Separate project: e2e teardown never touches the dev database or caches.
@@ -14,6 +14,9 @@ IMAGE        ?= hangarr
 PLATFORMS    ?= linux/amd64,linux/arm64
 BUILDER      ?= hangarr-builder
 HTMX_VERSION ?= 2.0.11
+KUBECONFORM_VERSION ?= v0.7.0
+GOVULNCHECK_VERSION ?= v1.9.0
+GITLEAKS_VERSION ?= v8.30.1
 ALPINE_VERSION ?= 3.22
 COMMON_PASSWORDS_URL ?= https://raw.githubusercontent.com/danielmiessler/SecLists/master/Passwords/Common-Credentials/10k-most-common.txt
 # Media server of `make dev`: the variables read by compose.dev.yml (empty = unset for the app).
@@ -27,7 +30,7 @@ VERIFY_DIR   := .verify
 VERIFY_COMPOSE := docker compose --progress quiet -f compose.dev.yml
 
 .DEFAULT_GOAL := help
-.PHONY: help dev dev-real down logs test lint e2e verify image image-load reset-admin clean deps vendor-assets deploy-check capture-fixtures jellyfin-lab jellyfin-lab-capture jellyfin-lab-down sync icons
+.PHONY: help dev dev-real down logs test lint e2e verify image image-load reset-admin clean deps vendor-assets deploy-check capture-fixtures jellyfin-lab jellyfin-lab-capture jellyfin-lab-down sync icons k8s-check vulncheck secret-scan
 
 help: ## List targets
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-18s %s\n", $$1, $$2}'
@@ -164,6 +167,15 @@ deploy-check: ## Validate compose.yml and smoke-test it (as shipped) against the
 	if [ $$status -eq 0 ]; then echo "deploy check: OK"; else $(DEPLOY_COMPOSE) logs --tail 40 hangarr; fi; \
 	$(DEPLOY_COMPOSE) down -v --remove-orphans; \
 	exit $$status
+
+k8s-check: ## Validate deploy/kubernetes/hangarr.yaml against the Kubernetes schemas (kubeconform, in a container)
+	docker run --rm -v "$(CURDIR)/deploy/kubernetes:/k:ro" ghcr.io/yannh/kubeconform:$(KUBECONFORM_VERSION) -strict -summary /k/hangarr.yaml
+
+vulncheck: ## Known vulnerabilities in the Go code and its dependencies (govulncheck, in a container)
+	$(COMPOSE) --profile tools run --rm -T gotools go run golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION) ./...
+
+secret-scan: ## Secrets in the whole git history (gitleaks with .gitleaks.toml, in a container)
+	docker run --rm -v "$(CURDIR):/repo:ro" ghcr.io/gitleaks/gitleaks:$(GITLEAKS_VERSION) git /repo -c /repo/.gitleaks.toml --log-opts=--all --redact --no-banner
 
 capture-fixtures: ## Record anonymized responses of the real instances (.env) into testdata/captured/
 	@test -f .env || { echo ".env missing: copy .env.example and fill it" >&2; exit 1; }

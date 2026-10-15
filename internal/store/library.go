@@ -11,7 +11,7 @@ import (
 	"hangarr/internal/matching"
 )
 
-// LibraryFilter holds the library filters (SPEC §7.2). Zero values mean "no
+// LibraryFilter holds the library filters. Zero values mean "no
 // filter". Every value reaches SQL as a bound parameter; only whitelisted
 // fragments are concatenated.
 type LibraryFilter struct {

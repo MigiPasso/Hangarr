@@ -1,8 +1,20 @@
+# Local configuration and secrets (see .env.example)
 .env
+.env.*
+!.env.example
+/master.key
+*.pem
+# Local databases, backups, data directories
+*.db
+*.db-shm
+*.db-wal
+/data/
+/backups/
+# Real API captures (make capture-fixtures): never committed
+/testdata/captured/
+# Build, test and tool output
 /tmp/
+/.verify/
 e2e/node_modules/
 e2e/test-results/
 e2e/playwright-report/
-/master.key
-/testdata/captured/
-/.verify/

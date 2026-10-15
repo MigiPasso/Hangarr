@@ -5,7 +5,7 @@ import (
 	"database/sql"
 )
 
-// HealthItem is a media listed on the Santé page.
+// HealthItem is a media listed on the Health page.
 type HealthItem struct {
 	ID          int64
 	Kind        string
@@ -21,7 +21,7 @@ type HealthList struct {
 	Items []HealthItem
 }
 
-// DataHealth lists catalog inconsistencies (SPEC §7.7).
+// DataHealth lists catalog inconsistencies.
 type DataHealth struct {
 	ServerOnly  HealthList // in the media server, not in Sonarr/Radarr
 	NoFile      HealthList // in Sonarr/Radarr without any file

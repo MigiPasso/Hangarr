@@ -10,7 +10,7 @@ endpoints:
 | `sonarr/health.json`, `radarr/health.json` | `GET /api/v3/health` (Sonarr: one indexer warning) |
 | `*/indexer.json` | `GET /api/v3/indexer` (Sonarr: NZBgeek named by the `IndexerStatusCheck` of `health.json`, hence failing; Radarr: YTS disabled) |
 | `radarr/movie.json`, `tag.json`, `qualityprofile.json` | `GET /api/v3/movie`, `/tag`, `/qualityprofile` |
-| `sonarr/calendar.json`, `radarr/calendar.json` | `GET /api/v3/calendar?start=…&end=…` (dates recalées sur aujourd'hui) |
+| `sonarr/calendar.json`, `radarr/calendar.json` | `GET /api/v3/calendar?start=…&end=…` (dates shifted to today) |
 | `plex/sections.json` | `GET /library/sections` |
 | `plex/section-<key>-type-<n>.json` | `GET /library/sections/<key>/all?type=<n>&includeGuids=1` |
 | `plex/metadata-<ratingKey>.json` | `GET /library/metadata/<ratingKey>` (streams of each file; without that file, the movie of the section) |

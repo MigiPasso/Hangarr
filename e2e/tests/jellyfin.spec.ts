@@ -87,7 +87,7 @@ test("health names Jellyfin", async ({ page }) => {
   await expect(page.locator(".health-grid")).toContainText("Dans Jellyfin mais pas dans Sonarr/Radarr");
 });
 
-test("Configuration page fits a phone", async ({ page }) => {
+test("Services page fits a phone", async ({ page }) => {
   await login(page, username, password);
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/config");

@@ -12,7 +12,7 @@ import (
 	"hangarr/internal/upstream"
 )
 
-// serviceForm is one section of the Configuration page.
+// serviceForm is one section of the Settings › Services page.
 type serviceForm struct {
 	upstream.ServiceState
 	CSRFToken       string
@@ -99,7 +99,7 @@ type configData struct {
 	HistorySource   string
 }
 
-// testResult is the outcome of « Tester la connexion ».
+// testResult is the outcome of "Test connection".
 type testResult struct {
 	Service string
 	OK      bool

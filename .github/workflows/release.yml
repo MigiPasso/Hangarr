@@ -1,0 +1,44 @@
+# Pushing a vX.Y.Z tag publishes the multi-arch runtime image
+# (linux/amd64, linux/arm64) to ghcr.io/<owner>/hangarr:vX.Y.Z, and moves
+# :latest unless the tag is a pre-release (vX.Y.Z-rc.1…).
+# Only the built-in GITHUB_TOKEN is used, with packages: write.
+name: Release image
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  image:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Log in to GHCR
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+      - name: Build and push
+        run: |
+          image="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/hangarr"
+          make image PUSH=1 IMAGE="$image" VERSION="$GITHUB_REF_NAME"
+          docker buildx imagetools inspect "$image:$GITHUB_REF_NAME"
+          case "$GITHUB_REF_NAME" in
+            *-*) echo "pre-release: :latest left unchanged" ;;
+            *) docker buildx imagetools create -t "$image:latest" "$image:$GITHUB_REF_NAME" ;;
+          esac
+      - name: Log out
+        if: always()
+        run: docker logout ghcr.io

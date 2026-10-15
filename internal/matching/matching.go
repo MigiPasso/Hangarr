@@ -1,5 +1,5 @@
 // Package matching pairs media server items (Plex or Jellyfin) with
-// Sonarr/Radarr items (SPEC §4) and resolves history rows to media by title
+// Sonarr/Radarr items and resolves history rows to media by title
 // when rating keys are unknown.
 package matching
 
@@ -125,7 +125,7 @@ type idKey struct {
 func idKeys(kind string, tvdb, tmdb int64, imdb string) []idKey {
 	var keys []idKey
 	itoa := func(n int64) string { return strconv.FormatInt(n, 10) }
-	// Series: tvdb → tmdb → imdb; movies: tmdb → imdb (SPEC §4).
+	// Series: tvdb → tmdb → imdb; movies: tmdb → imdb.
 	if kind == KindSeries && tvdb > 0 {
 		keys = append(keys, idKey{kind, MethodTVDB, itoa(tvdb)})
 	}

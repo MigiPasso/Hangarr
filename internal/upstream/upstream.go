@@ -2,7 +2,7 @@
 // (Sonarr, Radarr, Plex or Jellyfin, Tautulli) and the clients built from it.
 //
 // A value comes from the environment when the variable is set (it then wins
-// and is locked in the UI), otherwise from the database (Configuration page;
+// and is locked in the UI), otherwise from the database (Settings › Services page;
 // credentials encrypted with the master key). Clients are rebuilt and swapped
 // atomically when the configuration changes: callers take a snapshot with
 // Registry.Get at the start of each operation.

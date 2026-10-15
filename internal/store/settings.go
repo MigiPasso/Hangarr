@@ -30,7 +30,7 @@ func (s *Store) SetSetting(ctx context.Context, key, value string, now time.Time
 	return err
 }
 
-// SettingCleanupDays is the cleanup rule (Réglages page): items nobody
+// SettingCleanupDays is the cleanup rule (Settings page): items nobody
 // watched for that many days are candidates. Settings of the former cleanup
 // score (cleanup_threshold, score_*) may remain in old databases, unused.
 const SettingCleanupDays = "cleanup_inactive_days"

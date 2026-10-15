@@ -14,11 +14,6 @@ linters:
     - sqlclosecheck
     - unconvert
     - usestdlibvars
-  settings:
-    gosec:
-      excludes:
-        # Paths come from operator configuration (DATA_DIR, *_FILE).
-        - G304
   exclusions:
     presets:
       - std-error-handling

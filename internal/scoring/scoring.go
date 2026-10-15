@@ -1,4 +1,4 @@
-// Package scoring computes watch_state (SPEC §6). Cleanup candidates are a
+// Package scoring computes watch_state. Cleanup candidates are a
 // plain inactivity rule evaluated in SQL (store.CleanupScope).
 // Everything here is pure: inputs come from the store, now is injected.
 package scoring
@@ -68,7 +68,7 @@ func recent(last *time.Time, now time.Time, days int) bool {
 	return last != nil && now.Sub(*last) <= time.Duration(days)*24*time.Hour
 }
 
-// WatchState implements the table of SPEC §6 for all users combined.
+// WatchState implements the watch-state rules for all users combined.
 func WatchState(in Input, now time.Time, abandonDays int) string {
 	if in.Kind == KindMovie {
 		switch {
