@@ -2,8 +2,8 @@
 # set: they go to the namespace of `kubectl -n <ns>` or of your Argo CD
 # application.
 #
-#   1. Put the image in a registry the nodes can pull from, and set it below
-#      (search "image:"). See README, "Kubernetes".
+#   1. The image below is the public ghcr.io/migipasso/hangarr: set the release
+#      tag you deploy (search "image:"). See docs/deployment.md, section 3.
 #   2. Create the master key secret in the same namespace (never commit it):
 #        kubectl -n <ns> create secret generic hangarr-master-key \
 #          --from-literal=master-key="$(openssl rand -base64 32)"
@@ -63,9 +63,6 @@ spec:
         app.kubernetes.io/name: hangarr
     spec:
       automountServiceAccountToken: false
-      # Private registry (e.g. a private GHCR package):
-      # imagePullSecrets:
-      #   - name: ghcr-pull
       securityContext:
         runAsNonRoot: true
         runAsUser: 65532
@@ -107,7 +104,11 @@ spec:
             limits: { memory: 512Mi }
           volumeMounts:
             - { name: data, mountPath: /data }
-            - { name: master-key, mountPath: /run/secrets/hangarr, readOnly: true }
+            - {
+                name: master-key,
+                mountPath: /run/secrets/hangarr,
+                readOnly: true,
+              }
       volumes:
         - name: data
           persistentVolumeClaim:
@@ -121,10 +122,6 @@ apiVersion: v1
 kind: Service
 metadata:
   name: hangarr
-  # With the Tailscale operator, expose the app in your tailnet:
-  # annotations:
-  #   tailscale.com/expose: "true"
-  #   tailscale.com/hostname: "hangarr"
 spec:
   selector:
     app.kubernetes.io/name: hangarr
@@ -132,5 +129,3 @@ spec:
     - name: http
       port: 8080
       targetPort: http
-# Tautulli webhook (optional): in Tautulli, use
-#   http://hangarr.<ns>.svc.cluster.local:8080/webhooks/tautulli

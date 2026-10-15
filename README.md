@@ -23,14 +23,14 @@ Hangarr is a self-hosted web app (Go and HTMX) that cross-references Sonarr, Rad
 
 - Version 1.x. Each release is a git tag `vX.Y.Z`.
 - Single-maintainer project.
-- The database schema moves forward automatically at startup; there is no downgrade. To return to an older version, restore a backup taken before the upgrade (see [Backup](docs/deployment.md#9-operations)).
+- The database schema moves forward automatically at startup; there is no downgrade. To return to an older version, restore a backup taken before the upgrade (see [Backup](docs/deployment.md#8-operations)).
 - `DRY_RUN=true` by default: nothing is deleted until you change it.
 
 ## Requirements
 
 To run Hangarr:
 
-- Docker Engine 24 or later (recommended) with Docker Compose 2.24 or later, or a Kubernetes cluster. The image builds for `linux/amd64` and `linux/arm64`.
+- Docker Engine 24 or later (recommended) with Docker Compose 2.24 or later, or a Kubernetes cluster. The published image runs on `linux/amd64` and `linux/arm64`.
 - Sonarr and Radarr (API v3).
 - Plex Media Server, with Tautulli (API v2) for play durations and devices; or Jellyfin (version `12.2.20261005-225228` is the one pinned in the test lab, [`deploy/jellyfin-lab/compose.yml`](deploy/jellyfin-lab/compose.yml)). Emby is not supported. Hangarr reads one media server at a time.
 
@@ -41,10 +41,10 @@ To develop: Docker, Docker Compose, `make` and `git`. Nothing else is installed 
 With Docker:
 
 ```sh
-git clone <repository-url> hangarr
+git clone https://github.com/MigiPasso/Hangarr.git hangarr
 cd hangarr
 cp .env.example .env                                     # optional: DRY_RUN, COOKIE_SECURE, TZ…
-docker compose up -d --build
+docker compose up -d                                     # pulls ghcr.io/migipasso/hangarr
 docker compose logs hangarr | grep -A4 "INITIAL ADMIN"   # one-time admin password
 ```
 
@@ -61,7 +61,7 @@ For Kubernetes and the complete guide, see [docs/deployment.md](docs/deployment.
 Hangarr is configured with environment variables, and with **Settings › Services** for the services. The full list is in [docs/configuration.md](docs/configuration.md#environment-variables).
 
 - **Services**: set them in the interface or in the environment (`SONARR_URL`, `SONARR_API_KEY`, `PLEX_TOKEN`…). A value set in the environment takes precedence and locks its field.
-- **Master key** (recommended): saved keys and tokens are encrypted in the database. Provide the key through `HANGARR_MASTER_KEY_FILE`, for example a Docker or Kubernetes secret. Without it, a key is generated in `DATA_DIR/master.key`, inside the data volume. Generate one with `docker run --rm hangarr:local master-key`.
+- **Master key** (recommended): saved keys and tokens are encrypted in the database. Provide the key through `HANGARR_MASTER_KEY_FILE`, for example a Docker or Kubernetes secret. Without it, a key is generated in `DATA_DIR/master.key`, inside the data volume. Generate one with `docker run --rm ghcr.io/migipasso/hangarr:v1.3.1 master-key`.
 - **One media server**: Plex or Jellyfin, never both. Tautulli is only used with Plex. Plex and Jellyfin variables set together stop the application at startup.
 - **Schedule and cleanup**: the sync time and frequency, and the number of days of the cleanup rule, are set in **Settings › General**.
 
@@ -102,7 +102,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for the workflow, the conventions and the
 
 ## Documentation
 
-- [docs/deployment.md](docs/deployment.md): image, Docker and Kubernetes deployment, connecting the services, operations, troubleshooting.
+- [docs/deployment.md](docs/deployment.md): Docker and Kubernetes deployment, connecting the services, operations, troubleshooting.
 - [docs/configuration.md](docs/configuration.md): environment variables, master key, services, history sources, Tautulli webhook.
 - [docs/architecture.md](docs/architecture.md): components, sync pipeline, data model, security model.
 - [CONTRIBUTING.md](CONTRIBUTING.md): development workflow and conventions.

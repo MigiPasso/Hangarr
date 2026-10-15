@@ -106,7 +106,7 @@ stored in the database. A copy of the database alone does not reveal them: the m
 
 ### Recommended: provide the key
 
-1. Generate a key. The command prints it and writes nothing to disk:
+1. Generate a key with the image (for example `ghcr.io/migipasso/hangarr:v1.3.1`). The command prints it and writes nothing to disk:
 
    ```sh
    docker run --rm <image> master-key
@@ -232,7 +232,7 @@ Behaviour of `POST /webhooks/tautulli`:
 - More than 60 requests per minute from one IP address get `429`, with a `Retry-After` header.
 - Accepted requests get `202` with `{"status":"accepted"}`.
 
-The Tautulli-side steps are also in the [deployment guide, section 7](deployment.md#7-tautulli-webhook).
+The Tautulli-side steps are also in the [deployment guide, section 6](deployment.md#6-tautulli-webhook).
 
 ## Admin password
 
