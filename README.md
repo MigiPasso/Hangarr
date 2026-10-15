@@ -98,7 +98,7 @@ Everything runs in Docker: no Go, Node.js, linter or browser is needed on the ho
 
 GitHub Actions ([ci.yml](.github/workflows/ci.yml)) runs the same make targets on every push to `main` and every pull request. Pushing a `v*` tag publishes the image to `ghcr.io/migipasso/hangarr` ([release.yml](.github/workflows/release.yml)).
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for the workflow, the conventions and the pull request checklist. Report security issues privately rather than in a public issue.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the workflow and the conventions. The repository does not accept issues; pull requests are limited to collaborators. Report a suspected vulnerability privately through the **Security** tab (*Report a vulnerability*).
 
 ## Documentation
 

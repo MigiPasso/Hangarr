@@ -1,6 +1,6 @@
 # Contributing
 
-Thank you for helping with Hangarr. This guide covers the development workflow. The design is described in [docs/architecture.md](docs/architecture.md).
+Hangarr is developed by its maintainer. The repository does not accept issues, and pull requests are limited to collaborators. This guide describes the development workflow and conventions, for collaborators and for anyone working on a fork. The design is described in [docs/architecture.md](docs/architecture.md).
 
 ## Prerequisites
 
@@ -78,7 +78,7 @@ Keep each pinned version identical in every place that lists it.
 
 Keep the `Makefile` compatible with GNU Make 3.81, the version shipped with macOS.
 
-## Pull requests
+## Pull request checklist
 
 Before you open a pull request, check that:
 
@@ -91,8 +91,8 @@ Before you open a pull request, check that:
 
 `e2e/master.key` is a test-only key, committed on purpose. It is used only by the `app-e2e-config` service. It is not a secret.
 
-Contributions are accepted under the project's [MIT License](LICENSE).
+Code merged into the repository is released under the project's [MIT License](LICENSE).
 
 ## Reporting security issues
 
-Please do not open a public issue for a suspected vulnerability; contact the maintainer privately.
+Report a suspected vulnerability privately through GitHub: **Security** tab › **Report a vulnerability** (private vulnerability reporting). Do not disclose it publicly before a fix is available.
