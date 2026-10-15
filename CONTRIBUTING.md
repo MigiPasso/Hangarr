@@ -34,7 +34,7 @@ Run `make verify` before opening a pull request. Run `make e2e` (or `make verify
 
 ### Continuous integration
 
-`.github/workflows/ci.yml` runs `make verify E2E=1`, `make deploy-check`, `make k8s-check`, `make vulncheck` and `make secret-scan` on pushes to `main` and on pull requests. It uses a read-only token and no secrets. `.github/workflows/release.yml` publishes the image to GHCR when a `v*` tag is pushed.
+`.github/workflows/ci.yml` runs `make verify` and `make e2e` (two parallel jobs, together equivalent to `make verify E2E=1`), `make deploy-check`, `make k8s-check`, `make vulncheck` and `make secret-scan` on pushes to `main` and on pull requests. It uses a read-only token and no secrets. `.github/workflows/release.yml` publishes the image to GHCR when a `v*` tag is pushed.
 
 ### Development sign-in
 
