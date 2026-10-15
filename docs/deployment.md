@@ -45,7 +45,7 @@ Set `DRY_RUN=false` only once the cleanup proposals have been checked. Set it in
 
 ```sh
 cp .env.example .env                 # optional: DRY_RUN, COOKIE_SECURE, TZ, DEFAULT_LANG…
-docker compose up -d --build         # builds hangarr:local; or set HANGARR_IMAGE=ghcr.io/migipasso/hangarr:vX.Y.Z in .env
+docker compose up -d                 # pulls ghcr.io/migipasso/hangarr:v1.3.1; another release: set HANGARR_IMAGE in .env
 docker compose logs hangarr | grep -A4 "INITIAL ADMIN"
 ```
 
@@ -60,9 +60,8 @@ Open `http://<host>:8080` (or `http://localhost:8080`). The published port is `H
   Sonarr is then reachable at `http://sonarr:8989`, and Tautulli can call `http://hangarr:8080/webhooks/tautulli`.
 - **Master key (recommended)**: generate it once, outside the data volume:
   ```sh
-  docker run --rm hangarr:local master-key > master.key
+  docker run --rm ghcr.io/migipasso/hangarr:v1.3.1 master-key > master.key
   ```
-  (`hangarr:local` is the image built by `docker compose up --build`; with a published image, use its name.)
   Then, in `compose.yml`, uncomment `secrets: [hangarr_master_key]` and the `environment` block
   (`HANGARR_MASTER_KEY_FILE`) of the `hangarr` service, and the top-level `secrets` block. Keep `master.key` out of
   version control. Without a master key, one is generated in the data volume (see [8](#8-operations)).
@@ -70,14 +69,14 @@ Open `http://<host>:8080` (or `http://localhost:8080`). The published port is `H
   ```sh
   docker run -d --name hangarr --restart unless-stopped -p 8080:8080 --env-file .env \
     -v hangarr-data:/data --read-only --user 65532:65532 --cap-drop ALL \
-    --security-opt no-new-privileges:true hangarr:local
+    --security-opt no-new-privileges:true ghcr.io/migipasso/hangarr:v1.3.1
   ```
   `--env-file` requires the file to exist (it can be empty). To keep the data in a host folder, use
   `-v /srv/hangarr:/data` and first run `sudo chown -R 65532:65532 /srv/hangarr`.
 - The container runs as user 65532, with a read-only root filesystem, no Linux capabilities and
   `no-new-privileges`. Only `/data` is writable. The image has a built-in health check (`hangarr healthcheck`).
 
-From the repository, `make deploy-check` validates `compose.yml` and starts it as shipped, against fake services.
+From the repository, `make deploy-check` validates `compose.yml` and runs it with an image built from the current sources, against fake services.
 
 ---
 
@@ -94,13 +93,12 @@ liveness (`/healthz`) and readiness (`/readyz`) probes.
 
 ### 3.1 Set the image
 
-The manifest uses the published image `ghcr.io/migipasso/hangarr:v1.3.1`. To deploy another release, change the tag to the one you deploy, or the image name to your own registry if you build the image yourself:
+The manifest uses the public image `ghcr.io/migipasso/hangarr:v1.3.1`, which needs no pull secret. To deploy another
+release, change the tag:
 
 ```yaml
 image: ghcr.io/migipasso/hangarr:v1.3.1
 ```
-
-If the image is private in your registry, create a `docker-registry` secret and uncomment `imagePullSecrets` in the Deployment.
 
 ### 3.2 Create the master key secret
 
@@ -335,9 +333,10 @@ is not read then: the scheduled sync, or **Sync now**, updates the history inste
 
 - **Kubernetes**: change `image:` to the new release (`ghcr.io/migipasso/hangarr:vX.Y.Z`), then apply the manifest or
   sync Argo CD. Database migrations run at startup.
-- **Docker, from the sources**: `git pull && docker compose up -d --build`.
-- **Docker, published image**: set `HANGARR_IMAGE=ghcr.io/migipasso/hangarr:vX.Y.Z` in `.env`, then run
-  `docker compose pull && docker compose up -d`.
+- **Docker**: set `HANGARR_IMAGE=ghcr.io/migipasso/hangarr:vX.Y.Z` in `.env` (or change the default tag in `compose.yml`),
+  then run `docker compose pull && docker compose up -d`.
+- **Your own build** instead of the published image: run `make image-load` first (it builds `hangarr:local` from the
+  sources), then set `HANGARR_IMAGE=hangarr:local` in `.env` and run `docker compose up -d`.
 
 ### Backup
 

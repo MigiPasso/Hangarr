@@ -1,8 +1,13 @@
-# Override used by `make deploy-check`: runs compose.yml as shipped (same
-# image, read-only rootfs, user, volume) next to the mock upstreams, without
+# Override used by `make deploy-check`: runs compose.yml with the hangarr image
+# built from the current sources instead of the published one (otherwise
+# identical: read-only rootfs, user, volume), next to the mock upstreams, without
 # publishing any port nor reading a local .env, then runs deploy/check.sh.
 services:
   hangarr:
+    image: hangarr:deploy-check
+    build:
+      context: .
+      target: runtime
     container_name: !reset null
     ports: !reset []
     env_file: !reset []

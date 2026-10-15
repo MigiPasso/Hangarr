@@ -4,7 +4,7 @@
 COMPOSE      := docker compose -f compose.dev.yml
 # Separate project: e2e teardown never touches the dev database or caches.
 E2E_COMPOSE  := MOCK_DEV_EXTRAS=false MOCK_REAL_POSTERS=false docker compose -p hangarr-e2e -f compose.dev.yml --profile e2e
-# compose.yml as shipped, plus the mock and a smoke test (separate project).
+# compose.yml, plus the mock and a smoke test (separate project). The override deploy/compose.check.yml builds hangarr from the sources, not the published image.
 DEPLOY_COMPOSE := docker compose -p hangarr-deploy-check -f compose.yml -f deploy/compose.check.yml
 # Real Jellyfin with the test scenario (separate project, deploy/jellyfin-lab/compose.yml).
 LAB_COMPOSE  := docker compose -f deploy/jellyfin-lab/compose.yml
@@ -149,7 +149,7 @@ vendor-assets: ## Download htmx and the common password list (in a container)
 	  set -e; tmp=$$(mktemp); curl -fsSL -o "$$tmp" "$(COMMON_PASSWORDS_URL)"; \
 	  { echo "# Source: SecLists (MIT), $(COMMON_PASSWORDS_URL)"; cat "$$tmp"; } > internal/auth/common-passwords.txt'
 
-deploy-check: ## Validate compose.yml and smoke-test it (as shipped) against the mock
+deploy-check: ## Validate compose.yml and smoke-test it, with an image built from the sources, against the mock
 	docker compose -f compose.yml config -q
 	@$(DEPLOY_COMPOSE) down -v --remove-orphans >/dev/null 2>&1 || true
 	$(DEPLOY_COMPOSE) build hangarr mock
