@@ -23,7 +23,7 @@ Hangarr is a self-hosted web app (Go and HTMX) that cross-references Sonarr, Rad
 
 - Version 1.x. Each release is a git tag `vX.Y.Z`.
 - Single-maintainer project.
-- The database schema moves forward automatically at startup; there is no downgrade. To return to an older version, restore a backup taken before the upgrade (see [Backup](docs/deployment.md#9-operations)).
+- The database schema moves forward automatically at startup; there is no downgrade. To return to an older version, restore a backup taken before the upgrade (see [Backup](docs/deployment.md#8-operations)).
 - `DRY_RUN=true` by default: nothing is deleted until you change it.
 
 ## Requirements
@@ -102,7 +102,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for the workflow, the conventions and the
 
 ## Documentation
 
-- [docs/deployment.md](docs/deployment.md): image, Docker and Kubernetes deployment, connecting the services, operations, troubleshooting.
+- [docs/deployment.md](docs/deployment.md): Docker and Kubernetes deployment, connecting the services, operations, troubleshooting.
 - [docs/configuration.md](docs/configuration.md): environment variables, master key, services, history sources, Tautulli webhook.
 - [docs/architecture.md](docs/architecture.md): components, sync pipeline, data model, security model.
 - [CONTRIBUTING.md](CONTRIBUTING.md): development workflow and conventions.

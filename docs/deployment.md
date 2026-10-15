@@ -1,6 +1,6 @@
 # Deploying Hangarr
 
-This guide covers building or publishing the container image, deploying with **Docker** or **Kubernetes**,
+This guide covers deploying with **Docker** or **Kubernetes**,
 connecting Sonarr, Radarr, Plex or Jellyfin and Tautulli, checking the installation, day-to-day operations and common
 problems. The full list of environment variables is in [configuration.md](configuration.md); the project overview is
 in the [README](../README.md).
@@ -8,15 +8,14 @@ in the [README](../README.md).
 **Contents**
 
 - [1. Before you start](#1-before-you-start)
-- [2. Container image](#2-container-image)
-- [3. Docker](#3-docker)
-- [4. Kubernetes](#4-kubernetes)
-- [5. First sign-in](#5-first-sign-in)
-- [6. Connecting the services](#6-connecting-the-services)
-- [7. Tautulli webhook](#7-tautulli-webhook)
-- [8. Checking the installation](#8-checking-the-installation)
-- [9. Operations](#9-operations)
-- [10. Troubleshooting](#10-troubleshooting)
+- [2. Docker](#2-docker)
+- [3. Kubernetes](#3-kubernetes)
+- [4. First sign-in](#4-first-sign-in)
+- [5. Connecting the services](#5-connecting-the-services)
+- [6. Tautulli webhook](#6-tautulli-webhook)
+- [7. Checking the installation](#7-checking-the-installation)
+- [8. Operations](#8-operations)
+- [9. Troubleshooting](#9-troubleshooting)
 
 ---
 
@@ -24,16 +23,16 @@ in the [README](../README.md).
 
 **You need**
 
-- Sonarr, Radarr, and Plex or Jellyfin, reachable from the place where Hangarr runs. Tautulli is optional (see [6](#6-connecting-the-services)).
+- Sonarr, Radarr, and Plex or Jellyfin, reachable from the place where Hangarr runs. Tautulli is optional (see [5](#5-connecting-the-services)).
 - The access keys of these services.
-- Either Docker with Compose v2 (2.24 or later), or a Kubernetes cluster. Docker Engine 24 or later is recommended; Buildx is needed to build the multi-architecture image.
+- Either Docker with Compose v2 (2.24 or later), or a Kubernetes cluster. Docker Engine 24 or later is recommended.
 
 **Where to run it**
 
 | Situation | Advice |
 |---|---|
 | The *arr stack runs in a Kubernetes cluster | Deploy Hangarr in the **same namespace**: services are reached by their short names (`http://sonarr:8989`) and traffic stays inside the cluster. |
-| The *arr stack runs in Docker on a server | Run `compose.yml` on the same machine, on the same Docker network (see [3](#3-docker)). |
+| The *arr stack runs in Docker on a server | Run `compose.yml` on the same machine, on the same Docker network (see [2](#2-docker)). |
 | Testing from a workstation | Run `compose.yml` on the workstation and reach the services at their addresses, for example over Tailscale. |
 
 **Safe by default:** `DRY_RUN=true`. Deletions are simulated and logged, and the interface shows a banner saying so.
@@ -42,68 +41,16 @@ Set `DRY_RUN=false` only once the cleanup proposals have been checked. Set it in
 
 ---
 
-## 2. Container image
-
-The image is built from this repository (`Dockerfile`, `runtime` target: distroless base, non-root user 65532). You can
-build it locally, or publish it to your own registry.
-
-### Build locally
-
-```sh
-docker compose build     # or: make image-load
-```
-
-With Compose, the image name is set by `HANGARR_IMAGE` (default `hangarr:local`). `make image-load` also produces `hangarr:local`.
-
-### Publish your own image (GHCR)
-
-The GitHub Actions workflow [`.github/workflows/release.yml`](../.github/workflows/release.yml) does steps 3 and 4 below
-automatically: pushing a `v*` tag builds and pushes the image for linux/amd64 and linux/arm64 to
-`ghcr.io/migipasso/hangarr:<tag>`, and moves `latest` unless the tag is a pre-release (for example `vX.Y.Z-rc.1`). It uses
-the repository's own token, so no personal token is needed for that path.
-
-To do it by hand, run these commands from the repository, on a clean working tree (otherwise the version ends with
-`-dirty`).
-
-1. Create a GitHub token: *Settings → Developer settings → Personal access tokens → Tokens (classic) → Generate new
-   token (classic)*, with the **`write:packages`** scope.
-2. Log in to GitHub Container Registry. Replace `<github-user>` with your GitHub user name:
-   ```sh
-   echo "<token>" | docker login ghcr.io -u <github-user> --password-stdin
-   ```
-3. Tag the release:
-   ```sh
-   git tag vX.Y.Z && git push origin vX.Y.Z
-   ```
-4. Build and push for linux/amd64 and linux/arm64:
-   ```sh
-   make image PUSH=1 IMAGE=ghcr.io/migipasso/hangarr
-   docker buildx imagetools inspect ghcr.io/migipasso/hangarr:vX.Y.Z   # two platforms expected
-   ```
-   The tag is the output of `git describe` (here `vX.Y.Z`). Only this tag is pushed. To also update `latest`:
-   ```sh
-   docker buildx imagetools create -t ghcr.io/migipasso/hangarr:latest ghcr.io/migipasso/hangarr:vX.Y.Z
-   ```
-5. Make the image pullable by your cluster. Either set the package visibility to public in the package settings on
-   GitHub, or keep it private and create a pull secret (token with the `read:packages` scope):
-   ```sh
-   kubectl -n <ns> create secret docker-registry ghcr-pull \
-     --docker-server=ghcr.io --docker-username=<github-user> --docker-password=<token>
-   ```
-   Then uncomment `imagePullSecrets` in the Deployment (see [4](#4-kubernetes)).
-
----
-
-## 3. Docker
+## 2. Docker
 
 ```sh
 cp .env.example .env                 # optional: DRY_RUN, COOKIE_SECURE, TZ, DEFAULT_LANG…
-docker compose up -d --build         # builds the image; or set HANGARR_IMAGE in .env
+docker compose up -d --build         # builds hangarr:local; or set HANGARR_IMAGE=ghcr.io/migipasso/hangarr:vX.Y.Z in .env
 docker compose logs hangarr | grep -A4 "INITIAL ADMIN"
 ```
 
 Open `http://<host>:8080` (or `http://localhost:8080`). The published port is `HANGARR_PORT` (default `8080`) in
-`.env`. The initial password is explained in [5](#5-first-sign-in).
+`.env`. The initial password is explained in [4](#4-first-sign-in).
 
 - **Plain HTTP on the local network**: set `COOKIE_SECURE=false` in `.env`. Otherwise the browser refuses the session
   cookie, and the sign-in page says so. On `localhost` this is not needed.
@@ -115,9 +62,10 @@ Open `http://<host>:8080` (or `http://localhost:8080`). The published port is `H
   ```sh
   docker run --rm hangarr:local master-key > master.key
   ```
+  (`hangarr:local` is the image built by `docker compose up --build`; with a published image, use its name.)
   Then, in `compose.yml`, uncomment `secrets: [hangarr_master_key]` and the `environment` block
   (`HANGARR_MASTER_KEY_FILE`) of the `hangarr` service, and the top-level `secrets` block. Keep `master.key` out of
-  version control. Without a master key, one is generated in the data volume (see [9](#9-operations)).
+  version control. Without a master key, one is generated in the data volume (see [8](#8-operations)).
 - **Without Compose**:
   ```sh
   docker run -d --name hangarr --restart unless-stopped -p 8080:8080 --env-file .env \
@@ -133,7 +81,7 @@ From the repository, `make deploy-check` validates `compose.yml` and starts it a
 
 ---
 
-## 4. Kubernetes
+## 3. Kubernetes
 
 [`deploy/kubernetes/hangarr.yaml`](../deploy/kubernetes/hangarr.yaml) is a plain YAML manifest, without kustomize. It
 contains a ConfigMap (`hangarr-config`), a PersistentVolumeClaim (`hangarr-data`, 5Gi; 10Gi for a large library), a
@@ -144,7 +92,7 @@ The Deployment runs **one replica** (SQLite on a single volume): keep `replicas:
 so the old pod stops before the new one starts. It runs as non-root with a read-only root filesystem, and has startup,
 liveness (`/healthz`) and readiness (`/readyz`) probes.
 
-### 4.1 Set the image
+### 3.1 Set the image
 
 The manifest uses the published image `ghcr.io/migipasso/hangarr:v1.3.1`. To deploy another release, change the tag to the one you deploy, or the image name to your own registry if you build the image yourself:
 
@@ -152,7 +100,9 @@ The manifest uses the published image `ghcr.io/migipasso/hangarr:v1.3.1`. To dep
 image: ghcr.io/migipasso/hangarr:v1.3.1
 ```
 
-### 4.2 Create the master key secret
+If the image is private in your registry, create a `docker-registry` secret and uncomment `imagePullSecrets` in the Deployment.
+
+### 3.2 Create the master key secret
 
 In the same namespace as the Deployment, and never in Git:
 
@@ -164,7 +114,7 @@ kubectl -n <ns> create secret generic hangarr-master-key \
 Keep a copy of this key in a password manager. It encrypts the API keys entered in the interface. If it is lost or
 changed, those keys must be entered again.
 
-### 4.3 Apply
+### 3.3 Apply
 
 ```sh
 kubectl -n <ns> apply -f deploy/kubernetes/hangarr.yaml
@@ -174,7 +124,7 @@ kubectl -n <ns> get pods -l app.kubernetes.io/name=hangarr -w
 With Argo CD, point the application at this file and choose the destination namespace. The secret is created by hand
 and is not managed by Argo CD.
 
-### 4.4 Access the application
+### 3.4 Access the application
 
 The simplest way is a port-forward:
 
@@ -208,7 +158,7 @@ spec:
 
 ---
 
-## 5. First sign-in
+## 4. First sign-in
 
 On the first start with an empty database, Hangarr creates the `admin` account and writes its password to the logs,
 **once**:
@@ -250,7 +200,7 @@ container configuration (`docker inspect`, pod spec).
 
 ---
 
-## 6. Connecting the services
+## 5. Connecting the services
 
 Open **Settings › Services**. For each service, enter the address and the key, click **Test connection**, then
 **Save**. The first sync starts by itself as soon as the configuration is complete: Sonarr, Radarr and one media server
@@ -332,7 +282,7 @@ required: the `tautulli` and `merged` values need it. After saving, click **Sync
 
 ---
 
-## 7. Tautulli webhook
+## 6. Tautulli webhook
 
 With Plex, a webhook is recommended. Without it, the statistics follow the scheduled sync (time and frequency set in
 **Settings**). With it, Tautulli tells Hangarr when a playback stops or is marked as watched, and the history is read
@@ -362,7 +312,7 @@ is not read then: the scheduled sync, or **Sync now**, updates the history inste
 
 ---
 
-## 8. Checking the installation
+## 7. Checking the installation
 
 - **Health** (*System → Health*): the services shown as *Reachable*, with their version, response time and the alerts
   of Sonarr and Radarr; the synchronization history; and the data gaps between the media server and Sonarr/Radarr
@@ -379,11 +329,11 @@ is not read then: the scheduled sync, or **Sync now**, updates the history inste
 
 ---
 
-## 9. Operations
+## 8. Operations
 
 ### Updates
 
-- **Kubernetes**: publish the new version (see [2](#2-container-image)), change `image:`, then apply the manifest or
+- **Kubernetes**: change `image:` to the new release (`ghcr.io/migipasso/hangarr:vX.Y.Z`), then apply the manifest or
   sync Argo CD. Database migrations run at startup.
 - **Docker, from the sources**: `git pull && docker compose up -d --build`.
 - **Docker, published image**: set `HANGARR_IMAGE=ghcr.io/migipasso/hangarr:vX.Y.Z` in `.env`, then run
@@ -428,15 +378,15 @@ docker compose exec hangarr /hangarr sync --once
 
 ### Lost admin password
 
-See [5](#5-first-sign-in): `admin reset-password` prints a new temporary password.
+See [4](#4-first-sign-in): `admin reset-password` prints a new temporary password.
 
 ---
 
-## 10. Troubleshooting
+## 9. Troubleshooting
 
 ### `secret "hangarr-master-key" not found`
 
-The secret does not exist **in the namespace of the pod**. Create it ([4.2](#42-create-the-master-key-secret)). The
+The secret does not exist **in the namespace of the pod**. Create it ([3.2](#32-create-the-master-key-secret)). The
 kubelet retries on its own; there is no need to redeploy.
 
 ### `namespaces "hangarr" not found` (Argo CD)
@@ -500,4 +450,4 @@ The `X-Hangarr-Token` JSON header does not contain exactly the secret. Generate 
 
 ### Tautulli webhook answers 404
 
-No webhook secret is configured, or Jellyfin is the media server. See [7](#7-tautulli-webhook).
+No webhook secret is configured, or Jellyfin is the media server. See [6](#6-tautulli-webhook).
