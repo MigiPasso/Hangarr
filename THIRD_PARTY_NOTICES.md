@@ -1,6 +1,6 @@
 # Third-party notices
 
-This file lists the third-party material that the repository contains or the build uses, with its license and source. It does not cover the code written for Hangarr.
+This file lists the third-party material that the repository contains or the build uses, with its license and source. The code written for Hangarr is under the MIT License (see [LICENSE](LICENSE)).
 
 ## Vendored files
 

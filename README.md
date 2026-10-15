@@ -108,6 +108,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for the workflow, the conventions and the
 - [CONTRIBUTING.md](CONTRIBUTING.md): development workflow and conventions.
 - [testdata/README.md](testdata/README.md): the synthetic scenario served by the mock services.
 - [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md): vendored files, fonts, container images and their licenses.
+- [LICENSE](LICENSE): MIT License of the project.
 
 ## Limitations
 
@@ -125,4 +126,4 @@ Hangarr was called Cleanarr. Existing installations keep their data and settings
 
 ## License
 
-No license has been chosen yet. Until a `LICENSE` file is added, the default copyright rules apply and no permission to use, copy or modify the code is granted. Third-party components keep their own licenses: see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+Hangarr is released under the [MIT License](LICENSE). Third-party components keep their own licenses: see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).

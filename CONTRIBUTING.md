@@ -91,6 +91,8 @@ Before you open a pull request, check that:
 
 `e2e/master.key` is a test-only key, committed on purpose. It is used only by the `app-e2e-config` service. It is not a secret.
 
+Contributions are accepted under the project's [MIT License](LICENSE).
+
 ## Reporting security issues
 
 Please do not open a public issue for a suspected vulnerability; contact the maintainer privately.
