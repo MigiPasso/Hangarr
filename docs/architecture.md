@@ -154,8 +154,6 @@ The application was called Cleanarr before becoming Hangarr. Three fallbacks kee
 - The database `cleanarr.db` is renamed to `hangarr.db` at startup (`store.renameLegacyDB`). The rename never overwrites an existing `hangarr.db`.
 - The Tautulli webhook also accepts the former `X-Cleanarr-Token` header.
 
-The upgrade procedure is in [Migrating from Cleanarr](deployment.md#11-migrating-from-cleanarr).
-
 ## Repository layout
 
 - `cmd/`: the binaries (see Packages).

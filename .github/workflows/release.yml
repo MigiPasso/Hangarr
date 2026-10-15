@@ -1,5 +1,6 @@
 # Pushing a vX.Y.Z tag publishes the multi-arch runtime image
-# (linux/amd64, linux/arm64) to ghcr.io/<owner>/hangarr:vX.Y.Z, and moves
+# (linux/amd64, linux/arm64) to ghcr.io/<repository owner, lowercase>/hangarr:vX.Y.Z
+# (ghcr.io/migipasso/hangarr for this repository), and moves
 # :latest unless the tag is a pre-release (vX.Y.Z-rc.1…).
 # Only the built-in GITHUB_TOKEN is used, with packages: write.
 name: Release image

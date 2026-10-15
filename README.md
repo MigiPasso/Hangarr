@@ -96,7 +96,7 @@ Everything runs in Docker: no Go, Node.js, linter or browser is needed on the ho
 - `make verify`: gofmt, lint and tests, with a compact summary; full logs are in `.verify/`. `make verify E2E=1` also runs the Playwright end-to-end suite.
 - `make help`: lists all the targets.
 
-GitHub Actions ([ci.yml](.github/workflows/ci.yml)) runs the same make targets on every push to `main` and every pull request. Pushing a `v*` tag publishes the image to `ghcr.io/<owner>/hangarr` ([release.yml](.github/workflows/release.yml)).
+GitHub Actions ([ci.yml](.github/workflows/ci.yml)) runs the same make targets on every push to `main` and every pull request. Pushing a `v*` tag publishes the image to `ghcr.io/migipasso/hangarr` ([release.yml](.github/workflows/release.yml)).
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for the workflow, the conventions and the pull request checklist. Report security issues privately rather than in a public issue.
 
@@ -122,7 +122,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for the workflow, the conventions and the
 
 ## Formerly Cleanarr
 
-Hangarr was called Cleanarr. Existing installations keep their data and settings: see [Migrating from Cleanarr](docs/deployment.md#11-migrating-from-cleanarr).
+Hangarr was previously named Cleanarr. The former variable names, webhook header and database file name are still accepted: see [Deprecated names](docs/configuration.md#deprecated-names).
 
 ## License
 

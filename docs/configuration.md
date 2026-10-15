@@ -259,5 +259,3 @@ Hangarr was called Cleanarr. These names still work:
 - The `X-Cleanarr-Token` header is accepted by the Tautulli webhook in place of `X-Hangarr-Token`. A warning is logged
   for each request that uses it.
 - A `cleanarr.db` file in `DATA_DIR` is renamed to `hangarr.db` at startup, when `hangarr.db` does not exist.
-
-Migration steps: [deployment guide, section 11](deployment.md#11-migrating-from-cleanarr).

@@ -17,7 +17,6 @@ in the [README](../README.md).
 - [8. Checking the installation](#8-checking-the-installation)
 - [9. Operations](#9-operations)
 - [10. Troubleshooting](#10-troubleshooting)
-- [11. Migrating from Cleanarr](#11-migrating-from-cleanarr)
 
 ---
 
@@ -60,7 +59,7 @@ With Compose, the image name is set by `HANGARR_IMAGE` (default `hangarr:local`)
 
 The GitHub Actions workflow [`.github/workflows/release.yml`](../.github/workflows/release.yml) does steps 3 and 4 below
 automatically: pushing a `v*` tag builds and pushes the image for linux/amd64 and linux/arm64 to
-`ghcr.io/<owner>/hangarr:<tag>`, and moves `latest` unless the tag is a pre-release (for example `vX.Y.Z-rc.1`). It uses
+`ghcr.io/migipasso/hangarr:<tag>`, and moves `latest` unless the tag is a pre-release (for example `vX.Y.Z-rc.1`). It uses
 the repository's own token, so no personal token is needed for that path.
 
 To do it by hand, run these commands from the repository, on a clean working tree (otherwise the version ends with
@@ -68,9 +67,9 @@ To do it by hand, run these commands from the repository, on a clean working tre
 
 1. Create a GitHub token: *Settings → Developer settings → Personal access tokens → Tokens (classic) → Generate new
    token (classic)*, with the **`write:packages`** scope.
-2. Log in to GitHub Container Registry. Use your GitHub user name in lowercase for `<owner>`:
+2. Log in to GitHub Container Registry. Replace `<github-user>` with your GitHub user name:
    ```sh
-   echo "<token>" | docker login ghcr.io -u <owner> --password-stdin
+   echo "<token>" | docker login ghcr.io -u <github-user> --password-stdin
    ```
 3. Tag the release:
    ```sh
@@ -78,18 +77,18 @@ To do it by hand, run these commands from the repository, on a clean working tre
    ```
 4. Build and push for linux/amd64 and linux/arm64:
    ```sh
-   make image PUSH=1 IMAGE=ghcr.io/<owner>/hangarr
-   docker buildx imagetools inspect ghcr.io/<owner>/hangarr:vX.Y.Z   # two platforms expected
+   make image PUSH=1 IMAGE=ghcr.io/migipasso/hangarr
+   docker buildx imagetools inspect ghcr.io/migipasso/hangarr:vX.Y.Z   # two platforms expected
    ```
    The tag is the output of `git describe` (here `vX.Y.Z`). Only this tag is pushed. To also update `latest`:
    ```sh
-   docker buildx imagetools create -t ghcr.io/<owner>/hangarr:latest ghcr.io/<owner>/hangarr:vX.Y.Z
+   docker buildx imagetools create -t ghcr.io/migipasso/hangarr:latest ghcr.io/migipasso/hangarr:vX.Y.Z
    ```
 5. Make the image pullable by your cluster. Either set the package visibility to public in the package settings on
    GitHub, or keep it private and create a pull secret (token with the `read:packages` scope):
    ```sh
    kubectl -n <ns> create secret docker-registry ghcr-pull \
-     --docker-server=ghcr.io --docker-username=<owner> --docker-password=<token>
+     --docker-server=ghcr.io --docker-username=<github-user> --docker-password=<token>
    ```
    Then uncomment `imagePullSecrets` in the Deployment (see [4](#4-kubernetes)).
 
@@ -147,10 +146,10 @@ liveness (`/healthz`) and readiness (`/readyz`) probes.
 
 ### 4.1 Set the image
 
-Replace the placeholder `ghcr.io/CHANGE-ME/hangarr:vX.Y.Z` with your published image and a release tag:
+The manifest uses the published image `ghcr.io/migipasso/hangarr:v1.3.1`. To deploy another release, change the tag to the one you deploy, or the image name to your own registry if you build the image yourself:
 
 ```yaml
-image: ghcr.io/<owner>/hangarr:vX.Y.Z
+image: ghcr.io/migipasso/hangarr:v1.3.1
 ```
 
 ### 4.2 Create the master key secret
@@ -387,7 +386,7 @@ is not read then: the scheduled sync, or **Sync now**, updates the history inste
 - **Kubernetes**: publish the new version (see [2](#2-container-image)), change `image:`, then apply the manifest or
   sync Argo CD. Database migrations run at startup.
 - **Docker, from the sources**: `git pull && docker compose up -d --build`.
-- **Docker, published image**: set `HANGARR_IMAGE=ghcr.io/<owner>/hangarr:vX.Y.Z` in `.env`, then run
+- **Docker, published image**: set `HANGARR_IMAGE=ghcr.io/migipasso/hangarr:vX.Y.Z` in `.env`, then run
   `docker compose pull && docker compose up -d`.
 
 ### Backup
@@ -502,41 +501,3 @@ The `X-Hangarr-Token` JSON header does not contain exactly the secret. Generate 
 ### Tautulli webhook answers 404
 
 No webhook secret is configured, or Jellyfin is the media server. See [7](#7-tautulli-webhook).
-
----
-
-## 11. Migrating from Cleanarr
-
-Hangarr was called **Cleanarr**. It still reads the old names, so an existing installation keeps its data and settings:
-
-- On first start, `cleanarr.db` is renamed `hangarr.db` (with its `-wal` and `-shm` files). The log shows
-  `database renamed after the rename of Cleanarr to Hangarr`.
-- `CLEANARR_MASTER_KEY(_FILE)` is read when `HANGARR_MASTER_KEY(_FILE)` is not set, with a warning. The key does not
-  change, so saved API keys stay readable.
-- The Tautulli webhook still accepts the `X-Cleanarr-Token` header, with a warning.
-- Cookies have new `hangarr_*` names: sign in again, then set the language, theme and sidebar again.
-
-**Steps**
-
-1. Back up the data with the old version, and keep the **same master key**.
-2. Rename `CLEANARR_MASTER_KEY(_FILE)` to `HANGARR_MASTER_KEY(_FILE)`. In `.env`, use `HANGARR_IMAGE` and
-   `HANGARR_PORT`: Compose reads only these names.
-3. Update the image name to `ghcr.io/<owner>/hangarr:…`, or to `hangarr:local` if you build from the sources.
-4. In Tautulli, use the header `X-Hangarr-Token` in both triggers, and update the webhook URL if the address changed.
-5. Move the data:
-   - **Docker**: the Compose project is now `hangarr`, so the data volume is `hangarr_hangarr-data`. Stop the old
-     container without removing its volume, create the new volume through Compose without starting Hangarr, then copy:
-     ```sh
-     docker compose up --no-start
-     docker run --rm --user 65532:65532 -v <old-volume>:/from:ro -v hangarr_hangarr-data:/to alpine cp -a /from/. /to/
-     docker compose up -d
-     ```
-   - **Kubernetes**: first turn off automatic sync and pruning of the old application in Argo CD, otherwise its claim
-     and data are deleted. Create `hangarr-master-key` with the same key value as the old secret, scale the old
-     application to 0 (only one application may use the SQLite database), copy the old claim into `hangarr-data` with a
-     temporary pod running as user 65532, then apply `hangarr.yaml`.
-6. Check the logs: `... | grep -iE "renamed|INITIAL ADMIN|deprecated"`. The rename message must appear. `INITIAL ADMIN`
-   must **not** appear: it would mean Hangarr started on an empty volume. Stop it and redo step 5.
-
-**Rollback**: scale the old application back to 1 and Hangarr to 0. The old data is not modified until you delete it.
-With Argo CD, restore the old application first, or it brings Hangarr back.
