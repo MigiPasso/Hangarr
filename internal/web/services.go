@@ -2,7 +2,6 @@ package web
 
 import (
 	"errors"
-	"hangarr/internal/auth"
 	"maps"
 	"net/http"
 	"slices"
@@ -10,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"hangarr/internal/auth"
 	"hangarr/internal/media"
 	"hangarr/internal/store"
 	"hangarr/internal/upstream"

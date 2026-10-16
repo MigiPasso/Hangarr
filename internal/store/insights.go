@@ -1,12 +1,12 @@
 package store
 
 import (
-	"hangarr/internal/media"
-
 	"context"
 	"database/sql"
 	"encoding/json"
 	"strings"
+
+	"hangarr/internal/media"
 )
 
 // Aggregates for the dashboard, statistics and cleanup pages. Time windows
