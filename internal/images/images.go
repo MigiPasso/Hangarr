@@ -233,6 +233,7 @@ func (p *Proxy) fetch(ctx context.Context, kind, id, variant string, info Info, 
 	lastErr := errNoImage
 	if client != nil {
 		for _, req := range upstreamRequests(kind, id, variant) {
+			req.MaxBytes = MaxImageBytes // stop reading a larger answer right away
 			b, err := client.Do(ctx, req)
 			if err == nil && isImage(b) {
 				if b, err = shrink(b, maxWidth(variant)); err == nil {

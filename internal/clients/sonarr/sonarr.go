@@ -180,7 +180,8 @@ func (c *Client) DeleteEpisodeFiles(ctx context.Context, ids []int64) error {
 
 // UpdateSeriesRaw sends a full series object (PUT /api/v3/series/{id}).
 func (c *Client) UpdateSeriesRaw(ctx context.Context, id int64, raw json.RawMessage) error {
-	return c.HTTP.JSON(ctx, httpx.Request{Method: http.MethodPut, Path: idPath("/api/v3/series/", id), Body: raw}, nil)
+	return c.HTTP.JSON(ctx, httpx.Request{Method: http.MethodPut, Path: idPath("/api/v3/series/", id), Body: raw,
+		Retry: true}, nil)
 }
 
 // DeleteSeries deletes a series (and its files when deleteFiles).

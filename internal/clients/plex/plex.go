@@ -315,7 +315,8 @@ func (c *Client) RefreshSection(ctx context.Context, key string) error {
 
 // EmptyTrash removes items whose files disappeared from a section.
 func (c *Client) EmptyTrash(ctx context.Context, key string) error {
-	_, err := c.HTTP.Do(ctx, httpx.Request{Method: http.MethodPut, Path: "/library/sections/" + url.PathEscape(key) + "/emptyTrash"})
+	_, err := c.HTTP.Do(ctx, httpx.Request{Method: http.MethodPut, Path: "/library/sections/" + url.PathEscape(key) + "/emptyTrash",
+		Retry: true})
 	return err
 }
 
