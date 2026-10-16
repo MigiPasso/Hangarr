@@ -65,7 +65,7 @@ type Config struct {
 	// name) still in use; logged at startup.
 	Deprecations []string
 
-	SyncTime               string // default daily sync time "HH:MM" (overridable in the UI)
+	SyncTime               string // start of the syncs "HH:MM" until the frequency is saved in the UI
 	DryRun                 bool
 	ProtectedTags          []string
 	ConfirmByTyping        bool

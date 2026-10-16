@@ -129,6 +129,7 @@ func TestFrenchCatalogComplete(t *testing.T) {
 		"not found", "in %s only", "already protected", "protected by a tag", // batch exclusions
 		"No item selected.", "Invalid selection.", "No deletable item in the selection.",
 		"The number typed does not match the number of items to delete.",
+		"Invalid frequency.", "Synchronization unavailable.", // renderSettings
 		"Expected an http(s) address, e.g. http://host:port.", "At least 32 characters.",
 		"This is the address of a page (/login, /movie/…): keep only the address of the application.",
 		"The address changed: type the credential again.",
@@ -242,6 +243,9 @@ func TestPreferencesWithCookiePrefix(t *testing.T) {
 	for _, p := range []string{"/style/y2k", "/palette/ember", "/lang/fr"} {
 		r.AddCookie(choose(p))
 	}
+	view := httptest.NewRecorder()
+	h.srv.libraryView(view, httptest.NewRequest(http.MethodGet, "/series?view=table", nil))
+	r.AddCookie(view.Result().Cookies()[0])
 	if got := h.srv.styleFrom(r); got != "y2k" {
 		t.Errorf("style: %q", got)
 	}
@@ -250,5 +254,8 @@ func TestPreferencesWithCookiePrefix(t *testing.T) {
 	}
 	if got := h.srv.loc(r).Lang; got != i18n.FR {
 		t.Errorf("lang: %q", got)
+	}
+	if got := h.srv.libraryView(httptest.NewRecorder(), r); got != "table" {
+		t.Errorf("view: %q", got)
 	}
 }

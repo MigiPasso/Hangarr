@@ -40,17 +40,13 @@ func (s *Server) settingsPage(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) settingsSubmit(w http.ResponseWriter, r *http.Request) {
 	if s.Sync == nil {
-		http.NotFound(w, r)
+		s.renderSettings(w, r, http.StatusServiceUnavailable, "Synchronization unavailable.", false)
 		return
 	}
-	every := 24 // field absent (older form): once a day
-	if v := r.PostFormValue("sync_every"); v != "" {
-		n, err := strconv.Atoi(v)
-		if err != nil || !syncer.ValidEvery(n) {
-			s.renderSettings(w, r, http.StatusUnprocessableEntity, "Invalid frequency.", false)
-			return
-		}
-		every = n
+	every, err := strconv.Atoi(r.PostFormValue("sync_every"))
+	if err != nil || !syncer.ValidEvery(every) {
+		s.renderSettings(w, r, http.StatusUnprocessableEntity, "Invalid frequency.", false)
+		return
 	}
 	// The syncs start from the time of the save, then follow the frequency.
 	now := time.Now().In(s.Config.Location)

@@ -619,7 +619,6 @@ meter { width: 100%; height: .6rem; }
 .setting .field-error { margin-top: .35rem; }
 .setting-control { display: flex; align-items: center; gap: .5rem; justify-self: end; flex-wrap: wrap; justify-content: flex-end; }
 .setting-control select { min-width: 12rem; }
-.setting-control.clock select { min-width: 0; width: auto; font-variant-numeric: tabular-nums; }
 /* Stepper: − / + buttons around a number field (app.js); the browser's tiny
    arrows are hidden. Separate controls, so each style dresses them like its
    own buttons and fields. Without JavaScript, the field alone. */

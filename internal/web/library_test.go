@@ -293,7 +293,7 @@ func TestSyncEndpoints(t *testing.T) {
 	}
 }
 
-func TestSettingsSyncTime(t *testing.T) {
+func TestSettingsSyncSchedule(t *testing.T) {
 	e := newLibEnv(t, 0)
 	r := e.do(e.c, "GET", "/settings", nil, nil)
 	if r.status != http.StatusOK || strings.Contains(r.body, "sync_hour") || !strings.Contains(r.body, "Prochaine synchronisation") {
@@ -306,11 +306,12 @@ func TestSettingsSyncTime(t *testing.T) {
 	if r := e.do(e.c, "POST", "/settings", url.Values{"sync_every": {"8"}}, nil); r.status != http.StatusForbidden {
 		t.Errorf("without csrf: %d", r.status)
 	}
-	// The start time is the time of the save; the frequency follows from it.
-	before := time.Now().In(e.srv.Config.Location).Truncate(time.Minute)
+	// The syncs start from the time of the save, then follow the frequency.
+	loc := e.srv.Config.Location
+	before := time.Now().In(loc).Truncate(time.Minute)
 	r = e.do(e.c, "POST", "/settings", url.Values{"csrf_token": {tok}, "sync_every": {"8"}},
 		map[string]string{"HX-Request": "true"})
-	after := time.Now().In(e.srv.Config.Location)
+	after := time.Now().In(loc)
 	if r.status != http.StatusOK || !strings.Contains(r.body, `<option value="8" selected>Toutes les 8 heures</option>`) ||
 		strings.Contains(r.body, "<html") {
 		t.Fatalf("every 8 hours: %d %s", r.status, r.body)
@@ -319,17 +320,32 @@ func TestSettingsSyncTime(t *testing.T) {
 		t.Errorf("stored interval %q", v)
 	}
 	v, _ := e.srv.Store.Setting(context.Background(), "sync_time", "")
-	if v != before.Format("15:04") && v != after.Format("15:04") {
-		t.Errorf("stored start %q, saved at %s", v, before.Format("15:04"))
+	at, err := syncer.ParseClockTime(v)
+	if err != nil || (v != before.Format("15:04") && v != after.Format("15:04")) {
+		t.Fatalf("stored start %q, saved at %s", v, before.Format("15:04"))
 	}
-	if next := e.srv.Sync.NextRun(); next.Before(before.Add(8*time.Hour)) || next.After(after.Add(8*time.Hour)) {
-		t.Errorf("next run %s, saved at %s", next, before)
+	// Wall-clock times: the gap is not 8 h of real time on a DST change day.
+	next := e.srv.Sync.NextRun().In(loc)
+	if next.Hour() != (at.Hour+8)%24 || next.Minute() != at.Minute || !next.After(after) || next.Sub(after) > 9*time.Hour {
+		t.Errorf("next run %s, saved at %s", next, v)
 	}
-	for _, bad := range []string{"5", "0", "x", "48"} {
+	for _, bad := range []string{"", "5", "0", "x", "48"} {
 		r := e.do(e.c, "POST", "/settings", url.Values{"csrf_token": {tok}, "sync_every": {bad}}, nil)
-		if r.status != http.StatusUnprocessableEntity || !strings.Contains(r.body, "Fréquence invalide.") {
-			t.Errorf("every=%s: %d", bad, r.status)
+		if r.status != http.StatusUnprocessableEntity || !strings.Contains(r.body, "Fréquence invalide.") ||
+			!strings.Contains(r.body, `aria-invalid="true"`) {
+			t.Errorf("every=%q: %d", bad, r.status)
 		}
+	}
+}
+
+func TestSettingsWithoutSyncer(t *testing.T) {
+	h := newHarness(t, nil)
+	c := h.loggedIn()
+	page := h.do(c, "GET", "/settings", nil, nil)
+	r := h.do(c, "POST", "/settings", url.Values{"csrf_token": {csrfFrom(t, page.body)}, "sync_every": {"8"}},
+		map[string]string{"HX-Request": "true"})
+	if r.status != http.StatusOK || !strings.Contains(r.body, "Synchronisation indisponible.") {
+		t.Errorf("save without syncer: %d %s", r.status, r.body)
 	}
 }
 

@@ -9,7 +9,7 @@ import (
 
 // Setting keys.
 const (
-	SettingSyncTime  = "sync_time"        // "HH:MM", local time (TZ): first sync of the day
+	SettingSyncTime  = "sync_time"        // "HH:MM", local time (TZ): when the frequency was saved, start of the syncs
 	SettingSyncEvery = "sync_every_hours" // hours between syncs (24: once a day)
 )
 
