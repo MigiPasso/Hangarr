@@ -61,7 +61,7 @@ For Kubernetes and the complete guide, see [docs/deployment.md](docs/deployment.
 Hangarr is configured with environment variables, and with **Settings › Services** for the services. The full list is in [docs/configuration.md](docs/configuration.md#environment-variables).
 
 - **Services**: set them in the interface or in the environment (`SONARR_URL`, `SONARR_API_KEY`, `PLEX_TOKEN`…). A value set in the environment takes precedence and locks its field.
-- **Master key** (recommended): saved keys and tokens are encrypted in the database. Provide the key through `HANGARR_MASTER_KEY_FILE`, for example a Docker or Kubernetes secret. Without it, a key is generated in `DATA_DIR/master.key`, inside the data volume. Generate one with `docker run --rm ghcr.io/migipasso/hangarr:v1.3.1 master-key`.
+- **Master key** (recommended): saved keys and tokens are encrypted in the database. Provide the key through `HANGARR_MASTER_KEY_FILE`, for example a Docker or Kubernetes secret. Without it, a key is generated in `DATA_DIR/master.key`, inside the data volume. Generate one with `docker run --rm ghcr.io/migipasso/hangarr:v1.4.0 master-key`.
 - **One media server**: Plex or Jellyfin, never both. Tautulli is only used with Plex. Plex and Jellyfin variables set together stop the application at startup.
 - **Schedule and cleanup**: the sync time and frequency, and the number of days of the cleanup rule, are set in **Settings › General**.
 

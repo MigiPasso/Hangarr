@@ -110,7 +110,7 @@ stored in the database. A copy of the database alone does not reveal them: the m
 
 ### Recommended: provide the key
 
-1. Generate a key with the image (for example `ghcr.io/migipasso/hangarr:v1.3.1`). The command prints it and writes nothing to disk:
+1. Generate a key with the image (for example `ghcr.io/migipasso/hangarr:v1.4.0`). The command prints it and writes nothing to disk:
 
    ```sh
    docker run --rm <image> master-key

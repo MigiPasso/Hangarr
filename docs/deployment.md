@@ -45,7 +45,7 @@ Set `DRY_RUN=false` only once the cleanup proposals have been checked. Set it in
 
 ```sh
 cp .env.example .env                 # optional: DRY_RUN, COOKIE_SECURE, TZ, DEFAULT_LANG…
-docker compose up -d                 # pulls ghcr.io/migipasso/hangarr:v1.3.1; another release: set HANGARR_IMAGE in .env
+docker compose up -d                 # pulls ghcr.io/migipasso/hangarr:v1.4.0; another release: set HANGARR_IMAGE in .env
 docker compose logs hangarr | grep -A4 "INITIAL ADMIN"
 ```
 
@@ -63,7 +63,7 @@ Open `http://<host>:8080` (or `http://localhost:8080`). The published port is `H
   Sonarr is then reachable at `http://sonarr:8989`, and Tautulli can call `http://hangarr:8080/webhooks/tautulli`.
 - **Master key (recommended)**: generate it once, outside the data volume:
   ```sh
-  docker run --rm ghcr.io/migipasso/hangarr:v1.3.1 master-key > master.key
+  docker run --rm ghcr.io/migipasso/hangarr:v1.4.0 master-key > master.key
   ```
   Then, in `compose.yml`, uncomment `secrets: [hangarr_master_key]` and the `environment` block
   (`HANGARR_MASTER_KEY_FILE`) of the `hangarr` service, and the top-level `secrets` block. Keep `master.key` out of
@@ -72,7 +72,7 @@ Open `http://<host>:8080` (or `http://localhost:8080`). The published port is `H
   ```sh
   docker run -d --name hangarr --restart unless-stopped -p 8080:8080 --env-file .env \
     -v hangarr-data:/data --read-only --user 65532:65532 --cap-drop ALL \
-    --security-opt no-new-privileges:true ghcr.io/migipasso/hangarr:v1.3.1
+    --security-opt no-new-privileges:true ghcr.io/migipasso/hangarr:v1.4.0
   ```
   `--env-file` requires the file to exist (it can be empty). To keep the data in a host folder, use
   `-v /srv/hangarr:/data` and first run `sudo chown -R 65532:65532 /srv/hangarr`.
@@ -96,11 +96,11 @@ liveness (`/healthz`) and readiness (`/readyz`) probes.
 
 ### 3.1 Set the image
 
-The manifest uses the public image `ghcr.io/migipasso/hangarr:v1.3.1`, which needs no pull secret. To deploy another
+The manifest uses the public image `ghcr.io/migipasso/hangarr:v1.4.0`, which needs no pull secret. To deploy another
 release, change the tag:
 
 ```yaml
-image: ghcr.io/migipasso/hangarr:v1.3.1
+image: ghcr.io/migipasso/hangarr:v1.4.0
 ```
 
 ### 3.2 Create the master key secret
