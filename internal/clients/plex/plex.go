@@ -231,11 +231,19 @@ func page[T any](ctx context.Context, c *Client, path string, q url.Values, star
 func (c *Client) Items(ctx context.Context, sectionKey string, itemType int) ([]Item, error) {
 	path := "/library/sections/" + url.PathEscape(sectionKey) + "/all"
 	var all []Item
+	var guard httpx.PageGuard
 	for {
 		q := url.Values{"type": {strconv.Itoa(itemType)}, "includeGuids": {"1"}}
 		items, total, err := page[Item](ctx, c, path, q, len(all))
 		if err != nil {
 			return nil, err
+		}
+		first := ""
+		if len(items) > 0 {
+			first = string(items[0].RatingKey)
+		}
+		if err := guard.Next(first); err != nil {
+			return nil, fmt.Errorf("plex: section %s: %w", sectionKey, err)
 		}
 		all = append(all, items...)
 		if len(items) < pageSize || (total > 0 && len(all) >= total) {

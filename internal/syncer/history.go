@@ -63,7 +63,9 @@ func (s *Syncer) RunHistory(ctx context.Context) (int, error) {
 	var failed []error
 	// A failing source does not hold back the other one (merged mode):
 	// what was read is still linked and counted.
-	for _, r := range s.syncHistories(ctx, up) {
+	sctx, cancel := s.sourceCtx(ctx)
+	defer cancel()
+	for _, r := range s.syncHistories(sctx, up) {
 		if r.Err != nil {
 			failed = append(failed, fmt.Errorf("%s: %w", r.Source, r.Err))
 			continue

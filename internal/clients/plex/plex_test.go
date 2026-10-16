@@ -2,10 +2,16 @@ package plex
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"slices"
+	"strings"
+	"sync/atomic"
 	"testing"
+
+	"hangarr/internal/clients/httpx"
 )
 
 const duneMetadata = `{"MediaContainer":{"Metadata":[{"ratingKey":"6894","title":"Dune: Part One","year":2021,"Media":[{"id":11195,"videoResolution":"4k","videoCodec":"hevc","audioCodec":"truehd","container":"mkv","bitrate":10960,"Part":[{"id":17402,"file":"/m/Dune (2021) MULTi 2160p.mkv","size":12777212193,"Stream":[{"streamType":1,"codec":"hevc","languageCode":"eng","displayTitle":"4K DoVi/HDR10"},{"streamType":2,"codec":"dca","languageCode":"fra","displayTitle":"Français (DTS-HD MA 5.1)"},{"streamType":3,"codec":"srt","languageCode":"fra","displayTitle":"Français Forced","forced":true}]}]},{"id":11205,"videoResolution":"4k","videoCodec":"hevc","audioCodec":"truehd","container":"mkv","bitrate":67272,"Part":[{"id":17403,"file":"/m/Dune 2021 REMUX.mkv","size":78427175765}]}]}]}}`
@@ -71,5 +77,31 @@ func TestPlexDeleteMedia(t *testing.T) {
 	})
 	if err := c.DeleteMedia(context.Background(), "6894", "11205"); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// BUG-07: a server that ignores X-Plex-Container-Start and sends no total
+// would make Items loop forever.
+func TestItemsStopsWhenPagingIgnored(t *testing.T) {
+	var b strings.Builder
+	b.WriteString(`{"MediaContainer":{"Metadata":[`)
+	for i := range pageSize {
+		if i > 0 {
+			b.WriteString(",")
+		}
+		fmt.Fprintf(&b, `{"ratingKey":"%d","type":"movie","title":"M%d"}`, i+1, i)
+	}
+	b.WriteString(`]}}`)
+	page := b.String()
+	var calls atomic.Int32
+	c := newTestClient(t, func(w http.ResponseWriter, _ *http.Request) {
+		calls.Add(1)
+		_, _ = w.Write([]byte(page))
+	})
+	if _, err := c.Items(context.Background(), "1", 1); !errors.Is(err, httpx.ErrPagingIgnored) {
+		t.Fatalf("err = %v", err)
+	}
+	if calls.Load() != 2 {
+		t.Errorf("calls: %d", calls.Load())
 	}
 }

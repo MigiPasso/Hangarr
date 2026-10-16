@@ -3,6 +3,7 @@ package httpx
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -169,5 +170,29 @@ func TestTruncateRunes(t *testing.T) {
 	_, err := New("svc", ts.URL, nil).Do(context.Background(), Request{Path: "/x"})
 	if err == nil || !utf8.ValidString(err.Error()) {
 		t.Errorf("snippet: %v", err)
+	}
+}
+
+// BUG-07: a server that ignores the offset sends the same page again: the
+// loop stops with an error instead of running forever.
+func TestPageGuard(t *testing.T) {
+	var g PageGuard
+	if err := g.Next("a"); err != nil {
+		t.Fatal(err)
+	}
+	if err := g.Next("b"); err != nil {
+		t.Fatal(err)
+	}
+	if err := g.Next("b"); !errors.Is(err, ErrPagingIgnored) {
+		t.Errorf("same first key: %v", err)
+	}
+	var h PageGuard
+	for i := range MaxPages {
+		if err := h.Next(fmt.Sprint(i)); err != nil {
+			t.Fatalf("page %d: %v", i, err)
+		}
+	}
+	if err := h.Next("x"); err == nil {
+		t.Error("no page limit")
 	}
 }

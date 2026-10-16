@@ -46,6 +46,18 @@ const (
 	historyOverlapSecs    = 24 * 60 * 60
 )
 
+// DefaultSourceTimeout bounds the fetch of one source: a server that never
+// ends a listing must not keep the sync running (and every next one refused).
+const DefaultSourceTimeout = 30 * time.Minute
+
+func (s *Syncer) sourceCtx(ctx context.Context) (context.Context, context.CancelFunc) {
+	d := s.SourceTimeout
+	if d <= 0 {
+		d = DefaultSourceTimeout
+	}
+	return context.WithTimeout(ctx, d)
+}
+
 // ErrAlreadyRunning is returned when a sync is requested while one runs.
 var ErrAlreadyRunning = errors.New("a sync is already running")
 
@@ -68,6 +80,8 @@ type Syncer struct {
 
 	// HistoryDebounce overrides DefaultHistoryDebounce (tests).
 	HistoryDebounce time.Duration
+	// SourceTimeout overrides DefaultSourceTimeout (tests).
+	SourceTimeout time.Duration
 
 	historyPending bool
 	running        atomic.Bool
@@ -312,36 +326,47 @@ func (s *Syncer) run(ctx context.Context, up *upstream.Clients) (*Result, error)
 	var g errgroup.Group
 	var seriesErr, moviesErr, serverErr error
 	var seriesStart, moviesStart, serverStart time.Time
+	// Each source has its own deadline (sourceCtx).
 	if up.Sonarr != nil {
 		g.Go(func() error {
 			seriesStart = time.Now()
-			f.series, seriesErr = s.fetchSeries(ctx, up.Sonarr)
+			sctx, cancel := s.sourceCtx(ctx)
+			defer cancel()
+			f.series, seriesErr = s.fetchSeries(sctx, up.Sonarr)
 			return nil
 		})
 	}
 	if up.Radarr != nil {
 		g.Go(func() error {
 			moviesStart = time.Now()
-			f.movies, moviesErr = s.fetchMovies(ctx, up.Radarr)
+			sctx, cancel := s.sourceCtx(ctx)
+			defer cancel()
+			f.movies, moviesErr = s.fetchMovies(sctx, up.Radarr)
 			return nil
 		})
 	}
 	if serverSource == SourcePlex {
 		g.Go(func() error {
 			serverStart = time.Now()
-			f.server, serverErr = s.fetchPlex(ctx, up.Plex)
+			sctx, cancel := s.sourceCtx(ctx)
+			defer cancel()
+			f.server, serverErr = s.fetchPlex(sctx, up.Plex)
 			return nil
 		})
 	}
 	if serverSource == SourceJellyfin {
 		g.Go(func() error {
 			serverStart = time.Now()
-			f.server, serverErr = s.fetchJellyfin(ctx, up.Jellyfin)
+			sctx, cancel := s.sourceCtx(ctx)
+			defer cancel()
+			f.server, serverErr = s.fetchJellyfin(sctx, up.Jellyfin)
 			return nil
 		})
 	}
 	g.Go(func() error {
-		for _, r := range s.syncHistories(ctx, up) {
+		sctx, cancel := s.sourceCtx(ctx)
+		defer cancel()
+		for _, r := range s.syncHistories(sctx, up) {
 			record(r)
 		}
 		return nil
@@ -774,20 +799,22 @@ func (s *Syncer) syncTautulliHistory(ctx context.Context, c *tautulli.Client, us
 	if s.HistoryPageSize > 0 {
 		pageSize = s.HistoryPageSize
 	}
-	return s.pageHistory(ctx, cursorTautulli, func(start int) ([]store.WatchEvent, []int64, int, int, error) {
+	return s.pageHistory(ctx, cursorTautulli, func(start int) (historyPage, error) {
 		p, err := c.History(ctx, start, pageSize)
 		if err != nil {
-			return nil, nil, 0, 0, err
+			return historyPage{}, err
 		}
-		var events []store.WatchEvent
-		dates := make([]int64, 0, len(p.Rows))
-		for _, r := range p.Rows {
-			dates = append(dates, int64(r.Date))
+		out := historyPage{dates: make([]int64, 0, len(p.Rows)), rows: len(p.Rows), total: int(p.RecordsFiltered)}
+		for i, r := range p.Rows {
+			if i == 0 {
+				out.first = fmt.Sprintf("%d/%d/%d", int64(r.ID), int64(r.ReferenceID), int64(r.Date))
+			}
+			out.dates = append(out.dates, int64(r.Date))
 			if e, ok := TautulliEvent(r); ok && v.allows(e.UserID) {
-				events = append(events, e)
+				out.events = append(out.events, e)
 			}
 		}
-		return events, dates, len(p.Rows), int(p.RecordsFiltered), nil
+		return out, nil
 	}, pageSize)
 }
 
@@ -996,13 +1023,17 @@ func (s *Syncer) syncPlexHistory(ctx context.Context, c *plex.Client, v *viewers
 	if err := s.Store.RemapHistoryUsers(ctx, SourcePlexHistory, ids); err != nil {
 		return 0, err
 	}
-	return s.pageHistory(ctx, cursorPlexHistory, func(start int) ([]store.WatchEvent, []int64, int, int, error) {
+	return s.pageHistory(ctx, cursorPlexHistory, func(start int) (historyPage, error) {
 		entries, total, err := c.History(ctx, start)
 		if err != nil {
-			return nil, nil, 0, 0, err
+			return historyPage{}, err
 		}
 		var events []store.WatchEvent
 		dates := make([]int64, 0, len(entries))
+		first := ""
+		if len(entries) > 0 {
+			first = entries[0].HistoryKey
+		}
 		for _, h := range entries {
 			dates = append(dates, int64(h.ViewedAt))
 			if e, ok := PlexEvent(h); ok {
@@ -1015,13 +1046,23 @@ func (s *Syncer) syncPlexHistory(ctx context.Context, c *plex.Client, v *viewers
 				events = append(events, e)
 			}
 		}
-		return events, dates, len(entries), total, nil
+		return historyPage{events: events, dates: dates, rows: len(entries), total: total, first: first}, nil
 	}, plex.HistoryPageSize)
 }
 
-// pageFunc fetches a page: events to store, the date of every row, the raw
-// row count and the total reported by the server (0 if unknown).
-type pageFunc func(start int) (events []store.WatchEvent, dates []int64, rows, total int, err error)
+// historyPage is a page of history: events to store, the date of every row,
+// the raw row count, the total reported by the server (0 if unknown) and the
+// identity of the first row (to detect a server that ignores the offset).
+type historyPage struct {
+	events []store.WatchEvent
+	dates  []int64
+	rows   int
+	total  int
+	first  string
+}
+
+// pageFunc fetches the page starting at start.
+type pageFunc func(start int) (historyPage, error)
 
 func (s *Syncer) pageHistory(ctx context.Context, cursorName string, fetch pageFunc, pageSize int) (int, error) {
 	raw, err := s.Store.Cursor(ctx, cursorName)
@@ -1032,11 +1073,16 @@ func (s *Syncer) pageHistory(ctx context.Context, cursorName string, fetch pageF
 	threshold := cursor - historyOverlapSecs
 	maxDate := cursor
 	stored, start := 0, 0
+	var guard httpx.PageGuard
 	for {
-		events, dates, rows, total, err := fetch(start)
+		p, err := fetch(start)
 		if err != nil {
 			return stored, err
 		}
+		if err := guard.Next(p.first); err != nil {
+			return stored, err
+		}
+		events, dates, rows, total := p.events, p.dates, p.rows, p.total
 		if err := s.Store.UpsertWatchEvents(ctx, events); err != nil {
 			return stored, err
 		}

@@ -176,12 +176,20 @@ func query[T any](ctx context.Context, c *Client, q url.Values, start int) ([]T,
 }
 
 // collect follows the pages of a GET /Items listing and returns every item.
-func collect[T any](ctx context.Context, c *Client, q url.Values) ([]T, error) {
-	var all []T
+func collect(ctx context.Context, c *Client, q url.Values) ([]Item, error) {
+	var all []Item
+	var guard httpx.PageGuard
 	for {
-		items, total, err := query[T](ctx, c, q, len(all))
+		items, total, err := query[Item](ctx, c, q, len(all))
 		if err != nil {
 			return nil, err
+		}
+		first := ""
+		if len(items) > 0 {
+			first = items[0].ID
+		}
+		if err := guard.Next(first); err != nil {
+			return nil, fmt.Errorf("jellyfin: %w", err)
 		}
 		all = append(all, items...)
 		if len(items) < pageSize || (total > 0 && len(all) >= total) {
@@ -192,7 +200,7 @@ func collect[T any](ctx context.Context, c *Client, q url.Values) ([]T, error) {
 
 // Items lists every item of a type, following pagination.
 func (c *Client) Items(ctx context.Context, itemType string) ([]Item, error) {
-	return collect[Item](ctx, c, url.Values{
+	return collect(ctx, c, url.Values{
 		"recursive":        {"true"},
 		"includeItemTypes": {itemType},
 		"fields":           {"ProviderIds,Path,DateCreated,OriginalTitle,MediaSourceCount"},
@@ -218,7 +226,7 @@ func (c *Client) Played(ctx context.Context, userID string, start int) ([]Item, 
 
 // Resumable lists every movie and episode a user has started but not finished.
 func (c *Client) Resumable(ctx context.Context, userID string) ([]Item, error) {
-	return collect[Item](ctx, c, url.Values{
+	return collect(ctx, c, url.Values{
 		"userId":           {userID},
 		"recursive":        {"true"},
 		"includeItemTypes": {TypeMovie + "," + TypeEpisode},
