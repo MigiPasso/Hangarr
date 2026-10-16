@@ -87,6 +87,9 @@ func (s *Server) webhookSecretSubmit(w http.ResponseWriter, r *http.Request) {
 		s.notFound(w, r)
 		return
 	}
+	if !s.recentAuth(w, r) {
+		return
+	}
 	b := make([]byte, 32)
 	if _, err := rand.Read(b); err != nil {
 		s.serverError(w, r, err)
@@ -134,5 +137,5 @@ func (s *Server) webhookSecretSubmit(w http.ResponseWriter, r *http.Request) {
 		s.render(w, r, http.StatusOK, "config", "config_saved", pd)
 		return
 	}
-	s.render(w, r, http.StatusOK, "config", "", s.page(r, "Services", "config", s.configData(forms)))
+	s.render(w, r, http.StatusOK, "config", "", s.page(r, "Services", "config", s.configData(r, forms)))
 }

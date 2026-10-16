@@ -29,6 +29,7 @@ var authEventLabels = map[string]string{ //nolint:gosec // G101: UI labels, not 
 	"config_sonarr": "Sonarr configuration changed", "config_radarr": "Radarr configuration changed",
 	"config_plex": "Plex configuration changed", "config_tautulli": "Tautulli configuration changed",
 	"config_jellyfin": "Jellyfin configuration changed",
+	"reauth":          "Password confirmed", "reauth_failure": "Failed password confirmation",
 }
 
 func (s *Server) journal(w http.ResponseWriter, r *http.Request) {

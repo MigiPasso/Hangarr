@@ -152,6 +152,10 @@ The **Settings › Services** page has one card per service:
 - Jellyfin: Server URL, Public URL, API key.
 - Tautulli: API URL, API key, Webhook secret.
 
+Saving, testing a connection or generating the webhook secret needs your password from less than 10 minutes ago: right
+after signing in nothing is asked, later the page asks you to confirm it first. A connection test sends a request to any
+address you type, with the saved keys: this keeps a stolen session from using the page against your network.
+
 Where to find the credentials:
 
 - Sonarr and Radarr: Settings → General → Security → API Key.

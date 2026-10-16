@@ -37,6 +37,8 @@ const (
 	EventPasswordResetCLI = "password_reset_cli"
 	EventLogout           = "logout"
 	EventSessionRevoked   = "session_revoked"
+	EventReauth           = "reauth"         // password confirmed for a sensitive operation
+	EventReauthFailure    = "reauth_failure" // wrong password at that confirmation
 )
 
 // touchInterval bounds how often last_seen_at is written.
@@ -178,6 +180,7 @@ func (s *Service) newSession(ctx context.Context, userID int64, username string,
 		TokenHash: HashToken(token), UserID: userID, Username: username, MustChangePassword: mustChange,
 		CSRFToken: csrf, CreatedAt: now, LastSeenAt: now, ExpiresAt: now + int64(s.MaxAge/time.Second),
 		IP: meta.IP, UserAgent: media.Truncate(meta.UserAgent, 256),
+		ReauthAt: now, // opened with the password (sign-in or password change)
 	}
 	return &NewSession{Token: token, Session: sess}, nil
 }
@@ -286,6 +289,41 @@ func (s *Service) Authenticate(ctx context.Context, token string) (*store.Sessio
 		sess.LastSeenAt = now.Unix()
 	}
 	return sess, nil
+}
+
+// ReauthWindow is how long a proof of the password (sign-in or
+// confirmation) allows sensitive operations in a session.
+const ReauthWindow = 10 * time.Minute
+
+// RecentlyAuthenticated reports whether the session proved the password
+// less than ReauthWindow ago.
+func (s *Service) RecentlyAuthenticated(sess *store.Session) bool {
+	return sess.ReauthAt > 0 && s.now().Sub(time.Unix(sess.ReauthAt, 0)) < ReauthWindow
+}
+
+// Reauthenticate checks the current password of the session's user before a
+// sensitive operation and records the proof in the session. Both outcomes
+// are journaled; ErrWrongPassword on a wrong password.
+func (s *Service) Reauthenticate(ctx context.Context, sess *store.Session, password string, meta ClientMeta) error {
+	u, err := s.Store.UserByID(ctx, sess.UserID)
+	if err != nil {
+		return err
+	}
+	ok, _, err := s.Hasher.Verify(ctx, password, u.PasswordHash)
+	if err != nil && ctx.Err() != nil {
+		return ctx.Err()
+	}
+	if !ok {
+		s.event(ctx, EventReauthFailure, &u.ID, u.Username, meta)
+		return ErrWrongPassword
+	}
+	now := s.now()
+	if err := s.Store.ConfirmSession(ctx, sess.ID, now); err != nil {
+		return err
+	}
+	sess.ReauthAt = now.Unix()
+	s.event(ctx, EventReauth, &u.ID, u.Username, meta)
+	return nil
 }
 
 // ChangePassword validates and stores a new password. On success every

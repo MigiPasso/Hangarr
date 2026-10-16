@@ -248,3 +248,51 @@ func TestConfigTestRateLimited(t *testing.T) {
 		t.Errorf("over the limit: %d", r.status)
 	}
 }
+
+// SEC-13: saving or testing a service needs a recent proof of the password
+// (the sign-in counts for auth.ReauthWindow, then a confirmation).
+func TestServicesNeedRecentPassword(t *testing.T) {
+	h := newConfigHarness(t, nil, true)
+	c := h.loggedIn()
+	csrf := csrfFrom(t, h.do(c, "GET", "/config", nil, nil).body)
+	if page := h.do(c, "GET", "/config", nil, nil); strings.Contains(page.body, `action="/config/confirm"`) {
+		t.Fatal("a fresh sign-in must not ask for the password again")
+	}
+	// The sign-in is older than the window.
+	if _, err := h.srv.Store.DB().Exec(`UPDATE sessions SET reauth_at = 1`); err != nil {
+		t.Fatal(err)
+	}
+	form := url.Values{"csrf_token": {csrf}, "sonarr.url": {"http://sonarr:8989"}}
+	r := h.do(c, "POST", "/config/sonarr", form, map[string]string{"HX-Request": "true"})
+	if r.header.Get("HX-Redirect") != "/config#confirm" {
+		t.Fatalf("save without a recent password: %d %q", r.status, r.header.Get("HX-Redirect"))
+	}
+	for _, p := range []string{"/config/sonarr/test", "/config/tautulli/webhook-secret"} {
+		if r := h.do(c, "POST", p, form, nil); r.status != http.StatusSeeOther || r.header.Get("Location") != "/config#confirm" {
+			t.Errorf("%s: %d %s", p, r.status, r.header.Get("Location"))
+		}
+	}
+	if v := h.srv.Upstreams.Get().Values[upstream.SonarrURL]; v != "" {
+		t.Fatalf("saved without confirmation: %q", v)
+	}
+	page := h.do(c, "GET", "/config", nil, nil)
+	if !strings.Contains(page.body, `action="/config/confirm"`) || !strings.Contains(page.body, "Confirmez votre mot de passe") {
+		t.Fatal("the page must ask for the password")
+	}
+	r = h.do(c, "POST", "/config/confirm", url.Values{"csrf_token": {csrf}, "current_password": {"wrong"}}, nil)
+	if r.status != http.StatusUnprocessableEntity || !strings.Contains(r.body, "Mot de passe actuel incorrect.") {
+		t.Fatalf("wrong password: %d", r.status)
+	}
+	r = h.do(c, "POST", "/config/confirm", url.Values{"csrf_token": {csrf}, "current_password": {newPassword}}, nil)
+	if r.status != http.StatusSeeOther || r.header.Get("Location") != "/config" {
+		t.Fatalf("confirm: %d %s", r.status, r.header.Get("Location"))
+	}
+	h.do(c, "POST", "/config/sonarr", form, nil)
+	if v := h.srv.Upstreams.Get().Values[upstream.SonarrURL]; v != "http://sonarr:8989" {
+		t.Errorf("save after confirmation: %q", v)
+	}
+	sec := h.do(c, "GET", "/journal?tab=security", nil, nil)
+	if !strings.Contains(sec.body, "Échec de confirmation du mot de passe") || !strings.Contains(sec.body, "Mot de passe confirmé") {
+		t.Error("confirmations must be journaled")
+	}
+}

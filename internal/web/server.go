@@ -144,6 +144,7 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("GET /health/trackers", s.authed(s.healthTrackers, 0))
 	mux.Handle("POST /health/catalog/{source}/accept", s.authed(s.acceptCatalog, 0))
 	mux.Handle("GET /config", s.authed(s.configPage, 0))
+	mux.Handle("POST /config/confirm", s.authed(s.configConfirm, 0))
 	mux.Handle("POST /config/{service}", s.authed(s.configSubmit, 0))
 	mux.Handle("POST /config/{service}/test", s.authed(s.configTest, 0))
 	mux.Handle("POST /config/tautulli/webhook-secret", s.authed(s.webhookSecretSubmit, 0))

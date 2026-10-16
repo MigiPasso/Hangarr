@@ -35,6 +35,9 @@ type Session struct {
 	ExpiresAt          int64
 	IP                 string
 	UserAgent          string
+	// ReauthAt is the last proof of the password in this session (the
+	// sign-in, or a confirmation); 0 when none.
+	ReauthAt int64
 }
 
 // AuthEvent is a row of auth_events.
@@ -244,8 +247,9 @@ type execer interface {
 
 func insertSession(ctx context.Context, ex execer, sess *Session) error {
 	res, err := ex.ExecContext(ctx, `INSERT INTO sessions(token_hash, user_id, csrf_token, created_at, last_seen_at,
-		expires_at, ip, user_agent) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-		sess.TokenHash, sess.UserID, sess.CSRFToken, sess.CreatedAt, sess.LastSeenAt, sess.ExpiresAt, sess.IP, sess.UserAgent)
+		expires_at, ip, user_agent, reauth_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		sess.TokenHash, sess.UserID, sess.CSRFToken, sess.CreatedAt, sess.LastSeenAt, sess.ExpiresAt, sess.IP, sess.UserAgent,
+		nullPositive(sess.ReauthAt))
 	if err != nil {
 		return err
 	}
@@ -259,12 +263,12 @@ func (s *Store) CreateSession(ctx context.Context, sess *Session) error {
 }
 
 const sessionColumns = `s.id, s.token_hash, s.user_id, u.username, u.must_change_password, s.csrf_token,
-	s.created_at, s.last_seen_at, s.expires_at, COALESCE(s.ip, ''), COALESCE(s.user_agent, '')`
+	s.created_at, s.last_seen_at, s.expires_at, COALESCE(s.ip, ''), COALESCE(s.user_agent, ''), COALESCE(s.reauth_at, 0)`
 
 func scanSession(row interface{ Scan(...any) error }) (*Session, error) {
 	var x Session
 	err := row.Scan(&x.ID, &x.TokenHash, &x.UserID, &x.Username, &x.MustChangePassword, &x.CSRFToken,
-		&x.CreatedAt, &x.LastSeenAt, &x.ExpiresAt, &x.IP, &x.UserAgent)
+		&x.CreatedAt, &x.LastSeenAt, &x.ExpiresAt, &x.IP, &x.UserAgent, &x.ReauthAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -294,6 +298,12 @@ func (s *Store) ListSessions(ctx context.Context, userID int64) ([]Session, erro
 		out = append(out, *x)
 	}
 	return out, rows.Err()
+}
+
+// ConfirmSession records a proof of the password in a session.
+func (s *Store) ConfirmSession(ctx context.Context, id int64, now time.Time) error {
+	_, err := s.db.ExecContext(ctx, `UPDATE sessions SET reauth_at = ? WHERE id = ?`, now.Unix(), id)
+	return err
 }
 
 // TouchSession updates last_seen_at.
