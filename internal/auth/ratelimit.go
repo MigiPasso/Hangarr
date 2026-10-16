@@ -8,14 +8,20 @@ import (
 // LoginWindow is the sliding window of the per-IP login rate limit.
 const LoginWindow = 15 * time.Minute
 
-// RateLimiter is an in-memory sliding-window limiter keyed by client IP.
-// In-memory state is fine because the app runs as a single replica.
+// MaxLimiterKeys bounds the clients a RateLimiter tracks at once: past it,
+// expired entries are dropped, then the least recently seen client.
+const MaxLimiterKeys = 10_000
+
+// RateLimiter is an in-memory sliding-window limiter keyed by client: the
+// IPv4 address, or the IPv6 /64 network (ClientKey). In-memory state is fine
+// because the app runs as a single replica.
 type RateLimiter struct {
-	mu     sync.Mutex
-	limit  int
-	window time.Duration
-	hits   map[string][]time.Time
-	now    func() time.Time
+	mu      sync.Mutex
+	limit   int
+	window  time.Duration
+	hits    map[string][]time.Time
+	now     func() time.Time
+	maxKeys int
 }
 
 // NewRateLimiter allows limit events per key within window.
@@ -23,7 +29,7 @@ func NewRateLimiter(limit int, window time.Duration, now func() time.Time) *Rate
 	if now == nil {
 		now = time.Now
 	}
-	return &RateLimiter{limit: limit, window: window, hits: map[string][]time.Time{}, now: now}
+	return &RateLimiter{limit: limit, window: window, hits: map[string][]time.Time{}, now: now, maxKeys: MaxLimiterKeys}
 }
 
 func (r *RateLimiter) prune(key string, now time.Time) []time.Time {
@@ -45,7 +51,8 @@ func (r *RateLimiter) prune(key string, now time.Time) []time.Time {
 // Allow records an attempt for key and reports whether it is permitted. When
 // it is not, retryAfter tells when the oldest attempt leaves the window.
 // Rejected attempts are not recorded, so waiting is enough to recover.
-func (r *RateLimiter) Allow(key string) (ok bool, retryAfter time.Duration) {
+func (r *RateLimiter) Allow(ip string) (ok bool, retryAfter time.Duration) {
+	key := ClientKey(ip)
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	now := r.now()
@@ -53,8 +60,37 @@ func (r *RateLimiter) Allow(key string) (ok bool, retryAfter time.Duration) {
 	if len(h) >= r.limit {
 		return false, h[0].Add(r.window).Sub(now)
 	}
+	if h == nil && len(r.hits) >= r.maxKeys {
+		r.makeRoom(now)
+	}
 	r.hits[key] = append(h, now)
 	return true, 0
+}
+
+// makeRoom drops the expired entries, then, if the map is still full, the
+// client seen least recently.
+func (r *RateLimiter) makeRoom(now time.Time) {
+	for k := range r.hits {
+		r.prune(k, now)
+	}
+	if len(r.hits) < r.maxKeys {
+		return
+	}
+	var oldest string
+	var at time.Time
+	for k, h := range r.hits {
+		if last := h[len(h)-1]; oldest == "" || last.Before(at) {
+			oldest, at = k, last
+		}
+	}
+	delete(r.hits, oldest)
+}
+
+// Len returns the number of clients tracked.
+func (r *RateLimiter) Len() int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return len(r.hits)
 }
 
 // Sweep drops expired entries for every key; call it periodically.

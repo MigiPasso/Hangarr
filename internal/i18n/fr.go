@@ -821,4 +821,9 @@ var fr = map[string]string{ //nolint:gosec // G101: UI texts mentioning keys and
 	"Accept the new catalog": "Accepter le nouveau catalogue",
 	"Hangarr is stopping: nothing was sent. Try again once it has restarted.": "Hangarr s'arrête : rien n'a été envoyé. Réessayez après son redémarrage.",
 	"Interrupted: check whether it was done":                                  "Interrompu : vérifiez si c'est fait",
+	"%d failed sign-in on your account before your last sign-in.":             "%d échec de connexion sur votre compte avant votre dernière connexion.",
+	"%d failed sign-ins on your account before your last sign-in.":            "%d échecs de connexion sur votre compte avant votre dernière connexion.",
+	"%d failed sign-in since then.":                                           "%d échec depuis.",
+	"%d failed sign-ins since then.":                                          "%d échecs depuis.",
+	"See the security log.":                                                   "Voir le journal de sécurité.",
 }

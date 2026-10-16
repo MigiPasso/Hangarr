@@ -263,6 +263,9 @@ func janitor(ctx context.Context, log *slog.Logger, svc *auth.Service, st *store
 		} else if n > 0 {
 			log.Info("old sync runs purged", "count", n)
 		}
+		if _, err := st.PruneLoginFailures(ctx, time.Now().Add(-24*time.Hour), time.Now()); err != nil && ctx.Err() == nil {
+			log.Error("login failures purge failed", "err", err)
+		}
 		sweep()
 		select {
 		case <-ctx.Done():

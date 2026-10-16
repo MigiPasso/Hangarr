@@ -227,6 +227,9 @@ func (s *Server) passwordSubmit(w http.ResponseWriter, r *http.Request) {
 type accountData struct {
 	Sessions  []store.Session
 	CurrentID int64
+	// Failures: failed sign-ins on the account between the two last ones
+	// that succeeded, and since the last one.
+	FailuresBefore, FailuresSince int
 }
 
 func (s *Server) accountPage(w http.ResponseWriter, r *http.Request) {
@@ -236,8 +239,13 @@ func (s *Server) accountPage(w http.ResponseWriter, r *http.Request) {
 		s.serverError(w, r, err)
 		return
 	}
-	s.render(w, r, http.StatusOK, "account", "",
-		s.page(r, "Account", "account", accountData{Sessions: list, CurrentID: sess.ID}))
+	u, err := s.Store.UserByID(r.Context(), sess.UserID)
+	if err != nil {
+		s.serverError(w, r, err)
+		return
+	}
+	s.render(w, r, http.StatusOK, "account", "", s.page(r, "Account", "account", accountData{Sessions: list,
+		CurrentID: sess.ID, FailuresBefore: u.FailuresBeforeLogin, FailuresSince: u.FailedAttempts}))
 }
 
 func (s *Server) revokeSession(w http.ResponseWriter, r *http.Request) {

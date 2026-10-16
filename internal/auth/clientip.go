@@ -63,3 +63,20 @@ func (r IPResolver) ClientIP(req *http.Request) netip.Addr {
 	}
 	return client
 }
+
+// ClientKey is the key of a client for rate limits and lockouts: the IPv4
+// address, or the /64 network of an IPv6 address (one host usually owns a
+// whole /64, so its addresses must count as one client).
+func ClientKey(ip string) string {
+	a, ok := parseAddr(ip)
+	if !ok {
+		return strings.TrimSpace(ip)
+	}
+	if a.Is6() {
+		p, err := a.Prefix(64)
+		if err == nil {
+			return p.String()
+		}
+	}
+	return a.String()
+}

@@ -207,7 +207,14 @@ func (s *Service) Login(ctx context.Context, username, password string, meta Cli
 		return nil, err
 	}
 	now := s.now()
-	if u.LockedUntil != nil && now.Unix() < *u.LockedUntil {
+	// The lockout is per account and client: failures sent by someone else
+	// never lock the legitimate user out.
+	client := ClientKey(meta.IP)
+	lockedUntil, err := s.Store.ClientLockedUntil(ctx, u.ID, client)
+	if err != nil {
+		return nil, err
+	}
+	if lockedUntil != nil && now.Unix() < *lockedUntil {
 		s.Hasher.VerifyDummy(ctx, password)
 		s.event(ctx, EventLoginFailure, &u.ID, u.Username, meta)
 		return nil, ErrInvalidCredentials
@@ -220,19 +227,17 @@ func (s *Service) Login(ctx context.Context, username, password string, meta Cli
 		s.Log.Error("stored password hash is unreadable", "user_id", u.ID, "err", err)
 	}
 	if !ok {
-		n := u.FailedAttempts + 1
-		var lockedUntil *int64
-		d := LockDuration(n)
-		if d > 0 {
-			t := now.Add(d).Unix()
-			lockedUntil = &t
-		}
-		if err := s.Store.SetLoginFailure(ctx, u.ID, n, lockedUntil); err != nil {
+		f, err := s.Store.RecordLoginFailure(ctx, u.ID, client, now, LockDuration)
+		if err != nil {
 			return nil, err
 		}
 		s.event(ctx, EventLoginFailure, &u.ID, u.Username, meta)
-		if d > 0 {
+		if f.LockedUntil != nil {
 			s.event(ctx, EventLockout, &u.ID, u.Username, meta)
+		}
+		if f.AccountFailures%AccountAlertEvery == 0 {
+			s.Log.Warn("many failed sign-ins on this account since its last sign-in: a password guessing attack?",
+				"username", u.Username, "failures", f.AccountFailures, "last_client", client)
 		}
 		return nil, ErrInvalidCredentials
 	}
@@ -243,8 +248,11 @@ func (s *Service) Login(ctx context.Context, username, password string, meta Cli
 			return nil, err
 		}
 	}
-	if err := s.Store.SetLoginSuccess(ctx, u.ID, now, newHash); err != nil {
+	if err := s.Store.SetLoginSuccess(ctx, u.ID, client, now, newHash); err != nil {
 		return nil, err
+	}
+	if u.FailedAttempts > 0 {
+		s.Log.Warn("sign-in after failed attempts", "username", u.Username, "failures", u.FailedAttempts)
 	}
 	ns, err := s.newSession(ctx, u.ID, u.Username, u.MustChangePassword, meta)
 	if err != nil {
