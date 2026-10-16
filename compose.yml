@@ -13,7 +13,7 @@ name: hangarr
 
 services:
   hangarr:
-    image: ${HANGARR_IMAGE:-ghcr.io/migipasso/hangarr:v1.3.1}
+    image: ${HANGARR_IMAGE:-ghcr.io/migipasso/hangarr:v1.4.0}
     container_name: hangarr
     restart: unless-stopped
     ports:
@@ -33,7 +33,7 @@ services:
     # Healthcheck: built into the image (`hangarr healthcheck`).
 
     # --- Recommended: master key from a Docker secret, outside the data volume.
-    # Generate it once: docker run --rm ghcr.io/migipasso/hangarr:v1.3.1 master-key > master.key
+    # Generate it once: docker run --rm ghcr.io/migipasso/hangarr:v1.4.0 master-key > master.key
     # then uncomment the three lines below and the "secrets" block at the end.
     # secrets: [hangarr_master_key]
     # environment:

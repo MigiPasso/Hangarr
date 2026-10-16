@@ -77,7 +77,7 @@ spec:
       terminationGracePeriodSeconds: 30 # the app drains for 20 s on SIGTERM
       containers:
         - name: hangarr
-          image: ghcr.io/migipasso/hangarr:v1.3.1 # pin a release tag (avoid :latest)
+          image: ghcr.io/migipasso/hangarr:v1.4.0 # pin a release tag (avoid :latest)
           imagePullPolicy: IfNotPresent
           ports:
             - name: http
