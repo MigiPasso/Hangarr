@@ -32,7 +32,7 @@
     {{range $d.Events}}
       <tr class="event-{{.Event}}">
         <td>{{datetime .At}}</td>
-        <td>{{authLabel .Event}}</td>
+        <td>{{authLabel .Event}}{{if gt .Count 1}} <span class="badge">×{{.Count}}</span>{{end}}</td>
         <td>{{if .Username}}{{.Username}}{{else}}Hangarr{{end}}</td>
         <td>{{.IP}}</td>
         <td title="{{.UserAgent}}">{{if .UserAgent}}{{browser .UserAgent}}{{end}}</td>

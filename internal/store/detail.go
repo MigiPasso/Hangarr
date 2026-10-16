@@ -369,7 +369,7 @@ func (s *Store) Actions(ctx context.Context, offset, limit int) ([]Action, bool,
 // AuthEventsPage returns a page of auth_events, newest first, and whether more exist.
 func (s *Store) AuthEventsPage(ctx context.Context, offset, limit int) ([]AuthEvent, bool, error) {
 	rows, err := s.db.QueryContext(ctx, `SELECT at, user_id, COALESCE(username, ''), event, COALESCE(ip, ''),
-		COALESCE(user_agent, '') FROM auth_events ORDER BY id DESC LIMIT ? OFFSET ?`, limit+1, offset)
+		COALESCE(user_agent, ''), repeat_count FROM auth_events ORDER BY id DESC LIMIT ? OFFSET ?`, limit+1, offset)
 	if err != nil {
 		return nil, false, err
 	}
@@ -378,7 +378,7 @@ func (s *Store) AuthEventsPage(ctx context.Context, offset, limit int) ([]AuthEv
 	for rows.Next() {
 		var e AuthEvent
 		var uid sql.NullInt64
-		if err := rows.Scan(&e.At, &uid, &e.Username, &e.Event, &e.IP, &e.UserAgent); err != nil {
+		if err := rows.Scan(&e.At, &uid, &e.Username, &e.Event, &e.IP, &e.UserAgent, &e.Count); err != nil {
 			return nil, false, err
 		}
 		e.UserID = ptrInt(uid)

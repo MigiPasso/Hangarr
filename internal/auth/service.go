@@ -31,7 +31,7 @@ var (
 const (
 	EventAdminCreated     = "admin_created"
 	EventLoginSuccess     = "login_success"
-	EventLoginFailure     = "login_failure"
+	EventLoginFailure     = store.EventLoginFailure
 	EventLockout          = "lockout"
 	EventPasswordChanged  = "password_changed"
 	EventPasswordResetCLI = "password_reset_cli"

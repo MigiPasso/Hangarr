@@ -57,6 +57,8 @@ run yet), a sync runs immediately.
 | `SESSION_IDLE_TIMEOUT` | `12h` | A session expires after this much inactivity. Minimum `1m`. |
 | `SESSION_MAX_AGE` | `168h` | Absolute lifetime of a session. Minimum `1m`, and not shorter than `SESSION_IDLE_TIMEOUT`. |
 | `LOGIN_MAX_PER_IP` | `10` | Sign-in attempts allowed per client in a 15-minute sliding window, successful ones included: per IPv4 address, per /64 network in IPv6. The password change shares this limit. Minimum `1`. |
+| `AUTH_EVENTS_RETENTION_DAYS` | `365` | Days the security log (sign-ins, failures, configuration changes) is kept. Repeated failures of a client within 15 minutes are stored as one row with a count. `0` keeps everything. |
+| `ACTION_LOG_RETENTION_DAYS` | `0` | Days the actions log (deletions, protections) is kept. `0` (default) keeps everything. |
 | `TRUSTED_PROXIES` | empty | Comma-separated IP addresses or CIDR ranges of the reverse proxies allowed to set `X-Forwarded-For`, for example `172.18.0.0/16`. Other requests are identified by their own address. |
 
 ### Interface and logging

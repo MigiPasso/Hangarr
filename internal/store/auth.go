@@ -45,6 +45,7 @@ type AuthEvent struct {
 	Event     string
 	IP        string
 	UserAgent string
+	Count     int // repeated failures merged into this row (1 or more)
 }
 
 const userColumns = `id, username, password_hash, must_change_password, password_changed_at,
@@ -324,15 +325,52 @@ func (s *Store) DeleteExpiredSessions(ctx context.Context, now time.Time, idleTi
 
 // AddAuthEvent appends to auth_events.
 func (s *Store) AddAuthEvent(ctx context.Context, e AuthEvent) error {
+	if e.Event == EventLoginFailure && e.IP != "" {
+		// A failure following the same failure from the same client (nothing
+		// else from it since, within the window) only counts once more.
+		res, err := s.db.ExecContext(ctx, `UPDATE auth_events SET repeat_count = repeat_count + 1, at = ?
+			WHERE id = (SELECT MAX(id) FROM auth_events WHERE ip = ?) AND event = ? AND COALESCE(username, '') = ?
+			AND at >= ?`, e.At, e.IP, e.Event, e.Username, e.At-int64(failureMergeWindow.Seconds()))
+		if err != nil {
+			return err
+		}
+		if n, _ := res.RowsAffected(); n > 0 {
+			return nil
+		}
+	}
 	_, err := s.db.ExecContext(ctx, `INSERT INTO auth_events(at, user_id, username, event, ip, user_agent)
 		VALUES (?, ?, ?, ?, ?, ?)`, e.At, nullInt(e.UserID), e.Username, e.Event, e.IP, e.UserAgent)
 	return err
 }
 
+// EventLoginFailure is the auth event of a failed sign-in (auth package).
+const EventLoginFailure = "login_failure"
+
+// failureMergeWindow: failures of a client closer than this share a row.
+const failureMergeWindow = 15 * time.Minute
+
+// PruneAuthEvents deletes the security events older than before.
+func (s *Store) PruneAuthEvents(ctx context.Context, before time.Time) (int64, error) {
+	res, err := s.db.ExecContext(ctx, `DELETE FROM auth_events WHERE at < ?`, before.Unix())
+	if err != nil {
+		return 0, err
+	}
+	return res.RowsAffected()
+}
+
+// PruneActions deletes the finished actions journaled before before.
+func (s *Store) PruneActions(ctx context.Context, before time.Time) (int64, error) {
+	res, err := s.db.ExecContext(ctx, `DELETE FROM action_log WHERE at < ? AND state <> 'pending'`, before.Unix())
+	if err != nil {
+		return 0, err
+	}
+	return res.RowsAffected()
+}
+
 // AuthEvents returns the most recent auth events, newest first.
 func (s *Store) AuthEvents(ctx context.Context, limit int) ([]AuthEvent, error) {
 	rows, err := s.db.QueryContext(ctx, `SELECT at, user_id, COALESCE(username, ''), event, COALESCE(ip, ''),
-		COALESCE(user_agent, '') FROM auth_events ORDER BY id DESC LIMIT ?`, limit)
+		COALESCE(user_agent, ''), repeat_count FROM auth_events ORDER BY id DESC LIMIT ?`, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -341,7 +379,7 @@ func (s *Store) AuthEvents(ctx context.Context, limit int) ([]AuthEvent, error) 
 	for rows.Next() {
 		var e AuthEvent
 		var uid sql.NullInt64
-		if err := rows.Scan(&e.At, &uid, &e.Username, &e.Event, &e.IP, &e.UserAgent); err != nil {
+		if err := rows.Scan(&e.At, &uid, &e.Username, &e.Event, &e.IP, &e.UserAgent, &e.Count); err != nil {
 			return nil, err
 		}
 		e.UserID = ptrInt(uid)

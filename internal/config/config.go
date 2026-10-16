@@ -78,6 +78,9 @@ type Config struct {
 	SessionMaxAge      time.Duration
 	TrustedProxies     []netip.Prefix
 	LoginMaxPerIP      int
+	// Retention of the security log and of the actions log (0: kept).
+	AuthEventsRetentionDays int
+	ActionLogRetentionDays  int
 
 	// DefaultLang is the interface language when the user has not chosen one
 	// ("en" or "fr").
@@ -259,6 +262,9 @@ func Load(lookup LookupFunc, readFile ReadFileFunc) (*Config, error) {
 		SessionIdleTimeout: l.duration("SESSION_IDLE_TIMEOUT", 12*time.Hour, time.Minute),
 		SessionMaxAge:      l.duration("SESSION_MAX_AGE", 168*time.Hour, time.Minute),
 		LoginMaxPerIP:      l.integer("LOGIN_MAX_PER_IP", 10, 1),
+
+		AuthEventsRetentionDays: l.integer("AUTH_EVENTS_RETENTION_DAYS", 365, 0),
+		ActionLogRetentionDays:  l.integer("ACTION_LOG_RETENTION_DAYS", 0, 0),
 
 		DefaultLang: strings.ToLower(l.str("DEFAULT_LANG", "en")),
 

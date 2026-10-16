@@ -221,7 +221,7 @@ func serve() error {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		janitor(ctx, log, svc, st, func() { limiter.Sweep(); srv.SweepLimiters() })
+		janitor(ctx, log, cfg, svc, st, func() { limiter.Sweep(); srv.SweepLimiters() })
 	}()
 	wg.Add(1)
 	go func() {
@@ -247,9 +247,9 @@ func serve() error {
 	return nil
 }
 
-// janitor purges expired sessions, old sync runs and rate-limit entries
-// until ctx ends.
-func janitor(ctx context.Context, log *slog.Logger, svc *auth.Service, st *store.Store, sweep func()) {
+// janitor purges expired sessions, old sync runs, logs past their retention
+// and rate-limit entries until ctx ends.
+func janitor(ctx context.Context, log *slog.Logger, cfg *config.Config, svc *auth.Service, st *store.Store, sweep func()) {
 	t := time.NewTicker(10 * time.Minute)
 	defer t.Stop()
 	for {
@@ -265,6 +265,20 @@ func janitor(ctx context.Context, log *slog.Logger, svc *auth.Service, st *store
 		}
 		if _, err := st.PruneLoginFailures(ctx, time.Now().Add(-24*time.Hour), time.Now()); err != nil && ctx.Err() == nil {
 			log.Error("login failures purge failed", "err", err)
+		}
+		if days := cfg.AuthEventsRetentionDays; days > 0 {
+			if n, err := st.PruneAuthEvents(ctx, time.Now().AddDate(0, 0, -days)); err != nil && ctx.Err() == nil {
+				log.Error("security log purge failed", "err", err)
+			} else if n > 0 {
+				log.Info("old security events purged", "count", n)
+			}
+		}
+		if days := cfg.ActionLogRetentionDays; days > 0 {
+			if n, err := st.PruneActions(ctx, time.Now().AddDate(0, 0, -days)); err != nil && ctx.Err() == nil {
+				log.Error("actions log purge failed", "err", err)
+			} else if n > 0 {
+				log.Info("old actions purged", "count", n)
+			}
 		}
 		sweep()
 		select {
