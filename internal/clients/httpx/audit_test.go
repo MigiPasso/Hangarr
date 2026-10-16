@@ -148,20 +148,6 @@ func TestMaxBytesAndStreaming(t *testing.T) {
 
 // BUG-12: error snippets are cut on a character boundary.
 func TestTruncateRunes(t *testing.T) {
-	for _, tc := range []struct {
-		in   string
-		n    int
-		want string
-	}{
-		{"abc", 5, "abc"},
-		{"abcdef", 3, "abc…"},
-		{"ééééé", 2, "éé…"},
-		{"日本語テキスト", 3, "日本語…"},
-	} {
-		if got := Truncate(tc.in, tc.n); got != tc.want || !utf8.ValidString(got) {
-			t.Errorf("Truncate(%q, %d) = %q", tc.in, tc.n, got)
-		}
-	}
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
 		_, _ = io.WriteString(w, strings.Repeat("é", 300))

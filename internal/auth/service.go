@@ -12,6 +12,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"hangarr/internal/media"
 	"hangarr/internal/store"
 )
 
@@ -71,17 +72,10 @@ func (s *Service) now() time.Time {
 	return time.Now()
 }
 
-func truncate(v string, n int) string {
-	if utf8.RuneCountInString(v) <= n {
-		return v
-	}
-	return string([]rune(v)[:n])
-}
-
 func (s *Service) event(ctx context.Context, name string, userID *int64, username string, meta ClientMeta) {
 	e := store.AuthEvent{
-		At: s.now().Unix(), UserID: userID, Username: truncate(username, 64), Event: name,
-		IP: meta.IP, UserAgent: truncate(meta.UserAgent, 256),
+		At: s.now().Unix(), UserID: userID, Username: media.Truncate(username, 64), Event: name,
+		IP: meta.IP, UserAgent: media.Truncate(meta.UserAgent, 256),
 	}
 	// A request canceled by the client must not prevent the audit trail.
 	if err := s.Store.AddAuthEvent(context.WithoutCancel(ctx), e); err != nil {
@@ -183,7 +177,7 @@ func (s *Service) newSession(ctx context.Context, userID int64, username string,
 	sess := &store.Session{
 		TokenHash: HashToken(token), UserID: userID, Username: username, MustChangePassword: mustChange,
 		CSRFToken: csrf, CreatedAt: now, LastSeenAt: now, ExpiresAt: now + int64(s.MaxAge/time.Second),
-		IP: meta.IP, UserAgent: truncate(meta.UserAgent, 256),
+		IP: meta.IP, UserAgent: media.Truncate(meta.UserAgent, 256),
 	}
 	return &NewSession{Token: token, Session: sess}, nil
 }

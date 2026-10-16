@@ -1,6 +1,8 @@
 package store
 
 import (
+	"hangarr/internal/media"
+
 	"context"
 	"database/sql"
 	"encoding/json"
@@ -201,18 +203,11 @@ func (s *Store) RecentViews(ctx context.Context, limit int) ([]RecentView, error
 			return nil, err
 		}
 		if mediaType == "episode" {
-			r.Episode = episodeCode(season, episode) + " · " + epTitle
+			r.Episode = media.EpisodeCode(season, episode) + " · " + epTitle
 		}
 		out = append(out, r)
 	}
 	return out, rows.Err()
-}
-
-func episodeCode(season, episode int) string {
-	b := []byte("S00E00")
-	b[1], b[2] = byte('0'+season/10%10), byte('0'+season%10)
-	b[4], b[5] = byte('0'+episode/10%10), byte('0'+episode%10)
-	return string(b)
 }
 
 // PlaySession is a minimal watch event, for time bucketing done in Go (time

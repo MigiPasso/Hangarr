@@ -13,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	"hangarr/internal/media"
 	"hangarr/internal/store"
 )
 
@@ -235,7 +236,7 @@ func parsePeriod(v string, now time.Time) (string, string, int64) {
 func nextEpisode(last [2]int, totals map[int]int) string {
 	season, ep := last[0], last[1]
 	if ep < totals[season] {
-		return episodeLabel(season, ep+1)
+		return media.EpisodeCode(season, ep+1)
 	}
 	var next []int
 	for n, total := range totals {
@@ -247,7 +248,7 @@ func nextEpisode(last [2]int, totals map[int]int) string {
 		return ""
 	}
 	slices.Sort(next)
-	return episodeLabel(next[0], 1)
+	return media.EpisodeCode(next[0], 1)
 }
 
 func (s *Server) resume(ctx context.Context, users []store.Account, now time.Time) ([]resumeGroup, error) {
@@ -277,7 +278,7 @@ func (s *Server) resume(ctx context.Context, users []store.Account, now time.Tim
 		for _, it := range items {
 			ri := resumeItem{LibraryItem: it}
 			if l, ok := last[it.ID]; ok {
-				ri.Last = episodeLabel(l[0], l[1])
+				ri.Last = media.EpisodeCode(l[0], l[1])
 				ri.Next = nextEpisode(l, totals[it.ID])
 			}
 			g.Items = append(g.Items, ri)

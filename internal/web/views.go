@@ -19,6 +19,7 @@ import (
 
 	"hangarr/internal/clients/jellyfin"
 	"hangarr/internal/i18n"
+	"hangarr/internal/media"
 	"hangarr/internal/store"
 )
 
@@ -175,7 +176,7 @@ func (v *views) funcs(l i18n.Localizer, loc *time.Location, protectedTags []stri
 			if season == nil || episode == nil {
 				return ""
 			}
-			return episodeLabel(*season, *episode)
+			return media.EpisodeCode(*season, *episode)
 		},
 		"duration": l.Duration,
 		"sourceLabel": func(src string) string {

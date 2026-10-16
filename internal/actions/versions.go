@@ -5,10 +5,11 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"path"
 	"strings"
 
 	"hangarr/internal/clients/httpx"
+	"hangarr/internal/clients/plex"
+	"hangarr/internal/media"
 	"hangarr/internal/store"
 	"hangarr/internal/upstream"
 )
@@ -59,9 +60,31 @@ type VersionResult struct {
 	Note       string // see Result.Note
 }
 
-// liveVersion is a version as the media server lists it now.
-type liveVersion struct {
-	item, key, file string
+// LiveVersion is a version as the media server lists it now, with its
+// tracks (read by the deletion checks and by the Duplicates page).
+type LiveVersion struct {
+	Item, Key, File string
+	Audio           []string // display titles
+	Subtitles       []Track
+}
+
+// Track is a subtitle track.
+type Track struct {
+	Title  string
+	Forced bool
+}
+
+// JellyfinTakesOther reports whether Jellyfin, deleting target, would take
+// another of versions with it: Jellyfin deletes the item's whole folder, so
+// any other version of the same item or in the same folder goes too (seen
+// with Jellyfin 12.2).
+func JellyfinTakesOther(versions []LiveVersion, target LiveVersion) bool {
+	for _, o := range versions {
+		if o.Key != target.Key && (o.Item == target.Item || media.Dir(o.File) == media.Dir(target.File)) {
+			return true
+		}
+	}
+	return false
 }
 
 // DeleteVersion deletes (or simulates) one version of a movie the media
@@ -143,12 +166,12 @@ func (s *Service) checkVersion(ctx context.Context, up *upstream.Clients, server
 	if err != nil {
 		return false, err
 	}
-	var target *liveVersion
+	var target *LiveVersion
 	inItem := 0
 	for i := range live {
-		if live[i].item == v.ItemKey {
+		if live[i].Item == v.ItemKey {
 			inItem++
-			if live[i].key == v.VersionKey {
+			if live[i].Key == v.VersionKey {
 				target = &live[i]
 			}
 		}
@@ -159,17 +182,8 @@ func (s *Service) checkVersion(ctx context.Context, up *upstream.Clients, server
 	case len(live) < 2:
 		return false, ErrLastVersion
 	}
-	if server == store.ServerJellyfin {
-		// Jellyfin deletes the item's folder: refuse if any other version is
-		// in it, grouped under the same item or not.
-		if inItem > 1 {
-			return false, ErrSameFolder
-		}
-		for _, o := range live {
-			if o.key != target.key && dirOf(o.file) == dirOf(target.file) {
-				return false, ErrSameFolder
-			}
-		}
+	if server == store.ServerJellyfin && JellyfinTakesOther(live, *target) {
+		return false, ErrSameFolder
 	}
 	if g.ArrID != 0 {
 		if err := s.checkRadarr(ctx, up, g.ArrID, *target, live, req, res); err != nil {
@@ -184,8 +198,8 @@ func (s *Service) checkVersion(ctx context.Context, up *upstream.Clients, server
 // would download it again). Deleting its file when the movie is not
 // monitored only needs the user's confirmation. A movie Radarr no longer has
 // sets no condition.
-func (s *Service) checkRadarr(ctx context.Context, up *upstream.Clients, arrID int64, target liveVersion,
-	live []liveVersion, req VersionRequest, res *VersionResult) error {
+func (s *Service) checkRadarr(ctx context.Context, up *upstream.Clients, arrID int64, target LiveVersion,
+	live []LiveVersion, req VersionRequest, res *VersionResult) error {
 	if up.Radarr == nil {
 		return fmt.Errorf("%w: Radarr", ErrUnconfigured)
 	}
@@ -216,13 +230,13 @@ func (s *Service) checkRadarr(ctx context.Context, up *upstream.Clients, arrID i
 	}
 	radarrFile := ""
 	if mv.MovieFile != nil {
-		radarrFile = baseOf(mv.MovieFile.RelativePath)
+		radarrFile = media.Base(mv.MovieFile.RelativePath)
 	}
 	isRadarr, known := false, false
 	for _, l := range live {
-		if radarrFile != "" && strings.EqualFold(baseOf(l.file), radarrFile) {
+		if radarrFile != "" && strings.EqualFold(media.Base(l.File), radarrFile) {
 			known = true
-			if l.key == target.key {
+			if l.Key == target.Key {
 				isRadarr = true
 			}
 		}
@@ -239,9 +253,14 @@ func (s *Service) checkRadarr(ctx context.Context, up *upstream.Clients, arrID i
 	return nil
 }
 
-// liveVersions reads the versions of the group's items from the media server
-// (an item it no longer has has none).
-func (s *Service) liveVersions(ctx context.Context, up *upstream.Clients, server string, g *store.DuplicateGroup) ([]liveVersion, error) {
+// liveVersions reads the versions of the group's items from the media server.
+func (s *Service) liveVersions(ctx context.Context, up *upstream.Clients, server string, g *store.DuplicateGroup) ([]LiveVersion, error) {
+	return LiveVersions(ctx, up, server, g)
+}
+
+// LiveVersions reads the versions of the group's items, with their tracks,
+// from the media server (an item it no longer has has none).
+func LiveVersions(ctx context.Context, up *upstream.Clients, server string, g *store.DuplicateGroup) ([]LiveVersion, error) {
 	var items []string
 	seen := map[string]bool{}
 	for _, v := range g.Versions {
@@ -250,7 +269,7 @@ func (s *Service) liveVersions(ctx context.Context, up *upstream.Clients, server
 			items = append(items, v.ItemKey)
 		}
 	}
-	var out []liveVersion
+	var out []LiveVersion
 	if server == store.ServerJellyfin {
 		got, err := up.Jellyfin.Versions(ctx, items)
 		if err != nil {
@@ -261,9 +280,19 @@ func (s *Service) liveVersions(ctx context.Context, up *upstream.Clients, server
 				continue
 			}
 			for _, src := range it.MediaSources {
-				if src.ID != "" {
-					out = append(out, liveVersion{item: it.ID, key: src.ID, file: src.Path})
+				if src.ID == "" {
+					continue
 				}
+				lv := LiveVersion{Item: it.ID, Key: src.ID, File: src.Path}
+				for _, st := range src.MediaStreams {
+					switch st.Type {
+					case "Audio":
+						lv.Audio = append(lv.Audio, st.DisplayTitle)
+					case "Subtitle":
+						lv.Subtitles = append(lv.Subtitles, Track{Title: st.DisplayTitle, Forced: st.IsForced})
+					}
+				}
+				out = append(out, lv)
 			}
 		}
 		return out, nil
@@ -280,9 +309,17 @@ func (s *Service) liveVersions(ctx context.Context, up *upstream.Clients, server
 			if m.ID <= 0 {
 				continue
 			}
-			lv := liveVersion{item: key, key: fmt.Sprint(int64(m.ID))}
+			lv := LiveVersion{Item: key, Key: fmt.Sprint(int64(m.ID))}
 			if len(m.Part) > 0 {
-				lv.file = m.Part[0].File
+				lv.File = m.Part[0].File
+				for _, st := range m.Part[0].Stream {
+					switch st.StreamType {
+					case plex.StreamAudio:
+						lv.Audio = append(lv.Audio, st.DisplayTitle)
+					case plex.StreamSubtitle:
+						lv.Subtitles = append(lv.Subtitles, Track{Title: st.DisplayTitle, Forced: st.Forced})
+					}
+				}
 			}
 			out = append(out, lv)
 		}
@@ -364,7 +401,7 @@ func (s *Service) afterVersionDeletion(ctx context.Context, up *upstream.Clients
 func (s *Service) journalVersionBegin(ctx context.Context, g *store.DuplicateGroup, v *store.DuplicateVersion,
 	req VersionRequest) (int64, error) {
 	title := g.Title
-	if name := baseOf(v.File); name != "" {
+	if name := media.Base(v.File); name != "" {
 		title += " (" + name + ")"
 	}
 	id, err := s.Store.BeginAction(context.WithoutCancel(ctx), store.Action{
@@ -391,20 +428,4 @@ func (s *Service) journalVersionEnd(ctx context.Context, id int64, g *store.Dupl
 	}
 	s.Log.Info("version deletion", "title", g.Title, "file", v.File, "dry_run", s.DryRun,
 		"success", err == nil, "err", err, "note", res.Note, "user", req.Username)
-}
-
-// baseOf is the file name of a path written with / or \ (Windows servers).
-func baseOf(p string) string {
-	if i := strings.LastIndexAny(p, `/\`); i >= 0 {
-		return p[i+1:]
-	}
-	return p
-}
-
-// dirOf is the folder of a path written with / or \.
-func dirOf(p string) string {
-	if i := strings.LastIndexAny(p, `/\`); i >= 0 {
-		return path.Clean(strings.ReplaceAll(p[:i], `\`, "/"))
-	}
-	return ""
 }

@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"time"
 
+	"hangarr/internal/media"
 	"hangarr/internal/store"
 	"hangarr/internal/upstream"
 )
@@ -104,7 +105,7 @@ func (s *Server) webhookSecretSubmit(w http.ResponseWriter, r *http.Request) {
 	sess := sessionFrom(r)
 	meta := s.clientMeta(r)
 	_, err := s.Services.Save(r.Context(), upstream.Tautulli, in,
-		store.AuthEvent{UserID: &sess.UserID, Username: sess.Username, IP: meta.IP, UserAgent: truncateUA(meta.UserAgent)}, time.Now())
+		store.AuthEvent{UserID: &sess.UserID, Username: sess.Username, IP: meta.IP, UserAgent: media.Truncate(meta.UserAgent, 256)}, time.Now())
 	var verr upstream.ValidationError
 	if err != nil && !errors.As(err, &verr) {
 		s.serverError(w, r, err)
@@ -129,11 +130,4 @@ func (s *Server) webhookSecretSubmit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.render(w, r, http.StatusOK, "config", "", s.page(r, "Services", "config", s.configData(forms)))
-}
-
-func truncateUA(ua string) string {
-	if len(ua) > 256 {
-		return ua[:256]
-	}
-	return ua
 }

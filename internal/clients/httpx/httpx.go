@@ -14,7 +14,8 @@ import (
 	"net/url"
 	"strings"
 	"time"
-	"unicode/utf8"
+
+	"hangarr/internal/media"
 )
 
 // Defaults for every client.
@@ -312,7 +313,7 @@ func (c *Client) once(ctx context.Context, req Request, payload []byte, timeout 
 	defer func() { _ = res.Body.Close() }()
 	if res.StatusCode/100 != 2 {
 		b, _ := io.ReadAll(io.LimitReader(res.Body, 4*snippetBytes))
-		return res.StatusCode, Truncate(strings.TrimSpace(string(b)), snippetBytes), nil, nil
+		return res.StatusCode, media.Ellipsis(strings.TrimSpace(string(b)), snippetBytes), nil, nil
 	}
 	limit := req.MaxBytes
 	if limit <= 0 {
@@ -360,22 +361,4 @@ func (c *cappedReader) note(err error) error {
 		c.readErr = err
 	}
 	return err
-}
-
-// Truncate shortens s to at most n runes, with an ellipsis when cut: never
-// in the middle of a UTF-8 sequence.
-func Truncate(s string, n int) string {
-	if len(s) <= n {
-		return s
-	}
-	i, count := 0, 0
-	for i < len(s) && count < n {
-		_, size := utf8.DecodeRuneInString(s[i:])
-		i += size
-		count++
-	}
-	if i >= len(s) {
-		return s
-	}
-	return s[:i] + "…"
 }

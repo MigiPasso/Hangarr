@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"hangarr/internal/clients/jellyfin"
+	"hangarr/internal/media"
 	"hangarr/internal/store"
 	"hangarr/internal/syncer"
 )
@@ -131,9 +132,7 @@ func parseLibraryFilter(q url.Values, kind string) (store.LibraryFilter, int) {
 	if n := atoi(q.Get("inactive")); slices.Contains(inactiveOptions, n) {
 		f.InactiveDays = n
 	}
-	if len(f.Query) > 200 {
-		f.Query = f.Query[:200]
-	}
+	f.Query = media.Truncate(f.Query, 200)
 	if kind == "series" {
 		f.Status = pick(q.Get("status"), statuses)
 	}

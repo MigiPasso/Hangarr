@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"hangarr/internal/media"
 	"hangarr/internal/store"
 	"hangarr/internal/upstream"
 )
@@ -182,7 +183,7 @@ func (s *Server) configSubmit(w http.ResponseWriter, r *http.Request) {
 	in := serviceInput(r, svc)
 	sess := sessionFrom(r)
 	meta := s.clientMeta(r)
-	ua := truncateUA(meta.UserAgent)
+	ua := media.Truncate(meta.UserAgent, 256)
 	wasReady := s.Upstreams.Get().Ready()
 	changed, err := s.Services.Save(r.Context(), svc, in,
 		store.AuthEvent{UserID: &sess.UserID, Username: sess.Username, IP: meta.IP, UserAgent: ua}, time.Now())

@@ -3,18 +3,15 @@ package web
 import (
 	"context"
 	"errors"
-	"fmt"
 	"net/http"
 	"net/url"
-	"path"
 	"strings"
 	"sync"
 	"time"
 
 	"hangarr/internal/actions"
-	"hangarr/internal/clients/httpx"
-	"hangarr/internal/clients/plex"
 	"hangarr/internal/i18n"
+	"hangarr/internal/media"
 	"hangarr/internal/release"
 	"hangarr/internal/store"
 	"hangarr/internal/upstream"
@@ -230,7 +227,7 @@ func duplicateVersions(l i18n.Localizer, server string, g *store.DuplicateGroup)
 	for _, v := range g.Versions {
 		shared := server == store.ServerJellyfin && sharesWithOther(g.Versions, v)
 		out = append(out, duplicateVersion{
-			File: v.File, Name: fileBase(v.File), Quality: qualityLabel(l, v.File),
+			File: v.File, Name: media.Base(v.File), Quality: qualityLabel(l, v.File),
 			Resolution: resolutionLabel(v.Resolution), Video: orDash(strings.ToUpper(v.VideoCodec)),
 			Audio: orDash(strings.ToUpper(v.AudioCodec)), Size: v.SizeBytes,
 			DeleteURL: versionURL(g.GroupKey, v.VersionKey), CanDelete: !g.Protected && !shared,
@@ -241,14 +238,16 @@ func duplicateVersions(l i18n.Localizer, server string, g *store.DuplicateGroup)
 }
 
 // sharesWithOther reports whether Jellyfin, deleting v, would take another
-// version with it: the same item, or a file in the same folder.
+// version with it (actions.JellyfinTakesOther, on the stored versions).
 func sharesWithOther(versions []store.DuplicateVersion, v store.DuplicateVersion) bool {
-	for _, o := range versions {
-		if o.VersionKey != v.VersionKey && (o.ItemKey == v.ItemKey || fileDir(o.File) == fileDir(v.File)) {
-			return true
-		}
+	loc := func(x store.DuplicateVersion) actions.LiveVersion {
+		return actions.LiveVersion{Item: x.ItemKey, Key: x.VersionKey, File: x.File}
 	}
-	return false
+	all := make([]actions.LiveVersion, 0, len(versions))
+	for _, o := range versions {
+		all = append(all, loc(o))
+	}
+	return actions.JellyfinTakesOther(all, loc(v))
 }
 
 // folderNoteID is the id of the note saying that Jellyfin would delete the
@@ -335,66 +334,24 @@ func (s *Server) readRadarrFile(ctx context.Context, up *upstream.Clients, arrID
 	if mv.MovieFile == nil || mv.MovieFile.RelativePath == "" {
 		return nil
 	}
-	return &radarrFileInfo{name: fileBase(mv.MovieFile.RelativePath), monitored: mv.Monitored}
+	return &radarrFileInfo{name: media.Base(mv.MovieFile.RelativePath), monitored: mv.Monitored}
 }
 
 // serverTracks reads the tracks of the versions of a group from the media
-// server. A movie the server no longer has has none.
+// server (actions.LiveVersions), by version key.
 func (s *Server) serverTracks(ctx context.Context, l i18n.Localizer, up *upstream.Clients, server string,
 	g *store.DuplicateGroup) (map[string]liveTracks, error) {
-	var items []string
-	seen := map[string]bool{}
-	for _, v := range g.Versions {
-		if !seen[v.ItemKey] {
-			seen[v.ItemKey] = true
-			items = append(items, v.ItemKey)
-		}
+	live, err := actions.LiveVersions(ctx, up, server, g)
+	if err != nil {
+		return nil, err
 	}
-	out := map[string]liveTracks{}
-	if server == store.ServerJellyfin {
-		got, err := up.Jellyfin.Versions(ctx, items)
-		if err != nil {
-			return nil, err
+	out := make(map[string]liveTracks, len(live))
+	for _, v := range live {
+		lt := liveTracks{audio: v.Audio}
+		for _, st := range v.Subtitles {
+			lt.subtitles = append(lt.subtitles, trackLabel(l, st.Title, st.Forced))
 		}
-		for _, it := range got {
-			for _, src := range it.MediaSources {
-				var lt liveTracks
-				for _, st := range src.MediaStreams {
-					switch st.Type {
-					case "Audio":
-						lt.audio = append(lt.audio, st.DisplayTitle)
-					case "Subtitle":
-						lt.subtitles = append(lt.subtitles, trackLabel(l, st.DisplayTitle, st.IsForced))
-					}
-				}
-				out[src.ID] = lt
-			}
-		}
-		return out, nil
-	}
-	for _, key := range items {
-		it, err := up.Plex.Metadata(ctx, key)
-		if isNotFound(err) {
-			continue
-		}
-		if err != nil {
-			return nil, err
-		}
-		for _, m := range it.Media {
-			if len(m.Part) == 0 {
-				continue
-			}
-			var lt liveTracks
-			for _, st := range m.Part[0].Stream {
-				switch st.StreamType {
-				case plex.StreamAudio:
-					lt.audio = append(lt.audio, st.DisplayTitle)
-				case plex.StreamSubtitle:
-					lt.subtitles = append(lt.subtitles, trackLabel(l, st.DisplayTitle, st.Forced))
-				}
-			}
-			out[fmt.Sprint(int64(m.ID))] = lt
-		}
+		out[v.Key] = lt
 	}
 	return out, nil
 }
@@ -511,7 +468,7 @@ func (s *Server) versionDeleteSubmit(w http.ResponseWriter, r *http.Request) {
 }
 
 func newVersionDelete(l i18n.Localizer, g *store.DuplicateGroup, v *store.DuplicateVersion) versionDeleteData {
-	return versionDeleteData{Title: g.Title, Name: fileBase(v.File), File: v.File, Quality: qualityLabel(l, v.File),
+	return versionDeleteData{Title: g.Title, Name: media.Base(v.File), File: v.File, Quality: qualityLabel(l, v.File),
 		Resolution: resolutionLabel(v.Resolution), Size: v.SizeBytes, ActionURL: versionURL(g.GroupKey, v.VersionKey),
 		Fingerprint: g.Fingerprint, Protected: g.Protected}
 }
@@ -592,26 +549,4 @@ func orDash(s string) string {
 		return "—"
 	}
 	return s
-}
-
-// fileBase is the file name of a path written with / or \.
-func fileBase(p string) string {
-	if i := strings.LastIndexAny(p, `/\`); i >= 0 {
-		return p[i+1:]
-	}
-	return p
-}
-
-// fileDir is the folder of a path written with / or \ ("" when there is none).
-func fileDir(p string) string {
-	if i := strings.LastIndexAny(p, `/\`); i >= 0 {
-		return path.Clean(strings.ReplaceAll(p[:i], `\`, "/"))
-	}
-	return ""
-}
-
-// isNotFound reports a 404 from an upstream service.
-func isNotFound(err error) bool {
-	var se *httpx.StatusError
-	return errors.As(err, &se) && se.Status == http.StatusNotFound
 }

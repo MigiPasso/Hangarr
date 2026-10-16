@@ -16,6 +16,7 @@ import (
 	"hangarr/internal/actions"
 	"hangarr/internal/clients/sonarr"
 	"hangarr/internal/i18n"
+	"hangarr/internal/media"
 	"hangarr/internal/store"
 	"hangarr/internal/upstream"
 )
@@ -74,10 +75,6 @@ func kindPath(kind string) string {
 		return "/movies"
 	}
 	return "/series"
-}
-
-func episodeLabel(season, episode int) string {
-	return fmt.Sprintf("S%02dE%02d", season, episode)
 }
 
 type epKey struct{ season, episode int }
@@ -161,7 +158,7 @@ func buildProgress(eps []sonarr.Episode, watches []store.EpisodeWatch, seasons [
 	for _, id := range order {
 		a := byUser[id]
 		if a.lastKey.episode > 0 {
-			a.p.Last = episodeLabel(a.lastKey.season, a.lastKey.episode)
+			a.p.Last = media.EpisodeCode(a.lastKey.season, a.lastKey.episode)
 		}
 		for _, se := range rows {
 			if se.Number == 0 {
@@ -193,7 +190,7 @@ func buildProgress(eps []sonarr.Episode, watches []store.EpisodeWatch, seasons [
 			}
 			for _, k := range onDisk[start:] {
 				if !a.watched[k] {
-					a.p.Next = episodeLabel(k.season, k.episode)
+					a.p.Next = media.EpisodeCode(k.season, k.episode)
 					break
 				}
 			}
