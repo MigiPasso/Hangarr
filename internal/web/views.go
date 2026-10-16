@@ -310,7 +310,7 @@ func (s *Server) page(r *http.Request, title, active string, data any) pageData 
 func (s *Server) pageRaw(r *http.Request, title, active string, data any) pageData {
 	l := s.loc(r)
 	pd := pageData{Title: title, Active: active, DryRun: s.Config.DryRun, Version: s.Version, Data: data,
-		Theme: themeFrom(r), Style: styleFrom(r), Palette: paletteFrom(r), SidebarCollapsed: sidebarCollapsed(r), Lang: l.Lang, Path: r.URL.Path}
+		Theme: themeFrom(r), Style: s.styleFrom(r), Palette: s.paletteFrom(r), SidebarCollapsed: sidebarCollapsed(r), Lang: l.Lang, Path: r.URL.Path}
 	if sess := sessionFrom(r); sess != nil {
 		pd.Session = sess
 		pd.CSRFToken = sess.CSRFToken

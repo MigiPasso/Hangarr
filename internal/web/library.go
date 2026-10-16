@@ -246,7 +246,7 @@ func (s *Server) libraryView(w http.ResponseWriter, r *http.Request) string {
 		s.setCookie(w, viewCookie, view, "/", 365*24*3600)
 		return view
 	}
-	if c, err := r.Cookie(viewCookie); err == nil && c.Value == "table" {
+	if v, _ := s.readCookie(r, viewCookie); v == "table" {
 		return "table"
 	}
 	return "grid"

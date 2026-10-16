@@ -3,6 +3,7 @@ package web
 import (
 	"io/fs"
 	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -219,5 +220,36 @@ func TestStyleSwitch(t *testing.T) {
 	}
 	if r := h.do(c, http.MethodGet, "/style/bogus", nil, nil); r.status != http.StatusNotFound {
 		t.Errorf("unknown style: %d", r.status)
+	}
+}
+
+// With COOKIE_SECURE, the choices are written as __Host- cookies: they must
+// be read back under that name and win over a cookie from before the prefixes.
+func TestPreferencesWithCookiePrefix(t *testing.T) {
+	h := newHarness(t, func(c *config.Config) { c.CookieSecure = true })
+	choose := func(path string) *http.Cookie {
+		w, req := httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, path, nil)
+		req.Host = "localhost"
+		h.srv.Handler().ServeHTTP(w, req)
+		cookies := w.Result().Cookies()
+		if len(cookies) != 1 || !strings.HasPrefix(cookies[0].Name, hostPrefix) {
+			t.Fatalf("%s: %v", path, cookies)
+		}
+		return cookies[0]
+	}
+	r := httptest.NewRequest(http.MethodGet, "/login", nil)
+	r.AddCookie(&http.Cookie{Name: styleCookie, Value: "lumen"})
+	r.AddCookie(&http.Cookie{Name: langCookie, Value: "en"})
+	for _, p := range []string{"/style/y2k", "/palette/ember", "/lang/fr"} {
+		r.AddCookie(choose(p))
+	}
+	if got := h.srv.styleFrom(r); got != "y2k" {
+		t.Errorf("style: %q", got)
+	}
+	if got := h.srv.paletteFrom(r); got != "ember" {
+		t.Errorf("palette: %q", got)
+	}
+	if got := h.srv.loc(r).Lang; got != i18n.FR {
+		t.Errorf("lang: %q", got)
 	}
 }

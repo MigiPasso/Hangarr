@@ -15,8 +15,8 @@ const langCookie = "hangarr_lang"
 // loc returns the localizer of the request: the language cookie, otherwise
 // DEFAULT_LANG (English by default).
 func (s *Server) loc(r *http.Request) i18n.Localizer {
-	if c, err := r.Cookie(langCookie); err == nil {
-		if l, ok := i18n.Parse(c.Value); ok {
+	if v, ok := s.readCookie(r, langCookie); ok {
+		if l, ok := i18n.Parse(v); ok {
 			return i18n.For(l)
 		}
 	}
@@ -49,9 +49,9 @@ const styleCookie = "hangarr_style"
 // styles are the optional interface styles (the standard one has no name).
 var styles = []string{"catppuccin", "lumen", "y2k"}
 
-func styleFrom(r *http.Request) string {
-	if c, err := r.Cookie(styleCookie); err == nil && slices.Contains(styles, c.Value) {
-		return c.Value
+func (s *Server) styleFrom(r *http.Request) string {
+	if v, ok := s.readCookie(r, styleCookie); ok && slices.Contains(styles, v) {
+		return v
 	}
 	return ""
 }
@@ -62,9 +62,9 @@ const paletteCookie = "hangarr_palette"
 // palettes are the optional Lumen palettes (the default, Aurora, has no name).
 var palettes = []string{"ocean", "ember", "jade"}
 
-func paletteFrom(r *http.Request) string {
-	if c, err := r.Cookie(paletteCookie); err == nil && slices.Contains(palettes, c.Value) {
-		return c.Value
+func (s *Server) paletteFrom(r *http.Request) string {
+	if v, ok := s.readCookie(r, paletteCookie); ok && slices.Contains(palettes, v) {
+		return v
 	}
 	return ""
 }
