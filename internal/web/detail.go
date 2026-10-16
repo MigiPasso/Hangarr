@@ -268,7 +268,8 @@ func (s *Server) detail(kind string) http.HandlerFunc {
 		ctx := r.Context()
 		up := s.Upstreams.Get()
 		d := detailData{M: m, Path: kindPath(kind), Links: s.links(ctx, m),
-			Protected: store.HasProtectedTag(m.Tags, s.Config.ProtectedTags) || m.ProtectedLocal, Deletable: serverDeletable(up, m) || m.ArrID > 0}
+			Protected: store.ProtectionOf(m.Tags, m.ProtectedLocal, s.Config.ProtectedTags) != store.Unprotected,
+			Deletable: serverDeletable(up, m) || m.ArrID > 0}
 		switch {
 		case s.Actions == nil:
 		case serverDeletable(up, m):
@@ -350,7 +351,8 @@ type deleteData struct {
 func (s *Server) deleteForm(r *http.Request, m *store.Media, season *int) (deleteData, error) {
 	d := deleteData{M: m, Path: kindPath(m.Kind), Season: season, SizeBytes: m.SizeBytes, DryRun: s.Config.DryRun,
 		ConfirmByTyping: s.Config.ConfirmByTyping && m.Kind == "series" && season == nil,
-		Protected:       store.HasProtectedTag(m.Tags, s.Config.ProtectedTags) || m.ProtectedLocal, DeleteFiles: true}
+		Protected:       store.ProtectionOf(m.Tags, m.ProtectedLocal, s.Config.ProtectedTags) != store.Unprotected,
+		DeleteFiles:     true}
 	if m.ArrID == 0 {
 		d.Server = s.Upstreams.Get().ServerLabel()
 	}

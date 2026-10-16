@@ -55,7 +55,7 @@
       <div class="poster-fallback">{{.Title}}</div>
     {{end}}
     <span class="badge state">{{stateLabel .}}</span>
-    {{if or .ProtectedLocal (protected .Tags)}}<span class="corner">{{template "lock"}}</span>{{end}}
+    {{if protected .Tags .ProtectedLocal}}<span class="corner">{{template "lock"}}</span>{{end}}
   </div>
   <div class="media-meta">
     <h3 title="{{.Title}}">{{.Title}}</h3>
@@ -70,7 +70,7 @@
 {{define "library_row"}}
 <tr id="media-{{.ID}}" class="state-{{.State}}">
   <td class="select-cell">{{template "select_box" .}}</td>
-  <td>{{if or .ProtectedLocal (protected .Tags)}}{{template "lock"}} {{end}}<a href="{{mediaPath .Kind}}/{{.ID}}" hx-get="{{mediaPath .Kind}}/{{.ID}}" hx-target="#modal-body">{{.Title}}</a>{{if .Year}} <span class="muted">({{.Year}})</span>{{end}}</td>
+  <td>{{if protected .Tags .ProtectedLocal}}{{template "lock"}} {{end}}<a href="{{mediaPath .Kind}}/{{.ID}}" hx-get="{{mediaPath .Kind}}/{{.ID}}" hx-target="#modal-body">{{.Title}}</a>{{if .Year}} <span class="muted">({{.Year}})</span>{{end}}</td>
   <td><span class="badge state">{{stateLabel .}}</span></td>
   <td>{{if .LastViewedAt}}{{relptr .LastViewedAt}}{{with .LastViewedBy}} · {{.}}{{end}}{{else}}<span class="muted">{{t "never"}}</span>{{end}}</td>
   <td class="num">{{bytes .SizeBytes}}</td>

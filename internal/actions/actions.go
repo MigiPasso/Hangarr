@@ -242,8 +242,16 @@ func goneIf404(get func(context.Context) error) func(context.Context) (bool, err
 	}
 }
 
-func (s *Service) protected(labels []string) bool {
-	return store.HasProtectedTag(labels, s.ProtectedTags)
+// protectionError refuses the deletion of a protected item (store.ProtectionOf,
+// the rule of every check); nil when it may be deleted.
+func (s *Service) protectionError(labels []string, local bool) error {
+	switch store.ProtectionOf(labels, local, s.ProtectedTags) {
+	case store.ProtectedInHangarr:
+		return ErrProtectedLocal
+	case store.ProtectedByTag:
+		return ErrProtected
+	}
+	return nil
 }
 
 // liveTags reads the item's current tags from Sonarr/Radarr; the local copy
@@ -427,9 +435,10 @@ func (s *Service) deleteFromServer(ctx context.Context, up *upstream.Clients, m 
 	if err != nil {
 		return nil, err
 	}
+	protected := s.protectionError(nil, m.ProtectedLocal) // no Sonarr/Radarr tag for such an item
 	switch {
-	case m.ProtectedLocal:
-		err = ErrProtectedLocal
+	case protected != nil:
+		err = protected
 	case !configured:
 		err = fmt.Errorf("%w: %s", ErrUnconfigured, up.ServerLabel())
 	case !s.DryRun:
@@ -463,9 +472,10 @@ func (s *Service) deleteFromServer(ctx context.Context, up *upstream.Clients, m 
 // execute checks the local protection and the live protection tags, then
 // deletes unless dry-run.
 func (s *Service) execute(ctx context.Context, up *upstream.Clients, m *store.Media, req Request, res *Result) error {
-	if m.ProtectedLocal {
-		// Protected in Hangarr before Sonarr/Radarr took the item over.
-		return ErrProtectedLocal
+	// Protected in Hangarr (before Sonarr/Radarr took the item over): no
+	// need to ask them.
+	if err := s.protectionError(nil, m.ProtectedLocal); err != nil {
+		return err
 	}
 	if (m.Kind == "movie" && up.Radarr == nil) || (m.Kind != "movie" && up.Sonarr == nil) {
 		return fmt.Errorf("%w: %s", ErrUnconfigured, arrName(m.Kind))
@@ -477,8 +487,9 @@ func (s *Service) execute(ctx context.Context, up *upstream.Clients, m *store.Me
 	if err != nil {
 		return err
 	}
-	if s.protected(labels) {
-		return ErrProtected
+	// The live tags, not the local copy: a tag added since the sync counts.
+	if err := s.protectionError(labels, m.ProtectedLocal); err != nil {
+		return err
 	}
 	if s.DryRun {
 		return nil

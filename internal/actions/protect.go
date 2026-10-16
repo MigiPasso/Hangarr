@@ -209,7 +209,7 @@ func (s *Service) applyProtection(ctx context.Context, up *upstream.Clients, m *
 			want = &all[i]
 		}
 	}
-	isProtection := func(id int64) bool { return s.protected([]string{byID[id]}) }
+	isProtection := func(id int64) bool { return store.HasProtectedTag([]string{byID[id]}, s.ProtectedTags) }
 	labelsOf := func(ids []int64) []string {
 		out := make([]string, 0, len(ids))
 		for _, id := range ids {

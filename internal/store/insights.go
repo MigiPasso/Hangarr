@@ -20,14 +20,39 @@ func userClause(alias string, user int64) (string, []any) {
 	return " AND " + alias + ".user_id = ?", []any{user}
 }
 
+// Protection says whether an item may be deleted, and why not. It is the
+// single rule of every check: badges, batch selection, cleanup candidates,
+// deletion (with the live tags), duplicates.
+type Protection int
+
+const (
+	// Unprotected: the item may be proposed for cleanup and deleted.
+	Unprotected Protection = iota
+	// ProtectedByTag: it carries one of PROTECTED_TAGS in Sonarr/Radarr.
+	ProtectedByTag
+	// ProtectedInHangarr: it is protected in Hangarr (local_protections).
+	ProtectedInHangarr
+)
+
+// ProtectionOf applies the rule to an item's tag labels and local
+// protection. protectedClause is its SQL twin
+// (TestProtectedTagRuleGoAndSQLAgree).
+func ProtectionOf(labels []string, local bool, protectedTags []string) Protection {
+	switch {
+	case local:
+		return ProtectedInHangarr
+	case HasProtectedTag(labels, protectedTags):
+		return ProtectedByTag
+	}
+	return Unprotected
+}
+
 // HasProtectedTag reports whether labels contain one of the protection tags
-// (PROTECTED_TAGS), ignoring case and surrounding spaces. It is the rule of
-// every check in Go (badges, batch selection, deletion); protectedClause is
-// its SQL twin (TestProtectedTagRuleGoAndSQLAgree).
+// (PROTECTED_TAGS), compared as normalizeLabel does.
 func HasProtectedTag(labels, protected []string) bool {
 	for _, l := range labels {
 		for _, p := range protected {
-			if strings.EqualFold(strings.TrimSpace(l), strings.TrimSpace(p)) {
+			if normalizeLabel(l) == normalizeLabel(p) {
 				return true
 			}
 		}
@@ -35,9 +60,23 @@ func HasProtectedTag(labels, protected []string) bool {
 	return false
 }
 
+// normalizeLabel is the form protection tags are compared in: trimmed, ASCII
+// letters lowercased. It is exactly what protectedClause does in SQL
+// (lower() folds ASCII only), so Go and SQL never disagree on a label with
+// accents; Sonarr/Radarr tag labels are lowercase anyway.
+func normalizeLabel(s string) string {
+	s = strings.TrimSpace(s)
+	b := []byte(s)
+	for i, c := range b {
+		if 'A' <= c && c <= 'Z' {
+			b[i] = c + 'a' - 'A'
+		}
+	}
+	return string(b)
+}
+
 // protectedClause excludes media carrying one of the protection tags, or
-// protected in Hangarr only. SQLite's lower() only folds ASCII letters:
-// *arr tag labels are lowercase anyway.
+// protected in Hangarr only (the SQL form of ProtectionOf).
 func protectedClause(alias string, tags []string) (string, []any) {
 	local := " AND NOT " + alias + ".protected_local"
 	if len(tags) == 0 {
@@ -45,7 +84,7 @@ func protectedClause(alias string, tags []string) (string, []any) {
 	}
 	args := make([]any, len(tags))
 	for i, t := range tags {
-		args[i] = strings.ToLower(strings.TrimSpace(t))
+		args[i] = normalizeLabel(t)
 	}
 	return local + " AND NOT EXISTS (SELECT 1 FROM json_each(" + alias + ".tags) j WHERE lower(trim(j.value)) IN (" +
 		placeholders(len(tags)) + "))", args

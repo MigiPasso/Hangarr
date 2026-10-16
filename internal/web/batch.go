@@ -84,19 +84,16 @@ func (s *Server) classify(r *http.Request, ids []int64, protectAction bool) (*ba
 			return nil, err
 		}
 		e := batchEntry{ID: m.ID, Kind: m.Kind, Title: m.Title, SizeBytes: m.SizeBytes}
+		protection := store.ProtectionOf(m.Tags, m.ProtectedLocal, s.Config.ProtectedTags)
 		switch {
 		case m.ArrID == 0:
 			e.Reason, e.Args = "in %s only", []any{up.ServerLabel()}
-		case store.HasProtectedTag(m.Tags, s.Config.ProtectedTags):
+		case protection != store.Unprotected && protectAction:
 			e.Reason = "already protected"
-			if !protectAction {
-				e.Reason = "protected by a tag"
-			}
-		case m.ProtectedLocal:
-			e.Reason = "already protected"
-			if !protectAction {
-				e.Reason = "protected in Hangarr"
-			}
+		case protection == store.ProtectedByTag:
+			e.Reason = "protected by a tag"
+		case protection == store.ProtectedInHangarr:
+			e.Reason = "protected in Hangarr"
 		}
 		if e.Reason != "" {
 			d.Excluded = append(d.Excluded, e)

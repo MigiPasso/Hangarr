@@ -222,8 +222,8 @@ func (s *Service) checkRadarr(ctx context.Context, up *upstream.Clients, arrID i
 	for _, id := range mv.Tags {
 		labels = append(labels, byID[id])
 	}
-	if s.protected(labels) {
-		return ErrProtected
+	if err := s.protectionError(labels, false); err != nil {
+		return err
 	}
 	if !mv.HasFile {
 		return nil

@@ -216,7 +216,7 @@ func TestPruneSyncRunsKeepsTheLatestOfEachSource(t *testing.T) {
 func TestProtectedTagRuleGoAndSQLAgree(t *testing.T) {
 	s := openTemp(t)
 	ctx := context.Background()
-	protected := []string{"keep", "Archive"}
+	protected := []string{"keep", "Archive", "gardé"}
 	for _, c := range []struct {
 		tags []string
 		want bool
@@ -228,6 +228,10 @@ func TestProtectedTagRuleGoAndSQLAgree(t *testing.T) {
 		{[]string{"4k", "archive"}, true},
 		{[]string{"keeper"}, false},
 		{[]string{"kee p"}, false},
+		// QUAL-08: only ASCII letters fold, in Go as in SQLite's lower().
+		{[]string{"gardé"}, true},
+		{[]string{"GARDé"}, true},
+		{[]string{"GARDÉ"}, false},
 	} {
 		b, _ := json.Marshal(c.tags)
 		if c.tags == nil {
