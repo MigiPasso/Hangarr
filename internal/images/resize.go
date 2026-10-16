@@ -24,11 +24,6 @@ const (
 
 var errTooLarge = errors.New("image dimensions too large")
 
-// decoding serializes the decode-and-resize step: one full-size image in
-// memory at a time, whatever the number of downloads in flight, so the pod
-// stays well under its 512 MiB limit.
-var decoding = make(chan struct{}, 1)
-
 func maxWidth(variant string) int {
 	if variant == "fanart" {
 		return MaxFanartWidth
@@ -36,7 +31,8 @@ func maxWidth(variant string) int {
 	return MaxPosterWidth
 }
 
-// shrink returns b downscaled to width w (as JPEG). b is returned unchanged
+// shrink returns b downscaled to width w (as JPEG); Proxy.shrink runs one at
+// a time. b is returned unchanged
 // when it is narrow enough, in a format the standard library does not decode
 // (it is still served), or when the result would not be smaller.
 func shrink(b []byte, w int) ([]byte, error) {
@@ -50,8 +46,6 @@ func shrink(b []byte, w int) ([]byte, error) {
 	if cfg.Width <= w {
 		return b, nil
 	}
-	decoding <- struct{}{}
-	defer func() { <-decoding }()
 	src, _, err := image.Decode(bytes.NewReader(b))
 	if err != nil {
 		return b, nil //nolint:nilerr // truncated or odd file: served as is, like before
@@ -94,4 +88,13 @@ func downscale(src image.Image, w, h int) *image.RGBA {
 		}
 	}
 	return dst
+}
+
+// shrink serializes the decode-and-resize step: one full-size image in
+// memory at a time, whatever the number of downloads in flight, so the pod
+// stays well under its 512 MiB limit.
+func (p *Proxy) shrink(b []byte, w int) ([]byte, error) {
+	p.decoding <- struct{}{}
+	defer func() { <-p.decoding }()
+	return shrink(b, w)
 }

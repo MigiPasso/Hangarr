@@ -196,12 +196,17 @@ type Clients struct {
 	HistorySource string
 	// Missing lists the services the synchronization still needs.
 	Missing []string
+
+	// alerts caches the Sonarr/Radarr health alerts of these clients (nil:
+	// no cache). It lives and dies with them: a configuration change builds
+	// new Clients, hence a fresh cache, and the old credentials go away.
+	alerts *alertsCache
 }
 
 // Build creates the clients from effective values. mode is HISTORY_SOURCE
 // (auto, tautulli or plex).
 func Build(v Values, mode string) *Clients {
-	c := &Clients{Values: v}
+	c := &Clients{Values: v, alerts: newAlertsCache()}
 	if v.complete(Sonarr) {
 		c.Sonarr = sonarr.New(v[SonarrURL], v[SonarrAPIKey])
 	}

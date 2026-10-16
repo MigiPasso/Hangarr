@@ -57,8 +57,9 @@ type Config struct {
 	HistorySource         string
 	TautulliWebhookSecret string
 
-	// MasterKey encrypts the credentials saved from the UI (nil: saving
-	// credentials from the UI is refused).
+	// MasterKey encrypts the credentials saved from the UI (HANGARR_MASTER_KEY).
+	// nil: a key is read or generated in DATA_DIR/master.key at startup
+	// (upstream.Manager.SetupKey).
 	MasterKey []byte
 	// Deprecations are notices about settings from Cleanarr (the former
 	// name) still in use; logged at startup.

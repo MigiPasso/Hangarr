@@ -67,19 +67,21 @@ type Proxy struct {
 	Log    *slog.Logger
 	Now    func() time.Time
 
-	sem    chan struct{}
-	group  singleflight.Group
-	mu     sync.Mutex
-	misses map[string]time.Time
+	sem      chan struct{}
+	decoding chan struct{} // one image decoded at a time (shrink)
+	group    singleflight.Group
+	mu       sync.Mutex
+	misses   map[string]time.Time
 }
 
 // New builds a proxy caching into dir.
 func New(dir string, client func(kind string) *httpx.Client, lookup Lookup, log *slog.Logger) *Proxy {
 	p := &Proxy{
 		Dir: dir, Client: client, Lookup: lookup, Log: log,
-		Remote: &http.Client{Timeout: fetchTimeout, CheckRedirect: httpsOnly},
-		sem:    make(chan struct{}, MaxConcurrentFetches),
-		misses: map[string]time.Time{},
+		Remote:   &http.Client{Timeout: fetchTimeout, CheckRedirect: httpsOnly},
+		sem:      make(chan struct{}, MaxConcurrentFetches),
+		decoding: make(chan struct{}, 1),
+		misses:   map[string]time.Time{},
 	}
 	p.pruneOldVersions()
 	return p
@@ -236,7 +238,7 @@ func (p *Proxy) fetch(ctx context.Context, kind, id, variant string, info Info, 
 			req.MaxBytes = MaxImageBytes // stop reading a larger answer right away
 			b, err := client.Do(ctx, req)
 			if err == nil && isImage(b) {
-				if b, err = shrink(b, maxWidth(variant)); err == nil {
+				if b, err = p.shrink(b, maxWidth(variant)); err == nil {
 					return p.write(path, b)
 				}
 			}
@@ -248,7 +250,7 @@ func (p *Proxy) fetch(ctx context.Context, kind, id, variant string, info Info, 
 	}
 	b, err := p.fetchRemote(ctx, info.RemoteURL)
 	if err == nil {
-		b, err = shrink(b, maxWidth(variant))
+		b, err = p.shrink(b, maxWidth(variant))
 	}
 	if err == nil {
 		return p.write(path, b)
