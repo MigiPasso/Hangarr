@@ -558,6 +558,30 @@ func (s *Store) LastEpisodes(ctx context.Context, user int64) (map[int64][2]int,
 	return out, err
 }
 
+// LastEpisodesByUser is LastEpisodes for several users at once: user → media
+// → last watched episode.
+func (s *Store) LastEpisodesByUser(ctx context.Context, users []int64) (map[int64]map[int64][2]int, error) {
+	out := map[int64]map[int64][2]int{}
+	err := s.queryEach(ctx, `SELECT user_id, media_id, season_number, episode_number FROM (
+		SELECT user_id, media_id, season_number, episode_number,
+		  ROW_NUMBER() OVER (PARTITION BY user_id, media_id ORDER BY stopped_at DESC, id DESC) AS rn
+		FROM watch_events WHERE user_id IN (SELECT value FROM json_each(?)) AND watched = 1
+		  AND media_type = 'episode' AND media_id IS NOT NULL AND season_number > 0) WHERE rn = 1`,
+		func(rows *sql.Rows) error {
+			var user, id int64
+			var se, ep int
+			if err := rows.Scan(&user, &id, &se, &ep); err != nil {
+				return err
+			}
+			if out[user] == nil {
+				out[user] = map[int64][2]int{}
+			}
+			out[user][id] = [2]int{se, ep}
+			return nil
+		}, idsJSON(users))
+	return out, err
+}
+
 // SeasonTotals returns stored episode counts per season of the given series.
 func (s *Store) SeasonTotals(ctx context.Context, ids []int64) (map[int64]map[int]int, error) {
 	out := map[int64]map[int]int{}

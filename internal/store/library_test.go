@@ -225,3 +225,57 @@ func TestLibraryQueryIsParameterized(t *testing.T) {
 		t.Fatalf("expected bound args, got %v", args)
 	}
 }
+
+// QUAL-06: the grouped query of the Statistics page gives every user the
+// same in-progress series as the library seen by that user.
+func TestInProgressSeriesMatchesLibrary(t *testing.T) {
+	st := synced(t)
+	ctx := context.Background()
+	now := time.Now()
+	users := []int64{1001, 1002, 1003, 4242}
+	grouped, err := st.InProgressSeries(ctx, users, 8, now, 90)
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := 0
+	for _, u := range users {
+		want, err := st.Library(ctx, store.LibraryFilter{Kind: "series", User: u, States: []string{"in_progress"},
+			Sort: "last", Desc: true, Limit: 8}, now, 90)
+		if err != nil {
+			t.Fatal(err)
+		}
+		got := grouped[u]
+		if len(got) != len(want) {
+			t.Fatalf("user %d: %d items, want %d", u, len(got), len(want))
+		}
+		for i := range want {
+			if got[i].ID != want[i].ID || got[i].State != want[i].State || got[i].Plays != want[i].Plays ||
+				got[i].WatchedEpisodes != want[i].WatchedEpisodes {
+				t.Errorf("user %d #%d: %+v, want %+v", u, i, got[i], want[i])
+			}
+		}
+		found += len(want)
+	}
+	if found == 0 {
+		t.Fatal("no in-progress series in the fixtures: the test proves nothing")
+	}
+	one, err := st.InProgressSeries(ctx, []int64{1002}, 8, now, 90)
+	if err != nil || len(one[1002]) != len(grouped[1002]) {
+		t.Errorf("single user: %v %v", one, err)
+	}
+	last, err := st.LastEpisodesByUser(ctx, users)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, u := range users {
+		alone, _ := st.LastEpisodes(ctx, u)
+		if len(alone) != len(last[u]) {
+			t.Errorf("user %d last episodes: %v, want %v", u, last[u], alone)
+		}
+		for id, e := range alone {
+			if last[u][id] != e {
+				t.Errorf("user %d media %d: %v, want %v", u, id, last[u][id], e)
+			}
+		}
+	}
+}

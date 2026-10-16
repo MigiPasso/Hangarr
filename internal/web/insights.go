@@ -13,6 +13,8 @@ import (
 	"sync"
 	"time"
 
+	"golang.org/x/sync/singleflight"
+
 	"hangarr/internal/media"
 	"hangarr/internal/store"
 )
@@ -44,22 +46,39 @@ type diskRow struct {
 }
 
 type diskCache struct {
-	mu   sync.Mutex
-	at   time.Time
-	rows []diskRow
+	mu     sync.Mutex
+	at     time.Time
+	rows   []diskRow
+	flight singleflight.Group
 }
 
 const diskCacheTTL = time.Minute
 
 // diskSpace merges the disks reported by Sonarr and Radarr (deduplicated by
 // path), cached for a minute so the dashboard does not hit the *arr apps on
-// every view.
+// every view. The lock only guards the cache: concurrent dashboards share
+// one read (singleflight) instead of waiting for each other's requests.
 func (s *Server) diskSpace(ctx context.Context) []diskRow {
 	s.disks.mu.Lock()
-	defer s.disks.mu.Unlock()
 	if time.Since(s.disks.at) < diskCacheTTL {
-		return s.disks.rows
+		rows := s.disks.rows
+		s.disks.mu.Unlock()
+		return rows
 	}
+	s.disks.mu.Unlock()
+	v, _, _ := s.disks.flight.Do("disks", func() (any, error) {
+		rows := s.readDiskSpace(context.WithoutCancel(ctx))
+		s.disks.mu.Lock()
+		s.disks.at, s.disks.rows = time.Now(), rows
+		s.disks.mu.Unlock()
+		return rows, nil
+	})
+	rows, _ := v.([]diskRow)
+	return rows
+}
+
+// readDiskSpace asks Sonarr and Radarr (3 seconds at most).
+func (s *Server) readDiskSpace(ctx context.Context) []diskRow {
 	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()
 	seen := map[string]bool{}
@@ -87,7 +106,6 @@ func (s *Server) diskSpace(ctx context.Context) []diskRow {
 		}
 	}
 	sort.Slice(rows, func(i, j int) bool { return rows[i].TotalBytes > rows[j].TotalBytes })
-	s.disks.at, s.disks.rows = time.Now(), rows
 	return rows
 }
 
@@ -252,32 +270,39 @@ func nextEpisode(last [2]int, totals map[int]int) string {
 }
 
 func (s *Server) resume(ctx context.Context, users []store.Account, now time.Time) ([]resumeGroup, error) {
+	// Three queries for every viewer at once, not three per viewer.
+	ids := make([]int64, 0, len(users))
+	for _, u := range users {
+		ids = append(ids, u.ID)
+	}
+	byUser, err := s.Store.InProgressSeries(ctx, ids, 8, now, s.Config.AbandonDays)
+	if err != nil {
+		return nil, err
+	}
+	last, err := s.Store.LastEpisodesByUser(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
+	var series []int64
+	for _, items := range byUser {
+		for _, it := range items {
+			series = append(series, it.ID)
+		}
+	}
+	totals, err := s.Store.SeasonTotals(ctx, series)
+	if err != nil {
+		return nil, err
+	}
 	var out []resumeGroup
 	for _, u := range users {
-		items, err := s.Store.Library(ctx, store.LibraryFilter{Kind: "series", User: u.ID, States: []string{"in_progress"},
-			Sort: "last", Desc: true, Limit: 8}, now, s.Config.AbandonDays)
-		if err != nil || len(items) == 0 {
-			if err != nil {
-				return nil, err
-			}
+		items := byUser[u.ID]
+		if len(items) == 0 {
 			continue
-		}
-		last, err := s.Store.LastEpisodes(ctx, u.ID)
-		if err != nil {
-			return nil, err
-		}
-		ids := make([]int64, 0, len(items))
-		for _, it := range items {
-			ids = append(ids, it.ID)
-		}
-		totals, err := s.Store.SeasonTotals(ctx, ids)
-		if err != nil {
-			return nil, err
 		}
 		g := resumeGroup{User: u.Name}
 		for _, it := range items {
 			ri := resumeItem{LibraryItem: it}
-			if l, ok := last[it.ID]; ok {
+			if l, ok := last[u.ID][it.ID]; ok {
 				ri.Last = media.EpisodeCode(l[0], l[1])
 				ri.Next = nextEpisode(l, totals[it.ID])
 			}
