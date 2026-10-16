@@ -312,8 +312,13 @@ func (s *Service) deleteFromServer(ctx context.Context, up *upstream.Clients, m 
 	return res, nil
 }
 
-// execute checks the live protection tags, then deletes unless dry-run.
+// execute checks the local protection and the live protection tags, then
+// deletes unless dry-run.
 func (s *Service) execute(ctx context.Context, up *upstream.Clients, m *store.Media, req Request, res *Result) error {
+	if m.ProtectedLocal {
+		// Protected in Hangarr before Sonarr/Radarr took the item over.
+		return ErrProtectedLocal
+	}
 	if (m.Kind == "movie" && up.Radarr == nil) || (m.Kind != "movie" && up.Sonarr == nil) {
 		return fmt.Errorf("%w: %s", ErrUnconfigured, arrName(m.Kind))
 	}

@@ -61,6 +61,17 @@ func (s *Service) SetProtected(ctx context.Context, req ProtectRequest) (*Protec
 		}
 		return s.setLocalProtection(ctx, m, req)
 	}
+	if !req.Protect && m.ProtectedLocal {
+		// Protected in Hangarr before Sonarr/Radarr took the item over: that
+		// protection goes first, then the tags (if any) as usual.
+		local, err := s.setLocalProtection(ctx, m, req)
+		if err != nil {
+			return nil, err
+		}
+		if len(s.ProtectedTags) == 0 || strings.TrimSpace(s.ProtectedTags[0]) == "" || !store.HasProtectedTag(m.Tags, s.ProtectedTags) {
+			return local, nil
+		}
+	}
 	if len(s.ProtectedTags) == 0 || strings.TrimSpace(s.ProtectedTags[0]) == "" {
 		return nil, ErrNoProtectedTag
 	}
@@ -101,19 +112,20 @@ func (s *Service) SetProtected(ctx context.Context, req ProtectRequest) (*Protec
 
 // setLocalProtection protects an item that only the media server knows, in
 // Hangarr only: nothing is sent to the server, so dry-run does not apply.
-// Changes are journaled.
+// It also removes such a protection from an item Sonarr/Radarr took over
+// since. Changes are journaled.
 func (s *Service) setLocalProtection(ctx context.Context, m *store.Media, req ProtectRequest) (*ProtectResult, error) {
 	res := &ProtectResult{Title: m.Title, Kind: m.Kind, Protect: req.Protect, Local: true}
 	if m.ProtectedLocal == req.Protect {
 		res.Unchanged = true
 		return res, nil
 	}
-	err := s.Store.SetLocalProtection(ctx, m.ID, req.Protect)
+	err := s.Store.SetLocalProtection(ctx, m.ID, req.Protect, req.Username, s.now())
 	action := UnprotectAction
 	if req.Protect {
 		action = ProtectAction
 	}
-	entry := store.Action{At: s.now().Unix(), Action: action, MediaKind: m.Kind, Title: m.Title,
+	entry := store.Action{At: s.now().Unix(), Action: action, MediaKind: m.Kind, ArrID: m.ArrID, Title: m.Title,
 		Success: err == nil, Username: req.Username}
 	if err != nil {
 		entry.Error = err.Error()

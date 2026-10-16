@@ -13,12 +13,12 @@
     {{range $d.Actions}}
       <tr>
         <td>{{datetime .At}}</td>
-        <td>{{if eq .Action "delete_series"}}{{t "Series deleted"}}{{else if eq .Action "delete_season"}}{{t "Season deleted"}}{{else if eq .Action "delete_movie"}}{{t "Movie deleted"}}{{else if eq .Action "delete_plex"}}{{t "Deleted through Plex"}}{{else if eq .Action "delete_jellyfin"}}{{t "Deleted through Jellyfin"}}{{else if eq .Action "delete_version"}}{{t "Version deleted"}}{{else if eq .Action "protect"}}{{t "Protected"}}{{else if eq .Action "unprotect"}}{{t "Protection removed"}}{{else}}{{.Action}}{{end}}</td>
+        <td>{{if eq .Action "delete_series"}}{{t "Series deleted"}}{{else if eq .Action "delete_season"}}{{t "Season deleted"}}{{else if eq .Action "delete_movie"}}{{t "Movie deleted"}}{{else if eq .Action "delete_plex"}}{{t "Deleted through Plex"}}{{else if eq .Action "delete_jellyfin"}}{{t "Deleted through Jellyfin"}}{{else if eq .Action "delete_version"}}{{t "Version deleted"}}{{else if eq .Action "protect"}}{{t "Protected"}}{{else if eq .Action "unprotect"}}{{t "Protection removed"}}{{else if eq .Action "protect_carried"}}{{t "Protection carried over to Sonarr/Radarr item"}}{{else if eq .Action "protect_unmatched"}}{{t "Protection no longer matches any item"}}{{else}}{{.Action}}{{end}}</td>
         <td>{{.Title}}{{if .SeasonNumber}} · {{t "season %d" (deref .SeasonNumber)}}{{end}}</td>
         <td class="num">{{if .SizeFreedBytes}}{{bytes .SizeFreedBytes}}{{else}}–{{end}}</td>
-        <td class="small">{{if or (eq .Action "protect") (eq .Action "unprotect")}}–{{else}}{{if .DeleteFiles}}{{t "files"}}{{else}}{{t "without files"}}{{end}}{{if .ImportExclusion}} · {{t "exclusion"}}{{end}}{{end}}</td>
+        <td class="small">{{if or (eq .Action "protect") (eq .Action "unprotect") (eq .Action "protect_carried") (eq .Action "protect_unmatched")}}–{{else}}{{if .DeleteFiles}}{{t "files"}}{{else}}{{t "without files"}}{{end}}{{if .ImportExclusion}} · {{t "exclusion"}}{{end}}{{end}}</td>
         <td>{{if not .Success}}<span class="error-text" title="{{.Error}}">{{t "Failed: %s" .Error}}</span>{{else if .DryRun}}<span class="warn">{{t "Simulation"}}</span>{{else}}<span class="ok-text">{{t "Done"}}</span>{{end}}</td>
-        <td>{{.Username}}</td>
+        <td>{{if .Username}}{{.Username}}{{else}}Hangarr{{end}}</td>
       </tr>
     {{end}}
     </tbody>
@@ -33,7 +33,7 @@
       <tr class="event-{{.Event}}">
         <td>{{datetime .At}}</td>
         <td>{{authLabel .Event}}</td>
-        <td>{{.Username}}</td>
+        <td>{{if .Username}}{{.Username}}{{else}}Hangarr{{end}}</td>
         <td>{{.IP}}</td>
         <td title="{{.UserAgent}}">{{if .UserAgent}}{{browser .UserAgent}}{{end}}</td>
       </tr>

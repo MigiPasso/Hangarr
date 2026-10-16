@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 	"testing/fstest"
+	"time"
 
 	"hangarr/internal/syncer"
 )
@@ -197,5 +198,37 @@ func TestLocalProtection(t *testing.T) {
 			t.Errorf("delete after unprotect: %v", err)
 		}
 		e.mock.Reset()
+	}
+}
+
+// BUG-01: an item protected in Hangarr that Sonarr/Radarr took over keeps
+// that protection: deletion refused (single and batch), and "Unprotect"
+// removes it.
+func TestInheritedLocalProtection(t *testing.T) {
+	e := newEnv(t, false)
+	ctx := context.Background()
+	id := e.mediaID("movie", "Tenet")
+	if err := e.st.SetLocalProtection(ctx, id, true, "admin", time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.svc.Delete(ctx, Request{MediaID: id, DeleteFiles: true}); !errors.Is(err, ErrProtectedLocal) {
+		t.Fatalf("delete: %v", err)
+	}
+	if report := e.svc.DeleteBatch(ctx, []int64{id}, BatchOptions{DeleteFiles: true}); report[0].OK ||
+		!errors.Is(report[0].Err, ErrProtectedLocal) {
+		t.Fatalf("batch: %+v", report)
+	}
+	if calls := e.destructive(); len(calls) != 0 {
+		t.Fatalf("destructive calls: %+v", calls)
+	}
+	res, err := e.svc.SetProtected(ctx, ProtectRequest{MediaID: id, Protect: false, Username: "admin"})
+	if err != nil || res.Unchanged || !res.Local {
+		t.Fatalf("unprotect: %+v %v", res, err)
+	}
+	if a := e.lastAction(); a.Action != UnprotectAction || !a.Success || a.ArrID == 0 {
+		t.Errorf("journal: %+v", a)
+	}
+	if _, err := e.svc.Delete(ctx, Request{MediaID: id, DeleteFiles: true}); err != nil {
+		t.Fatalf("delete after unprotect: %v", err)
 	}
 }

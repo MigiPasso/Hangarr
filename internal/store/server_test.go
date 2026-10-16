@@ -88,7 +88,7 @@ func TestServerSwitchKeepsTheOtherServer(t *testing.T) {
 		t.Fatalf("catalog server %q", got)
 	}
 	vacances := e.id("Vacances 2019")
-	if err := e.s.SetLocalProtection(e.ctx, vacances, true); err != nil {
+	if err := e.s.SetLocalProtection(e.ctx, vacances, true, "admin", e.now); err != nil {
 		t.Fatal(err)
 	}
 

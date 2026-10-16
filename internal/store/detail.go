@@ -206,12 +206,6 @@ func (s *Store) DeleteMedia(ctx context.Context, id int64) error {
 	return err
 }
 
-// SetLocalProtection protects (or not) an item in Hangarr only.
-func (s *Store) SetLocalProtection(ctx context.Context, id int64, protected bool) error {
-	_, err := s.db.ExecContext(ctx, `UPDATE media SET protected_local = ? WHERE id = ?`, protected, id)
-	return err
-}
-
 // SetMediaTags replaces the local copy of an item's tag labels (after they
 // were changed in Sonarr/Radarr; the next sync reads them again anyway).
 func (s *Store) SetMediaTags(ctx context.Context, id int64, labels []string) error {

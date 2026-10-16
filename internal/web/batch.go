@@ -90,6 +90,11 @@ func (s *Server) classify(r *http.Request, ids []int64, protectAction bool) (*ba
 			if !protectAction {
 				e.Reason = "protected by a tag"
 			}
+		case m.ProtectedLocal:
+			e.Reason = "already protected"
+			if !protectAction {
+				e.Reason = "protected in Hangarr"
+			}
 		}
 		if e.Reason != "" {
 			d.Excluded = append(d.Excluded, e)
