@@ -5,6 +5,7 @@ import (
 	"maps"
 	"net/http"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -235,6 +236,19 @@ func (s *Server) configTest(w http.ResponseWriter, r *http.Request) {
 	}
 	res := testResult{Service: svc}
 	l := s.loc(r)
+	// A connection test sends a request to any address an administrator
+	// types: bounded per client, so that a stolen session cannot scan the
+	// internal network quickly with it.
+	if ok, retry := s.testLimiter.Allow(s.clientMeta(r).IP); !ok {
+		w.Header().Set("Retry-After", strconv.Itoa(int(retry/time.Second)+1))
+		res.Message = l.T("Too many connection tests. Try again in %d s.", int(retry/time.Second)+1)
+		if isHTMX(r) {
+			s.render(w, r, http.StatusOK, "config", "test_result", s.page(r, "Services", "config", res))
+			return
+		}
+		http.Error(w, res.Message, http.StatusTooManyRequests)
+		return
+	}
 	version, err := s.Services.Test(r.Context(), svc, serviceInput(r, svc))
 	var verr upstream.ValidationError
 	switch {

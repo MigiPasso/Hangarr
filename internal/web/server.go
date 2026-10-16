@@ -48,10 +48,12 @@ type Server struct {
 	ips auth.IPResolver
 	// webhookLimiter rate-limits POST /webhooks/tautulli per client IP.
 	webhookLimiter *auth.RateLimiter
-	views          *views
-	draining       atomic.Bool
-	baseCtx        atomic.Value // context.Context of Run, for background work
-	disks          diskCache
+	// testLimiter rate-limits the connection tests of Settings › Services.
+	testLimiter *auth.RateLimiter
+	views       *views
+	draining    atomic.Bool
+	baseCtx     atomic.Value // context.Context of Run, for background work
+	disks       diskCache
 }
 
 // New builds the server and parses templates.
@@ -69,7 +71,8 @@ func New(d Deps) (*Server, error) {
 		d.Upstreams = upstream.NewRegistry(nil)
 	}
 	return &Server{Deps: d, ips: auth.IPResolver{Trusted: d.Config.TrustedProxies}, views: v,
-		webhookLimiter: auth.NewRateLimiter(webhookPerMinute, time.Minute, nil)}, nil
+		webhookLimiter: auth.NewRateLimiter(webhookPerMinute, time.Minute, nil),
+		testLimiter:    auth.NewRateLimiter(testsPerMinute, time.Minute, nil)}, nil
 }
 
 // baseContext outlives requests: background work started by a request uses it.
@@ -82,7 +85,10 @@ func (s *Server) baseContext() context.Context {
 
 // SweepLimiters drops expired entries of the server's own rate limiters
 // (the login limiter belongs to the caller).
-func (s *Server) SweepLimiters() { s.webhookLimiter.Sweep() }
+func (s *Server) SweepLimiters() { s.webhookLimiter.Sweep(); s.testLimiter.Sweep() }
+
+// testsPerMinute bounds the connection tests of one client.
+const testsPerMinute = 20
 
 // SetDraining makes /readyz fail so no new traffic is routed during shutdown.
 func (s *Server) SetDraining() { s.draining.Store(true) }

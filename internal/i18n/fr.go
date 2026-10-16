@@ -828,4 +828,5 @@ var fr = map[string]string{ //nolint:gosec // G101: UI texts mentioning keys and
 	"See the security log.":                                                                          "Voir le journal de sécurité.",
 	"The webhook secret is set by the environment (TAUTULLI_WEBHOOK_SECRET): nothing was generated.": "Le secret du webhook est défini par l'environnement (TAUTULLI_WEBHOOK_SECRET) : aucun secret n'a été généré.",
 	"Unknown host %q: Hangarr refuses it over plain HTTP (DNS rebinding protection). If this address is yours, add it to ALLOWED_HOSTS, or use HTTPS through a proxy listed in TRUSTED_PROXIES.": "Hôte inconnu %q : Hangarr le refuse en HTTP simple (protection contre le DNS rebinding). Si cette adresse est la vôtre, ajoutez-la à ALLOWED_HOSTS, ou passez par HTTPS via un proxy listé dans TRUSTED_PROXIES.",
+	"Too many connection tests. Try again in %d s.": "Trop de tests de connexion. Réessayez dans %d s.",
 }

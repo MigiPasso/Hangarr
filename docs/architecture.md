@@ -110,7 +110,8 @@ Migrations are rules, not suggestions:
 - **Batches** run sequentially, up to 100 items, with one media-server rescan per kind (series, movies) at the end.
 - **Protection toggle** adds or removes the first tag of `PROTECTED_TAGS` by sending the raw object back (`PUT`), and leaves other tags unchanged.
 - **Media server deletions**: an item known only by the active media server (no longer in Sonarr or Radarr) is deleted through the server (`DELETE` on Plex or Jellyfin), which removes the files. Items of the inactive server, and every server action while Plex and Jellyfin are both configured, are refused.
-- **Journal**: every attempt is written to `action_log` and logged.
+- **Journal**: every attempt is written to `action_log` before anything is sent (state `pending`) and completed after the answer; a deletion that gets no answer in time is checked with a `GET` (gone: done). Rows left pending by a stop are marked `interrupted` at the next start. A batch stops before its next item at shutdown, and the deletion in flight is awaited before the database closes.
+- **Catalog guard**: a Sonarr/Radarr answer that would remove every stored item of a kind, or more than 20 % of them (beyond 5), is refused and the previous catalog kept, until it is accepted on the Health page; meanwhile nothing is deleted through the media server.
 
 ## Security model
 
@@ -122,7 +123,9 @@ Migrations are rules, not suggestions:
 - **CSRF**: every unsafe method on an authenticated route goes through `authed()`, which checks the CSRF token (header `X-CSRF-Token`, sent by HTMX from the layout, or form field `csrf_token`).
 - **Content Security Policy**: `default-src 'self'`, `script-src 'self'`, `style-src 'self'`, `object-src 'none'`, `base-uri 'none'`, `frame-ancestors 'none'`, `form-action 'self'`. Templates contain no inline script, no inline style and no event-handler attribute.
 - **Secrets** (service keys and tokens) are encrypted with AES-256-GCM, with a random nonce per value (`internal/secretbox`). The master key comes from `HANGARR_MASTER_KEY` or `HANGARR_MASTER_KEY_FILE`, which is the recommended setup because the key then stays outside the data volume. Without them, a key is generated at first start in `DATA_DIR/master.key` (mode 0600), and the interface warns about it.
-- **Outbound requests** go through `internal/clients/httpx` only. Its redirect policy follows redirects to the same host only, so a credential never leaves for another host. Remote images are fetched over https only.
+- **Outbound requests** go through `internal/clients/httpx` only. Its redirect policy follows redirects to the same origin only (scheme, host and port; http to https on port 443 is allowed), so a credential never leaves for another service. Only `GET` and `HEAD` are retried by default. Remote images are fetched over https only.
+- **Connection tests** (Settings › Services › Test connection) send a request to any http(s) address an administrator types, and tell "refused", "timeout" and "HTTP n" apart: by design, whoever holds a session can use it to probe the internal network from Hangarr (server-side request forgery, authenticated). A kept credential is never sent to a new address, and the tests are limited to 20 a minute per client. Protect the sessions accordingly (HTTPS, `COOKIE_SECURE`).
+- **Host header**: over plain HTTP only local names and `ALLOWED_HOSTS` are served (DNS rebinding); HTTPS is not checked.
 - **Tautulli webhook** (`POST /webhooks/tautulli`) is the only route without a session. It returns 404 unless its secret is configured, compares the `X-Hangarr-Token` header in constant time, and is rate-limited per IP. Its body is ignored.
 - **Runtime**: the image is distroless and runs as a non-root user (65532). The root filesystem is read-only in `compose.yml` and in the Kubernetes manifest; only `/data` is writable. `/healthz` (liveness) and `/readyz` (readiness, which does not depend on Sonarr or Radarr) serve the probes.
 

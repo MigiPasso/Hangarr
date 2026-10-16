@@ -232,3 +232,19 @@ func TestWebhookSecretFromEnvNotShown(t *testing.T) {
 		t.Fatalf("response:\n%s", r.body)
 	}
 }
+
+// SEC-13: connection tests are rate-limited per client.
+func TestConfigTestRateLimited(t *testing.T) {
+	h := newConfigHarness(t, nil, true)
+	c := h.loggedIn()
+	csrf := csrfFrom(t, h.do(c, "GET", "/config", nil, nil).body)
+	form := url.Values{"csrf_token": {csrf}, "sonarr.url": {"not a url"}, "sonarr.api_key": {"k"}} // refused at once
+	for i := range testsPerMinute {
+		if r := h.do(c, "POST", "/config/sonarr/test", form, nil); r.status == http.StatusTooManyRequests {
+			t.Fatalf("test %d refused", i)
+		}
+	}
+	if r := h.do(c, "POST", "/config/sonarr/test", form, nil); r.status != http.StatusTooManyRequests || r.header.Get("Retry-After") == "" {
+		t.Errorf("over the limit: %d", r.status)
+	}
+}
