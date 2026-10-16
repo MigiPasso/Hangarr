@@ -30,7 +30,7 @@ VERIFY_DIR   := .verify
 VERIFY_COMPOSE := docker compose --progress quiet -f compose.dev.yml
 
 .DEFAULT_GOAL := help
-.PHONY: help dev dev-real down logs test lint e2e verify image image-load reset-admin clean deps vendor-assets deploy-check capture-fixtures jellyfin-lab jellyfin-lab-capture jellyfin-lab-down sync icons k8s-check vulncheck secret-scan
+.PHONY: help dev dev-real down logs test lint e2e verify go-version-check image image-load reset-admin clean deps vendor-assets deploy-check capture-fixtures jellyfin-lab jellyfin-lab-capture jellyfin-lab-down sync icons k8s-check vulncheck secret-scan
 
 help: ## List targets
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-18s %s\n", $$1, $$2}'
@@ -78,8 +78,17 @@ e2e: ## Playwright against the runtime image on a blank database
 	$(E2E_COMPOSE) down --remove-orphans; \
 	exit $$status
 
-verify: ## gofmt + lint + test (+ e2e with E2E=1): compact summary, full logs in .verify/
+go-version-check: ## The Go version of go.mod (toolchain), the Dockerfile and the Compose images must match
+	@want=$$(sed -n 's/^ARG GO_VERSION=//p' Dockerfile); \
+	tc=$$(sed -n 's/^toolchain go//p' go.mod); \
+	bad=$$(grep -h -o 'golang:[0-9][0-9.]*' compose.dev.yml deploy/jellyfin-lab/compose.yml | sed 's/^golang://' | grep -v -x -F "$$want" | sort -u); \
+	if [ -z "$$want" ] || [ "$$tc" != "$$want" ] || [ -n "$$bad" ]; then \
+	  echo "Go versions differ: Dockerfile GO_VERSION=$$want, go.mod toolchain=go$$tc, Compose images: $${bad:-ok}" >&2; exit 1; \
+	fi; echo "go version: OK ($$want)"
+
+verify: ## go versions + gofmt + lint + test (+ e2e with E2E=1): compact summary, full logs in .verify/
 	@mkdir -p $(VERIFY_DIR); rm -f $(VERIFY_DIR)/*.log; status=0; \
+	$(MAKE) --no-print-directory go-version-check || status=1; \
 	$(VERIFY_COMPOSE) --profile tools run --rm -T gotools gofmt -l . > $(VERIFY_DIR)/gofmt.log 2>&1; rc=$$?; \
 	if [ $$rc -eq 0 ] && [ ! -s $(VERIFY_DIR)/gofmt.log ]; then \
 	  echo "gofmt: OK"; \

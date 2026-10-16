@@ -1,6 +1,7 @@
 # syntax=docker/dockerfile:1.7
 # Stages: deps, dev, test, lint, build, mock, runtime (default, last).
 
+# Keep in sync with the toolchain line of go.mod (make go-version-check).
 ARG GO_VERSION=1.27.2
 ARG GOLANGCI_LINT_VERSION=v2.14.0
 ARG AIR_VERSION=v1.67.4

@@ -2,6 +2,10 @@ module hangarr
 
 go 1.27
 
+// Keep in sync with GO_VERSION in the Dockerfile (make go-version-check):
+// the standard library of earlier patch releases has known vulnerabilities.
+toolchain go1.27.2
+
 require (
 	golang.org/x/crypto v0.58.0
 	golang.org/x/sync v0.24.0
