@@ -135,6 +135,9 @@ func libraryView(b *sqlBuilder, f LibraryFilter, now time.Time, abandonDays int)
 // then as fast as a query written for one user (BenchmarkLibraryView).
 func perspectiveView(b *sqlBuilder, kind string, users []int64, now time.Time, abandonDays int) {
 	recent := now.Unix() - int64(abandonDays)*day
+	if len(users) == 0 {
+		users = []int64{0} // nobody: user 0 has no plays
+	}
 	multi := len(users) != 1
 	// k returns the per-user fragment, empty with a single user.
 	k := func(fragment string) string {
@@ -143,11 +146,9 @@ func perspectiveView(b *sqlBuilder, kind string, users []int64, now time.Time, a
 		}
 		return ""
 	}
-	usersCTE, userCond, usersArg := `us AS (SELECT ? AS uid)`, `user_id = (SELECT uid FROM us)`, any(int64(0))
+	usersCTE, userCond, usersArg := `us AS (SELECT ? AS uid)`, `user_id = (SELECT uid FROM us)`, any(users[0])
 	if multi {
-		usersCTE, userCond, usersArg = `us AS (SELECT value AS uid FROM json_each(?))`, `user_id IN (SELECT uid FROM us)`, any(idsJSON(users))
-	} else {
-		usersArg = users[0]
+		usersCTE, userCond, usersArg = `us AS (SELECT value AS uid FROM json_each(?))`, `user_id IN (SELECT uid FROM us)`, idsJSON(users)
 	}
 	// ev reads the users' plays once, and only those of the listed kind
 	// (the costly part, see BenchmarkLibraryView); up and ue come from it.
