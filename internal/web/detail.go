@@ -372,6 +372,11 @@ func (s *Server) deleteForm(r *http.Request, m *store.Media, season *int) (delet
 	return d, nil
 }
 
+// seasonDeletable: only series managed by Sonarr have seasons to delete.
+func seasonDeletable(m *store.Media) bool {
+	return m.Kind == "series" && m.ArrID != 0
+}
+
 func seasonParam(v string) *int {
 	if v == "" {
 		return nil
@@ -399,7 +404,7 @@ func (s *Server) deletePage(kind string) http.HandlerFunc {
 			return
 		}
 		season := seasonParam(r.URL.Query().Get("season"))
-		if m.ArrID == 0 && (!serverDeletable(s.Upstreams.Get(), m) || season != nil) {
+		if (m.ArrID == 0 && !serverDeletable(s.Upstreams.Get(), m)) || (season != nil && !seasonDeletable(m)) {
 			s.notFound(w, r)
 			return
 		}
@@ -451,6 +456,12 @@ func (s *Server) deleteSubmit(kind string) http.HandlerFunc {
 			return
 		}
 		season := seasonParam(r.PostFormValue("season"))
+		if season != nil && !seasonDeletable(m) {
+			// A season of a movie (or of a series Sonarr does not manage)
+			// must never turn into a deletion of the whole item.
+			s.notFound(w, r)
+			return
+		}
 		d, err := s.deleteForm(r, m, season)
 		if err != nil {
 			s.serverError(w, r, err)

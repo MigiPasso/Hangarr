@@ -333,3 +333,27 @@ func TestBatchProtect(t *testing.T) {
 		t.Errorf("protect report: %s\n%s", r.header.Get("HX-Trigger"), r.body)
 	}
 }
+
+// BUG-03: ?season=N on a movie is a 404, on the page and on the POST, and
+// nothing reaches Radarr.
+func TestDeleteSeasonOfMovieNotFound(t *testing.T) {
+	e := newLibEnvDry(t, 0, false)
+	tenet := e.mediaID("movie", "Tenet")
+	if r := e.do(e.c, "GET", "/movies/"+tenet+"/delete?season=1", nil, nil); r.status != http.StatusNotFound {
+		t.Errorf("page: %d", r.status)
+	}
+	tok := csrfFrom(t, e.do(e.c, "GET", "/movies/"+tenet+"/delete", nil, nil).body)
+	r := e.do(e.c, "POST", "/movies/"+tenet+"/delete", url.Values{"season": {"1"}, "delete_files": {"1"}},
+		map[string]string{"HX-Request": "true", csrfHeader: tok})
+	if r.status != http.StatusNotFound || r.header.Get("HX-Trigger") != "" {
+		t.Errorf("submit: %d %s", r.status, r.header.Get("HX-Trigger"))
+	}
+	for _, c := range e.mock.Calls() {
+		if c.Method != http.MethodGet {
+			t.Errorf("destructive call: %+v", c)
+		}
+	}
+	if r := e.do(e.c, "GET", "/movies/"+tenet, nil, nil); r.status != http.StatusOK {
+		t.Errorf("movie gone: %d", r.status)
+	}
+}

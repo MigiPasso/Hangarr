@@ -190,6 +190,10 @@ func (s *Service) Delete(ctx context.Context, req Request) (*Result, error) {
 	if err != nil {
 		return nil, err
 	}
+	if m.Kind == "movie" && req.Season != nil {
+		// A movie has no season: never fall through to a whole-movie deletion.
+		return nil, ErrNoSuchSeason
+	}
 	if m.ArrID == 0 {
 		if err := serverOnly(up, m, ErrNotDeletable); err != nil {
 			return nil, err

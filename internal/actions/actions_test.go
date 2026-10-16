@@ -376,3 +376,20 @@ func TestDeletePlexOnlyDryRun(t *testing.T) {
 		t.Errorf("journal: %+v", a)
 	}
 }
+
+// BUG-03: a season on a movie must be refused, never turn into a deletion
+// of the whole movie.
+func TestDeleteSeasonOfMovieRefused(t *testing.T) {
+	e := newEnv(t, false)
+	id := e.mediaID("movie", "Tenet")
+	_, err := e.svc.Delete(context.Background(), Request{MediaID: id, Season: intp(1), DeleteFiles: true})
+	if !errors.Is(err, ErrNoSuchSeason) {
+		t.Fatalf("err = %v, want ErrNoSuchSeason", err)
+	}
+	if calls := e.destructive(); len(calls) != 0 {
+		t.Errorf("destructive calls: %+v", calls)
+	}
+	if _, err := e.st.MediaByID(context.Background(), id); err != nil {
+		t.Errorf("movie removed locally: %v", err)
+	}
+}
