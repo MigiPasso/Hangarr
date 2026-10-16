@@ -110,7 +110,7 @@ services:
   # Records anonymized responses of the real instances: `make capture-fixtures`.
   capture:
     profiles: [real]
-    image: golang:1.27.2-bookworm
+    image: golang:1.27.2-bookworm@sha256:5cf287a799e6b94384bad13d16b14904c531f51ba65792237e122ce42b392f61
     working_dir: /src
     env_file: ${HANGARR_ENV_FILE:-.env.example}
     environment:
@@ -125,10 +125,10 @@ services:
 
   # Go toolbox with the source mounted, for go mod tidy and friends. Plain
   # image (not the deps stage) so it works before go.sum exists; keep the tag
-  # in sync with GO_VERSION in the Dockerfile.
+  # in sync with the golang image of the Dockerfile.
   gotools:
     profiles: [tools]
-    image: golang:1.27.2-bookworm
+    image: golang:1.27.2-bookworm@sha256:5cf287a799e6b94384bad13d16b14904c531f51ba65792237e122ce42b392f61
     environment:
       GOFLAGS: -buildvcs=false
     working_dir: /src
@@ -254,7 +254,7 @@ services:
 
   e2e:
     profiles: [e2e]
-    image: mcr.microsoft.com/playwright:v1.63.0-noble
+    image: mcr.microsoft.com/playwright:v1.63.0-noble@sha256:eff16c30e6f3f4af0a03fa4b706120d5e9b0891c344a27d64559aff5900a4a27
     working_dir: /e2e
     environment:
       BASE_URL: http://app-e2e:8080
@@ -278,7 +278,7 @@ services:
   # curl for vendoring static assets.
   fetch:
     profiles: [tools]
-    image: curlimages/curl:8.22.0
+    image: curlimages/curl:8.22.0@sha256:58adaa4e8dca9c988bae2aba4ab3434a0bb2da16bbe3f92dec39ec7785166777
     working_dir: /work
     volumes:
       - .:/work

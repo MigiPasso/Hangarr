@@ -341,6 +341,17 @@ is not read then: the scheduled sync, or **Sync now**, updates the history inste
   then run `docker compose pull && docker compose up -d`.
 - **Your own build** instead of the published image: run `make image-load` first (it builds `hangarr:local` from the
   sources), then set `HANGARR_IMAGE=hangarr:local` in `.env` and run `docker compose up -d`.
+- **Checking the published image**: each release image is signed with cosign (keyless, from the release workflow) and
+  carries an SBOM and a provenance attestation.
+
+  ```sh
+  cosign verify ghcr.io/migipasso/hangarr:vX.Y.Z \
+    --certificate-identity-regexp '^https://github.com/MigiPasso/Hangarr/' \
+    --certificate-oidc-issuer https://token.actions.githubusercontent.com
+  docker buildx imagetools inspect ghcr.io/migipasso/hangarr:vX.Y.Z --format '{{ json .SBOM }}'
+  ```
+- **Downgrades** are refused: a database migrated by a more recent release stops an older one at startup. Restore the
+  backup made before the upgrade instead.
 
 ### Backup
 
@@ -423,8 +434,14 @@ Wrong API key or token. For Plex, use the token of the server owner's account. F
 
 ### "This address redirects to another host"
 
-The address redirects elsewhere (an authentication proxy, another domain). Hangarr refuses to send the key there. Enter
-the final address of the service.
+The address redirects elsewhere (an authentication proxy, another domain, or another port of the same host, which may
+be another service). Hangarr refuses to send the key there. Enter the final address of the service.
+
+### `421 Misdirected Request`
+
+Hangarr was reached over plain HTTP under a host name it does not know (see `ALLOWED_HOSTS` in
+[configuration](configuration.md)). Add the name to `ALLOWED_HOSTS`, or reach Hangarr over HTTPS through a proxy listed
+in `TRUSTED_PROXIES`.
 
 ### "This address answers as Radarr, not Sonarr."
 

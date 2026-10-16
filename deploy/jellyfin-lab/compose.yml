@@ -5,14 +5,14 @@ name: hangarr-jellyfin-lab
 services:
   # Writes the scenario media (6-second videos, NFO files) into /media, then exits.
   media-init:
-    image: jellyfin/jellyfin:12.2.20261005-225228
+    image: jellyfin/jellyfin:12.2.20261005-225228@sha256:357724bf0ae27a672c7cbaa899db2d9abeb13dbd8657ccce750258a4c059d037
     entrypoint: ["sh", "/lab/media-init.sh"]
     volumes:
       - ./media-init.sh:/lab/media-init.sh:ro
       - media:/media
 
   jellyfin:
-    image: jellyfin/jellyfin:12.2.20261005-225228
+    image: jellyfin/jellyfin:12.2.20261005-225228@sha256:357724bf0ae27a672c7cbaa899db2d9abeb13dbd8657ccce750258a4c059d037
     depends_on:
       media-init:
         condition: service_completed_successfully
@@ -30,7 +30,7 @@ services:
 
   # Startup wizard, libraries, users, playback state and the API key of hangarr.
   seed:
-    image: alpine:3.22
+    image: alpine:3.22@sha256:5291449c3df73caf6ed85e649dec1b9e818b39a5d8c871e97afc13e9cd5e8fa8
     entrypoint: ["sh", "/lab/seed.sh"]
     environment:
       JELLYFIN_URL: http://jellyfin:8096
@@ -45,7 +45,7 @@ services:
   # Records the anonymized responses of the lab: `make jellyfin-lab-capture`.
   capture:
     profiles: [capture]
-    image: golang:1.27.2-bookworm
+    image: golang:1.27.2-bookworm@sha256:5cf287a799e6b94384bad13d16b14904c531f51ba65792237e122ce42b392f61
     working_dir: /src
     environment:
       GOFLAGS: -buildvcs=false

@@ -2,6 +2,13 @@
 # (linux/amd64, linux/arm64) to ghcr.io/<repository owner, lowercase>/hangarr:vX.Y.Z
 # (ghcr.io/migipasso/hangarr for this repository), and moves
 # :latest unless the tag is a pre-release (vX.Y.Z-rc.1…).
+# Nothing is published unless the checks of CI pass on the tagged commit
+# (verify, e2e) and the image has no fixable HIGH/CRITICAL vulnerability
+# (Trivy). The image carries an SBOM and a provenance attestation, and is
+# signed with cosign (keyless, GitHub OIDC): verify it with
+#   cosign verify ghcr.io/migipasso/hangarr:vX.Y.Z \
+#     --certificate-identity-regexp '^https://github.com/MigiPasso/Hangarr/' \
+#     --certificate-oidc-issuer https://token.actions.githubusercontent.com
 # Only the built-in GITHUB_TOKEN is used, with packages: write.
 name: Release image
 
@@ -17,24 +24,55 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  verify:
+    name: gofmt, lint, tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: make verify
+        run: make verify
+
+  e2e:
+    name: e2e
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: make e2e
+        run: make e2e
+
   image:
+    needs: [verify, e2e]
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     permissions:
       contents: read
       packages: write
+      id-token: write # keyless cosign signature
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - name: Scan the image (Trivy, HIGH/CRITICAL with a fix)
+        run: make scan VERSION="$GITHUB_REF_NAME"
+      - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+        with:
+          cosign-release: v3.1.3
       - name: Log in to GHCR
         env:
           GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
-      - name: Build and push
+      - name: Build, push and sign
         run: |
           image="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/hangarr"
           make image PUSH=1 IMAGE="$image" VERSION="$GITHUB_REF_NAME"
+          digest=$(docker buildx imagetools inspect "$image:$GITHUB_REF_NAME" --format '{{json .Manifest.Digest}}' | tr -d '"')
+          cosign sign --yes "$image@$digest"
           docker buildx imagetools inspect "$image:$GITHUB_REF_NAME"
           case "$GITHUB_REF_NAME" in
             *-*) echo "pre-release: :latest left unchanged" ;;

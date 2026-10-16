@@ -80,5 +80,7 @@ jobs:
           fetch-depth: 0 # the secret scan covers the whole history
       - name: make vulncheck
         run: make vulncheck
+      - name: make scan (runtime image, Trivy)
+        run: make scan
       - name: make secret-scan
         run: make secret-scan

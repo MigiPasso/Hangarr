@@ -49,7 +49,7 @@ The font files are in `internal/web/static/fonts/`. All families are licensed un
 The build, test and lab tooling runs from container images pinned in `Dockerfile`, `compose.dev.yml` and `deploy/jellyfin-lab/compose.yml`. They are not part of the repository, and each keeps the license of its upstream project:
 
 - `golang` (Go toolchain), `golangci/golangci-lint` (lint), `air` (installed in the dev image);
-- `gcr.io/distroless/static-debian12` (base of the runtime and mock images);
+- `gcr.io/distroless/static-debian13` (base of the runtime and mock images);
 - `mcr.microsoft.com/playwright` (end-to-end tests);
 - `curlimages/curl` (`make vendor-assets`), `alpine` (`make icons`, Jellyfin lab);
 - `jellyfin/jellyfin` (Jellyfin lab, `make jellyfin-lab`).
