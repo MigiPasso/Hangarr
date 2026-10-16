@@ -12,8 +12,6 @@ import (
 	"fmt"
 	"log/slog"
 	"slices"
-	"strconv"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -21,12 +19,7 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"hangarr/internal/clients/httpx"
-	"hangarr/internal/clients/plex"
-	"hangarr/internal/clients/radarr"
-	"hangarr/internal/clients/sonarr"
-	"hangarr/internal/clients/tautulli"
 	"hangarr/internal/matching"
-	"hangarr/internal/scoring"
 	"hangarr/internal/store"
 	"hangarr/internal/upstream"
 )
@@ -257,152 +250,190 @@ func (s *Syncer) Wait() {
 }
 
 func (s *Syncer) run(ctx context.Context, up *upstream.Clients) (*Result, error) {
-	start := s.now()
+	r := &syncRun{s: s, up: up, start: s.now(), runIDs: map[string]int64{}, finished: map[string]bool{}}
+	r.res = &Result{StartedAt: r.start}
 	s.setProgress("starting")
 	s.Log.Info("sync started")
-
-	res := &Result{StartedAt: start}
-	var resMu sync.Mutex
-	record := func(r SourceResult) {
-		resMu.Lock()
-		res.Sources = append(res.Sources, r)
-		resMu.Unlock()
-		if r.Err != nil {
-			s.Log.Warn("sync source failed", "source", r.Source, "err", r.Err)
-		} else {
-			s.Log.Info("sync source done", "source", r.Source, "items", r.Items, "duration_ms", r.Duration.Milliseconds())
-		}
-	}
-
-	// The catalog comes from the media server in use, Plex or Jellyfin.
-	serverSource := ""
-	switch {
-	case up.MediaServer == upstream.Plex && up.Plex != nil:
-		serverSource = SourcePlex
-	case up.MediaServer == upstream.Jellyfin && up.Jellyfin != nil:
-		serverSource = SourceJellyfin
-	}
-	var f fetched
-	runIDs := map[string]int64{}
-	sources := []string{}
-	if up.Sonarr != nil {
-		sources = append(sources, SourceSonarr)
-	}
-	if up.Radarr != nil {
-		sources = append(sources, SourceRadarr)
-	}
-	if serverSource != "" {
-		sources = append(sources, serverSource)
-	}
-	finished := map[string]bool{}
 	// A run left open (shutdown during the fetch, local error) would show
 	// as running forever.
-	defer func() {
-		for src, id := range runIDs {
-			if !finished[src] {
-				if err := s.Store.FinishSyncRun(context.WithoutCancel(ctx), id, s.now(), 0, store.ErrSyncInterrupted); err != nil {
-					s.Log.Error("sync run not recorded", "source", src, "err", err)
-				}
+	defer r.closeOpenRuns(ctx)
+	if err := r.startRuns(ctx); err != nil {
+		return nil, err
+	}
+	f := r.fetchAll(ctx)
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	// No deletion runs during the store phase (catalogMu).
+	s.catalogMu.Lock()
+	defer s.catalogMu.Unlock()
+	if err := r.storeCatalogs(ctx, f); err != nil {
+		return nil, err
+	}
+	if err := r.linkAndMerge(ctx); err != nil {
+		return nil, err
+	}
+	return r.summary(ctx)
+}
+
+// syncRun is the state of one synchronization.
+type syncRun struct {
+	s     *Syncer
+	up    *upstream.Clients
+	start time.Time
+
+	resMu    sync.Mutex
+	res      *Result
+	runIDs   map[string]int64 // source → sync_runs id
+	finished map[string]bool
+}
+
+// fetchedSource is the outcome of the fetch of one catalog source.
+type fetchedSource struct {
+	start time.Time
+	err   error
+}
+
+// serverSource is the source of the catalog of the media server in use,
+// Plex or Jellyfin ("" when none is configured).
+func (r *syncRun) serverSource() string {
+	switch {
+	case r.up.MediaServer == upstream.Plex && r.up.Plex != nil:
+		return SourcePlex
+	case r.up.MediaServer == upstream.Jellyfin && r.up.Jellyfin != nil:
+		return SourceJellyfin
+	}
+	return ""
+}
+
+func (r *syncRun) record(sr SourceResult) {
+	r.resMu.Lock()
+	r.res.Sources = append(r.res.Sources, sr)
+	r.resMu.Unlock()
+	if sr.Err != nil {
+		r.s.Log.Warn("sync source failed", "source", sr.Source, "err", sr.Err)
+	} else {
+		r.s.Log.Info("sync source done", "source", sr.Source, "items", sr.Items, "duration_ms", sr.Duration.Milliseconds())
+	}
+}
+
+// startRuns records the start of every catalog source in sync_runs.
+func (r *syncRun) startRuns(ctx context.Context) error {
+	var sources []string
+	if r.up.Sonarr != nil {
+		sources = append(sources, SourceSonarr)
+	}
+	if r.up.Radarr != nil {
+		sources = append(sources, SourceRadarr)
+	}
+	if src := r.serverSource(); src != "" {
+		sources = append(sources, src)
+	}
+	for _, src := range sources {
+		id, err := r.s.Store.StartSyncRun(ctx, src, r.start)
+		if err != nil {
+			return err
+		}
+		r.runIDs[src] = id
+	}
+	return nil
+}
+
+// finish records the outcome of a catalog source.
+func (r *syncRun) finish(ctx context.Context, sr SourceResult) {
+	r.finished[sr.Source] = true
+	if err := r.s.Store.FinishSyncRun(context.WithoutCancel(ctx), r.runIDs[sr.Source], r.s.now(), sr.Items, sr.Err); err != nil {
+		r.s.Log.Error("sync run not recorded", "source", sr.Source, "err", err)
+	}
+	r.record(sr)
+}
+
+// closeOpenRuns marks the runs not finished as interrupted.
+func (r *syncRun) closeOpenRuns(ctx context.Context) {
+	for src, id := range r.runIDs {
+		if !r.finished[src] {
+			if err := r.s.Store.FinishSyncRun(context.WithoutCancel(ctx), id, r.s.now(), 0, store.ErrSyncInterrupted); err != nil {
+				r.s.Log.Error("sync run not recorded", "source", src, "err", err)
 			}
 		}
-	}()
-	for _, src := range sources {
-		id, err := s.Store.StartSyncRun(ctx, src, start)
-		if err != nil {
-			return nil, err
-		}
-		runIDs[src] = id
 	}
-	finish := func(r SourceResult) {
-		finished[r.Source] = true
-		if err := s.Store.FinishSyncRun(context.WithoutCancel(ctx), runIDs[r.Source], s.now(), r.Items, r.Err); err != nil {
-			s.Log.Error("sync run not recorded", "source", r.Source, "err", err)
-		}
-		record(r)
-	}
+}
 
-	// Fetch phase: all sources in parallel. Goroutines never return an error
-	// so that one failure does not cancel the others.
+// fetchResult is what fetchAll read, with the outcome of each catalog source.
+type fetchResult struct {
+	fetched
+	seriesRead, moviesRead, serverRead fetchedSource
+}
+
+// fetchAll reads every source in parallel, each with its own deadline
+// (sourceCtx). Goroutines never return an error so that one failure does not
+// cancel the others; the histories are stored as they arrive.
+func (r *syncRun) fetchAll(ctx context.Context) *fetchResult {
+	s, up, f := r.s, r.up, &fetchResult{}
 	var g errgroup.Group
-	var seriesErr, moviesErr, serverErr error
-	var seriesStart, moviesStart, serverStart time.Time
-	// Each source has its own deadline (sourceCtx).
-	if up.Sonarr != nil {
+	fetch := func(out *fetchedSource, read func(context.Context) error) {
 		g.Go(func() error {
-			seriesStart = time.Now()
+			out.start = time.Now()
 			sctx, cancel := s.sourceCtx(ctx)
 			defer cancel()
-			f.series, seriesErr = s.fetchSeries(sctx, up.Sonarr)
+			out.err = read(sctx)
 			return nil
 		})
+	}
+	if up.Sonarr != nil {
+		fetch(&f.seriesRead, func(ctx context.Context) (err error) { f.series, err = s.fetchSeries(ctx, up.Sonarr); return })
 	}
 	if up.Radarr != nil {
-		g.Go(func() error {
-			moviesStart = time.Now()
-			sctx, cancel := s.sourceCtx(ctx)
-			defer cancel()
-			f.movies, moviesErr = s.fetchMovies(sctx, up.Radarr)
-			return nil
-		})
+		fetch(&f.moviesRead, func(ctx context.Context) (err error) { f.movies, err = s.fetchMovies(ctx, up.Radarr); return })
 	}
-	if serverSource == SourcePlex {
-		g.Go(func() error {
-			serverStart = time.Now()
-			sctx, cancel := s.sourceCtx(ctx)
-			defer cancel()
-			f.server, serverErr = s.fetchPlex(sctx, up.Plex)
-			return nil
-		})
-	}
-	if serverSource == SourceJellyfin {
-		g.Go(func() error {
-			serverStart = time.Now()
-			sctx, cancel := s.sourceCtx(ctx)
-			defer cancel()
-			f.server, serverErr = s.fetchJellyfin(sctx, up.Jellyfin)
-			return nil
+	switch r.serverSource() {
+	case SourcePlex:
+		fetch(&f.serverRead, func(ctx context.Context) (err error) { f.server, err = s.fetchPlex(ctx, up.Plex); return })
+	case SourceJellyfin:
+		fetch(&f.serverRead, func(ctx context.Context) (err error) {
+			f.server, err = s.fetchJellyfin(ctx, up.Jellyfin)
+			return
 		})
 	}
 	g.Go(func() error {
 		sctx, cancel := s.sourceCtx(ctx)
 		defer cancel()
-		for _, r := range s.syncHistories(sctx, up) {
-			record(r)
+		for _, sr := range s.syncHistories(sctx, up) {
+			r.record(sr)
 		}
 		return nil
 	})
 	_ = g.Wait()
-	if err := ctx.Err(); err != nil {
-		return nil, err
-	}
+	return f
+}
 
-	// Store phase, sequential: catalogs first, then matching against them.
-	// No deletion runs meanwhile, and what was deleted since the fetch
-	// started is dropped from what was fetched: it must not come back.
+// storeCatalogs writes the catalogs, sequentially: Sonarr and Radarr first,
+// then the media server matched against them. What was deleted since the
+// fetch started is dropped from what was fetched: it must not come back.
+func (r *syncRun) storeCatalogs(ctx context.Context, f *fetchResult) error {
+	s, up := r.s, r.up
 	s.setProgress("saving the catalog")
-	s.catalogMu.Lock()
-	defer s.catalogMu.Unlock()
-	deleted, err := s.Store.DeletedSince(ctx, start.Add(-deletionWindow))
+	deleted, err := s.Store.DeletedSince(ctx, r.start.Add(-deletionWindow))
 	if err != nil {
-		return nil, err
+		return err
 	}
 	f.drop(deleted)
 	if up.Sonarr != nil {
-		err := seriesErr
+		err := f.seriesRead.err
 		if err == nil {
 			err = s.Store.ReplaceArrCatalog(ctx, "series", f.series, s.now())
 		}
-		finish(SourceResult{Source: SourceSonarr, Items: len(f.series), Duration: time.Since(seriesStart), Err: err})
+		r.finish(ctx, SourceResult{Source: SourceSonarr, Items: len(f.series), Duration: time.Since(f.seriesRead.start), Err: err})
 	}
 	if up.Radarr != nil {
-		err := moviesErr
+		err := f.moviesRead.err
 		if err == nil {
 			err = s.Store.ReplaceArrCatalog(ctx, "movie", f.movies, s.now())
 		}
-		finish(SourceResult{Source: SourceRadarr, Items: len(f.movies), Duration: time.Since(moviesStart), Err: err})
+		r.finish(ctx, SourceResult{Source: SourceRadarr, Items: len(f.movies), Duration: time.Since(f.moviesRead.start), Err: err})
 	}
-	if serverSource != "" {
-		err := serverErr
+	if src := r.serverSource(); src != "" {
+		err := f.serverRead.err
 		items := 0
 		if err == nil {
 			items = len(f.server.items)
@@ -411,778 +442,44 @@ func (s *Syncer) run(ctx context.Context, up *upstream.Clients) (*Result, error)
 		if err == nil && f.server.versionsOK {
 			err = s.Store.ReplaceVersions(ctx, f.server.server, f.server.versions)
 		}
-		finish(SourceResult{Source: serverSource, Items: items, Duration: time.Since(serverStart), Err: err})
+		r.finish(ctx, SourceResult{Source: src, Items: items, Duration: time.Since(f.serverRead.start), Err: err})
 	}
+	return nil
+}
 
+// linkAndMerge links the history to the catalog, keeps a single history
+// source of the Plex server, and recomputes the statistics.
+func (r *syncRun) linkAndMerge(ctx context.Context) error {
+	s := r.s
 	s.setProgress("linking the history")
 	if err := s.linkEvents(ctx); err != nil {
-		return nil, fmt.Errorf("link history: %w", err)
+		return fmt.Errorf("link history: %w", err)
 	}
-	if err := s.mergeHistory(ctx, up); err != nil {
-		return nil, fmt.Errorf("merge history: %w", err)
+	if err := s.mergeHistory(ctx, r.up); err != nil {
+		return fmt.Errorf("merge history: %w", err)
 	}
 	s.setProgress("computing statistics")
 	if err := s.recompute(ctx); err != nil {
-		return nil, fmt.Errorf("recompute: %w", err)
+		return fmt.Errorf("recompute: %w", err)
 	}
+	return nil
+}
 
+// summary completes the result and makes it the last one.
+func (r *syncRun) summary(ctx context.Context) (*Result, error) {
+	s, res := r.s, r.res
+	var err error
 	if res.Matches, err = s.Store.MatchCounts(ctx); err != nil {
 		return nil, err
 	}
 	if res.Linked, res.Orphans, err = s.Store.EventCounts(ctx); err != nil {
 		return nil, err
 	}
-	res.Duration = s.now().Sub(start)
+	res.Duration = s.now().Sub(r.start)
 	s.mu.Lock()
 	s.last, s.progress, s.progressArgs = res, "", nil
 	s.mu.Unlock()
 	s.Log.Info("sync finished", "duration_ms", res.Duration.Milliseconds(), "failed", res.Failed(),
 		"linked_events", res.Linked, "orphan_events", res.Orphans)
 	return res, nil
-}
-
-// --- Sonarr / Radarr ---------------------------------------------------------
-
-func tagLabels(ids []int64, labels map[int64]string) []string {
-	var out []string
-	for _, id := range ids {
-		if l, ok := labels[id]; ok {
-			out = append(out, l)
-		}
-	}
-	return out
-}
-
-func images(imgs []sonarr.Image) (poster, fanart string) {
-	for _, im := range imgs {
-		switch im.CoverType {
-		case "poster":
-			poster = im.RemoteURL
-		case "fanart":
-			fanart = im.RemoteURL
-		}
-	}
-	return poster, fanart
-}
-
-// arrLookups fetches tag labels and quality profile names of an *arr app.
-func arrLookups(ctx context.Context, tags func(context.Context) ([]sonarr.Tag, error),
-	profiles func(context.Context) ([]sonarr.QualityProfile, error)) (labels, names map[int64]string, err error) {
-	var ts []sonarr.Tag
-	var ps []sonarr.QualityProfile
-	g, gctx := errgroup.WithContext(ctx)
-	g.Go(func() (err error) { ts, err = tags(gctx); return })
-	g.Go(func() (err error) { ps, err = profiles(gctx); return })
-	if err := g.Wait(); err != nil {
-		return nil, nil, err
-	}
-	labels, names = map[int64]string{}, map[int64]string{}
-	for _, t := range ts {
-		labels[t.ID] = t.Label
-	}
-	for _, p := range ps {
-		names[p.ID] = p.Name
-	}
-	return labels, names, nil
-}
-
-func seriesItem(se sonarr.Series, labels, names map[int64]string) store.CatalogItem {
-	poster, fanart := images(se.Images)
-	it := store.CatalogItem{
-		Kind: "series", ArrID: se.ID, Title: se.Title, SortTitle: se.SortTitle, TitleSlug: se.TitleSlug,
-		Year: int(se.Year), Overview: se.Overview, TvdbID: int64(se.TvdbID), TmdbID: int64(se.TmdbID),
-		ImdbID: se.ImdbID, Status: se.Status, Genres: se.Genres, NetworkOrStudio: se.Network,
-		Rating: float64(se.Ratings.Value), AddedAt: se.Added.UnixPtr(), Tags: tagLabels(se.Tags, labels),
-		QualityProfile: names[se.QualityProfileID], Monitored: se.Monitored, Path: se.Path,
-		RuntimeMinutes: int(se.Runtime), PosterURL: poster, FanartURL: fanart,
-		AltTitles: altTitles("", se.AlternateTitles),
-	}
-	if se.Statistics != nil {
-		it.SizeBytes = int64(se.Statistics.SizeOnDisk)
-	}
-	// Episode counts exclude specials, consistently with watch_state.
-	total, downloaded := 0, 0
-	for _, sn := range se.Seasons {
-		rec := store.SeasonRecord{Number: sn.SeasonNumber, Monitored: sn.Monitored}
-		if st := sn.Statistics; st != nil {
-			rec.EpisodeFileCount, rec.TotalEpisodeCount = int(st.EpisodeFileCount), int(st.TotalEpisodeCount)
-			rec.SizeBytes = int64(st.SizeOnDisk)
-		}
-		if sn.SeasonNumber > 0 {
-			total += rec.TotalEpisodeCount
-			downloaded += rec.EpisodeFileCount
-		}
-		it.Seasons = append(it.Seasons, rec)
-	}
-	it.TotalEpisodes, it.DownloadedEpisodes = &total, &downloaded
-	it.HasFile = downloaded > 0
-	return it
-}
-
-func movieItem(m radarr.Movie, labels, names map[int64]string) store.CatalogItem {
-	poster, fanart := images(m.Images)
-	return store.CatalogItem{
-		Kind: "movie", ArrID: m.ID, Title: m.Title, SortTitle: m.SortTitle, TitleSlug: m.TitleSlug,
-		Year: int(m.Year), Overview: m.Overview, TmdbID: int64(m.TmdbID), ImdbID: m.ImdbID, Status: m.Status,
-		Genres: m.Genres, NetworkOrStudio: m.Studio, Rating: m.Ratings.Best(), SizeBytes: int64(m.SizeOnDisk),
-		AddedAt: m.Added.UnixPtr(), Tags: tagLabels(m.Tags, labels), QualityProfile: names[m.QualityProfileID],
-		Monitored: m.Monitored, Path: m.Path, HasFile: m.HasFile, RuntimeMinutes: int(m.Runtime),
-		PosterURL: poster, FanartURL: fanart, AltTitles: altTitles(m.OriginalTitle, m.AlternateTitles),
-		FileName: fileName(m),
-	}
-}
-
-func fileName(m radarr.Movie) string {
-	if m.MovieFile == nil {
-		return ""
-	}
-	return m.MovieFile.RelativePath
-}
-
-// altTitles lists the original and alternate titles, without duplicates.
-func altTitles(original string, alt []sonarr.AlternateTitle) []string {
-	var out []string
-	seen := map[string]bool{}
-	add := func(t string) {
-		if t != "" && !seen[t] {
-			seen[t] = true
-			out = append(out, t)
-		}
-	}
-	add(original)
-	for _, a := range alt {
-		add(a.Title)
-	}
-	return out
-}
-
-func (s *Syncer) fetchSeries(ctx context.Context, c *sonarr.Client) ([]store.CatalogItem, error) {
-	var series []sonarr.Series
-	var labels, names map[int64]string
-	g, gctx := errgroup.WithContext(ctx)
-	g.Go(func() (err error) { series, err = c.Series(gctx); return })
-	g.Go(func() (err error) {
-		labels, names, err = arrLookups(gctx, c.Tags, c.QualityProfiles)
-		return
-	})
-	if err := g.Wait(); err != nil {
-		return nil, err
-	}
-	out := make([]store.CatalogItem, 0, len(series))
-	for _, se := range series {
-		out = append(out, seriesItem(se, labels, names))
-	}
-	return out, nil
-}
-
-func (s *Syncer) fetchMovies(ctx context.Context, c *radarr.Client) ([]store.CatalogItem, error) {
-	var movies []radarr.Movie
-	var labels, names map[int64]string
-	g, gctx := errgroup.WithContext(ctx)
-	g.Go(func() (err error) { movies, err = c.Movies(gctx); return })
-	g.Go(func() (err error) {
-		labels, names, err = arrLookups(gctx, c.Tags, c.QualityProfiles)
-		return
-	})
-	if err := g.Wait(); err != nil {
-		return nil, err
-	}
-	out := make([]store.CatalogItem, 0, len(movies))
-	for _, m := range movies {
-		out = append(out, movieItem(m, labels, names))
-	}
-	return out, nil
-}
-
-// RefreshSeries re-reads one series from Sonarr (targeted resync after a
-// season deletion) and recomputes statistics.
-func (s *Syncer) RefreshSeries(ctx context.Context, arrID int64) error {
-	c := s.Upstreams.Get().Sonarr
-	if c == nil {
-		return upstream.ErrNotConfigured
-	}
-	se, _, err := c.SeriesByID(ctx, arrID)
-	if err != nil {
-		return err
-	}
-	labels, names, err := arrLookups(ctx, c.Tags, c.QualityProfiles)
-	if err != nil {
-		return err
-	}
-	if err := s.Store.UpsertCatalogItem(ctx, "series", seriesItem(*se, labels, names), s.now()); err != nil {
-		return err
-	}
-	return s.Recompute(ctx)
-}
-
-// Recompute refreshes play counts and watch_state from the
-// stored data (after a local change such as a deletion).
-func (s *Syncer) Recompute(ctx context.Context) error {
-	return s.recompute(ctx)
-}
-
-// --- Media server catalog and matching ---------------------------------------
-
-// serverCatalog is the catalog of the media server in use (Plex or Jellyfin).
-type serverCatalog struct {
-	server  string // store.ServerPlex or store.ServerJellyfin
-	items   []matching.ServerItem
-	seasons []store.ServerSeason
-	// versions are stored only when versionsOK is set; otherwise the versions
-	// of the previous sync are kept.
-	versions   []store.MediaVersion
-	versionsOK bool
-}
-
-func (s *Syncer) fetchPlex(ctx context.Context, c *plex.Client) (*serverCatalog, error) {
-	if id, err := c.Identity(ctx); err == nil && id != "" {
-		if err := s.Store.SetSetting(ctx, store.SettingPlexMachineID, id, s.now()); err != nil {
-			return nil, err
-		}
-	}
-	sections, err := c.Sections(ctx)
-	if err != nil {
-		return nil, err
-	}
-	cat := &serverCatalog{server: store.ServerPlex}
-	var films []plex.Item
-	for _, sec := range sections {
-		key := string(sec.Key)
-		switch sec.Type {
-		case "movie":
-			items, err := c.Items(ctx, key, plex.TypeMovie)
-			if err != nil {
-				return nil, err
-			}
-			films = append(films, items...)
-			for _, it := range items {
-				cat.items = append(cat.items, plexItem(matching.KindMovie, it))
-			}
-		case "show":
-			shows, err := c.Items(ctx, key, plex.TypeShow)
-			if err != nil {
-				return nil, err
-			}
-			for _, it := range shows {
-				cat.items = append(cat.items, plexItem(matching.KindSeries, it))
-			}
-			seasons, err := c.Items(ctx, key, plex.TypeSeason)
-			if err != nil {
-				return nil, err
-			}
-			for _, se := range seasons {
-				cat.seasons = append(cat.seasons, store.ServerSeason{
-					ShowKey: string(se.ParentRatingKey), Number: int(se.Index), Key: string(se.RatingKey)})
-			}
-		}
-	}
-	cat.versions = plexVersions(films)
-	cat.versionsOK = true
-	return cat, nil
-}
-
-func plexItem(kind string, it plex.Item) matching.ServerItem {
-	tvdb, tmdb, imdb := it.ExternalIDs()
-	p := matching.ServerItem{Kind: kind, Key: string(it.RatingKey), Title: it.Title, Year: int(it.Year),
-		TvdbID: tvdb, TmdbID: tmdb, ImdbID: imdb, AddedAt: int64(it.AddedAt), OriginalTitle: it.OriginalTitle,
-		Files: it.Files()}
-	for _, l := range it.Location {
-		p.Folders = append(p.Folders, l.Path)
-	}
-	return p
-}
-
-// arrHints are the matching data fetched from Sonarr/Radarr but not stored.
-type arrHints struct {
-	titles       []string
-	folder, file string
-}
-
-func matchHints(series, movies []store.CatalogItem) map[string]arrHints {
-	out := map[string]arrHints{}
-	for _, list := range [][]store.CatalogItem{series, movies} {
-		for _, it := range list {
-			out[it.Kind+"|"+strconv.FormatInt(it.ArrID, 10)] = arrHints{titles: it.AltTitles, folder: it.Path, file: it.FileName}
-		}
-	}
-	return out
-}
-
-func (s *Syncer) applyMatches(ctx context.Context, cat *serverCatalog, hints map[string]arrHints) error {
-	arr, err := s.Store.ListArrMedia(ctx)
-	if err != nil {
-		return err
-	}
-	items := make([]matching.ArrItem, 0, len(arr))
-	for _, m := range arr {
-		h := hints[m.Kind+"|"+strconv.FormatInt(m.ArrID, 10)]
-		items = append(items, matching.ArrItem{MediaID: m.ID, Kind: m.Kind, TvdbID: m.TvdbID, TmdbID: m.TmdbID,
-			ImdbID: m.ImdbID, Title: m.Title, Year: m.Year, AltTitles: h.titles, Folder: h.folder, File: h.file})
-	}
-	links, plexOnly := matching.Match(items, cat.items)
-	storeLinks := make([]store.ServerLink, 0, len(links))
-	for _, l := range links {
-		storeLinks = append(storeLinks, store.ServerLink{MediaID: l.MediaID, Key: l.Key, Method: l.Method})
-	}
-	only := make([]store.ServerOnlyItem, 0, len(plexOnly))
-	for _, p := range plexOnly {
-		only = append(only, store.ServerOnlyItem{Kind: p.Kind, Key: p.Key, Title: p.Title, Year: p.Year,
-			TvdbID: p.TvdbID, TmdbID: p.TmdbID, ImdbID: p.ImdbID, AddedAt: p.AddedAt})
-	}
-	return s.Store.ApplyServerMatches(ctx, cat.server, storeLinks, only, cat.seasons, s.now())
-}
-
-// --- History -----------------------------------------------------------------
-
-func intPtr(n int) *int { return &n }
-
-// TautulliEvent converts a history row; ok is false for rows that are not
-// stored (no id yet, or not a movie/episode).
-func TautulliEvent(r tautulli.HistoryRow) (store.WatchEvent, bool) {
-	if r.ID <= 0 || (r.MediaType != "movie" && r.MediaType != "episode") {
-		return store.WatchEvent{}, false
-	}
-	e := store.WatchEvent{
-		Source: SourceTautulli, SourceID: int64(r.ID), MediaType: r.MediaType,
-		RatingKey: string(r.RatingKey), ParentRatingKey: string(r.ParentRatingKey),
-		GrandparentRatingKey: string(r.GrandparentRatingKey), UserID: int64(r.UserID),
-		StartedAt: int64(r.Started), StoppedAt: int64(r.Stopped), PlaySeconds: r.PlaySeconds(),
-		PercentComplete: int(r.PercentComplete), Watched: r.Watched(), Platform: r.Platform, Player: r.Player,
-		TranscodeDecision: r.TranscodeDecision, Title: r.Title, GrandparentTitle: r.GrandparentTitle,
-		Year: int(r.Year),
-	}
-	if e.StartedAt == 0 {
-		e.StartedAt = int64(r.Date)
-	}
-	if e.StoppedAt == 0 {
-		e.StoppedAt = e.StartedAt
-	}
-	if r.ReferenceID > 0 {
-		ref := int64(r.ReferenceID)
-		e.ReferenceID = &ref
-	}
-	if r.MediaType == "episode" {
-		e.SeasonNumber, e.EpisodeNumber = intPtr(int(r.ParentMediaIndex)), intPtr(int(r.MediaIndex))
-	}
-	return e, true
-}
-
-// syncTautulliHistory pages from newest to oldest and stops once a whole
-// page is older than the cursor minus 24 h; the overlap catches long
-// sessions that finished late, and the upsert keeps it idempotent.
-func (s *Syncer) syncTautulliHistory(ctx context.Context, c *tautulli.Client, users []tautulli.User, v *viewers) (int, error) {
-	var accounts []store.PlexAccount
-	if v != nil {
-		accounts = v.accounts
-	} else {
-		for _, u := range users {
-			if u.UserID == 0 {
-				continue
-			}
-			accounts = append(accounts, store.PlexAccount{AccountID: int64(u.UserID), Username: u.Username,
-				FriendlyName: u.FriendlyName, IsActive: u.IsActive == 1, ThumbURL: u.Thumb})
-		}
-	}
-	if err := s.Store.UpsertPlexAccounts(ctx, accounts); err != nil {
-		return 0, err
-	}
-	if v != nil {
-		n, err := s.Store.KeepViewers(ctx, v.keep())
-		if err != nil {
-			return 0, err
-		}
-		if n > 0 {
-			s.Log.Info("plays of users unknown to Tautulli dropped", "deleted_events", n)
-		}
-	}
-	pageSize := tautulli.HistoryPageSize
-	if s.HistoryPageSize > 0 {
-		pageSize = s.HistoryPageSize
-	}
-	return s.pageHistory(ctx, cursorTautulli, func(start int) (historyPage, error) {
-		p, err := c.History(ctx, start, pageSize)
-		if err != nil {
-			return historyPage{}, err
-		}
-		out := historyPage{dates: make([]int64, 0, len(p.Rows)), rows: len(p.Rows), total: int(p.RecordsFiltered)}
-		for i, r := range p.Rows {
-			if i == 0 {
-				out.first = fmt.Sprintf("%d/%d/%d", int64(r.ID), int64(r.ReferenceID), int64(r.Date))
-			}
-			out.dates = append(out.dates, int64(r.Date))
-			if e, ok := TautulliEvent(r); ok && v.allows(e.UserID) {
-				out.events = append(out.events, e)
-			}
-		}
-		return out, nil
-	}, pageSize)
-}
-
-// viewers is the viewer list of merged mode: the Tautulli users. The Plex
-// server accounts are matched to them by name (the server owner is 1 for
-// Plex and its plex.tv id for Tautulli); Plex accounts Tautulli does not
-// know are left out, with their plays.
-type viewers struct {
-	ids      map[int64]int64 // Plex account id → Tautulli user id
-	accounts []store.PlexAccount
-}
-
-func newViewers(accs []plex.Account, users []tautulli.User) *viewers {
-	v := &viewers{ids: map[int64]int64{}}
-	byName := map[string]int64{}
-	for _, u := range users {
-		if u.UserID == 0 {
-			continue
-		}
-		v.accounts = append(v.accounts, store.PlexAccount{AccountID: int64(u.UserID), Username: u.Username,
-			FriendlyName: u.FriendlyName, IsActive: u.IsActive == 1, ThumbURL: u.Thumb})
-		if u.FriendlyName != "" {
-			byName[strings.ToLower(u.FriendlyName)] = int64(u.UserID)
-		}
-	}
-	for _, u := range users { // the user name wins over a display name
-		if u.UserID != 0 && u.Username != "" {
-			byName[strings.ToLower(u.Username)] = int64(u.UserID)
-		}
-	}
-	for _, a := range accs {
-		if a.ID <= 0 || a.Name == "" {
-			continue
-		}
-		if tid, ok := byName[strings.ToLower(a.Name)]; ok {
-			v.ids[int64(a.ID)] = tid
-		}
-	}
-	return v
-}
-
-func (v *viewers) keep() []int64 {
-	out := make([]int64, 0, len(v.accounts))
-	for _, a := range v.accounts {
-		out = append(out, a.AccountID)
-	}
-	return out
-}
-
-// allows reports whether the plays of a stored user id are kept (always
-// without a viewer list).
-func (v *viewers) allows(id int64) bool {
-	if v == nil {
-		return true
-	}
-	for _, a := range v.accounts {
-		if a.AccountID == id {
-			return true
-		}
-	}
-	return false
-}
-
-// syncHistories reads the history sources of up, one after the other:
-// Tautulli, then the Plex history (merged mode: both, Plex ids translated to
-// Tautulli's), or the Jellyfin history. In a single-source mode the other
-// source is dropped first.
-// Each source is recorded in sync_runs.
-func (s *Syncer) syncHistories(ctx context.Context, up *upstream.Clients) []SourceResult {
-	var out []SourceResult
-	step := func(source string, fn func() (int, error)) {
-		start := s.now()
-		id, err := s.Store.StartSyncRun(ctx, source, start)
-		if err != nil {
-			out = append(out, SourceResult{Source: source, Err: err})
-			return
-		}
-		t := time.Now()
-		n, err := fn()
-		if ferr := s.Store.FinishSyncRun(context.WithoutCancel(ctx), id, s.now(), n, err); ferr != nil {
-			s.Log.Error("sync run not recorded", "source", source, "err", ferr)
-		}
-		out = append(out, SourceResult{Source: source, Items: n, Duration: time.Since(t), Err: err})
-	}
-	// Merged mode: the viewer list is Tautulli's, Plex ids are translated.
-	var v *viewers
-	if up.Merged() && up.HistoryClient() != nil && up.Plex != nil {
-		users, err := up.HistoryClient().Users(ctx)
-		var accs []plex.Account
-		if err == nil {
-			accs, err = up.Plex.Accounts(ctx)
-		}
-		if err != nil {
-			return []SourceResult{{Source: SourceTautulli, Err: fmt.Errorf("viewers: %w", err)}}
-		}
-		v = newViewers(accs, users)
-	}
-	if c := up.HistoryClient(); c != nil {
-		step(SourceTautulli, func() (int, error) {
-			if !up.Merged() {
-				if err := s.keepHistory(ctx, SourceTautulli, cursorPlexHistory); err != nil {
-					return 0, err
-				}
-				users, err := c.Users(ctx)
-				if err != nil {
-					return 0, err
-				}
-				return s.syncTautulliHistory(ctx, c, users, nil)
-			}
-			return s.syncTautulliHistory(ctx, c, nil, v)
-		})
-	}
-	if up.PlexHistory() {
-		step(SourcePlexHistory, func() (int, error) {
-			if !up.Merged() {
-				if err := s.keepHistory(ctx, SourcePlexHistory, cursorTautulli); err != nil {
-					return 0, err
-				}
-			}
-			return s.syncPlexHistory(ctx, up.Plex, v)
-		})
-	}
-	if up.JellyfinHistory() {
-		step(SourceJellyfinHistory, func() (int, error) { return s.syncJellyfinHistory(ctx, up.Jellyfin) })
-	}
-	return out
-}
-
-// mergeHistory merges the Plex history into Tautulli's (merged mode), then
-// the Jellyfin history into both (whatever the media server: the history of
-// the other one is kept), once the events are linked to media.
-func (s *Syncer) mergeHistory(ctx context.Context, up *upstream.Clients) error {
-	if up.Merged() {
-		st, err := s.Store.MergePlexHistory(ctx)
-		if err != nil {
-			return err
-		}
-		s.Log.Info("history merged", "plex_entries_merged", st.Merged, "sessions_completed_by_plex", st.Completed,
-			"plex_only_plays_estimated", st.Estimated)
-	}
-	st, err := s.Store.MergeServerHistories(ctx)
-	if err != nil {
-		return err
-	}
-	if st.Merged > 0 || st.Completed > 0 {
-		s.Log.Info("jellyfin history merged with plex", "jellyfin_entries_merged", st.Merged,
-			"plays_completed_by_jellyfin", st.Completed)
-	}
-	return nil
-}
-
-// keepHistory makes source the only history in the database: the events of
-// the other source are deleted (after switching from Plex history, which
-// has no durations, to Tautulli, both would otherwise count every play).
-func (s *Syncer) keepHistory(ctx context.Context, source, otherCursor string) error {
-	n, err := s.Store.DropOtherHistory(ctx, source, otherCursor)
-	if err != nil {
-		return err
-	}
-	if n > 0 {
-		s.Log.Info("history from the previous source dropped", "kept", source, "deleted_events", n)
-	}
-	return nil
-}
-
-// PlexEvent converts a Plex history entry (Plex only records watched items).
-func PlexEvent(h plex.HistoryEntry) (store.WatchEvent, bool) {
-	if h.ID() <= 0 || (h.Type != "movie" && h.Type != "episode") {
-		return store.WatchEvent{}, false
-	}
-	e := store.WatchEvent{
-		Source: SourcePlexHistory, SourceID: h.ID(), MediaType: h.Type, RatingKey: string(h.RatingKey),
-		ParentRatingKey: plex.KeyID(h.ParentKey), GrandparentRatingKey: plex.KeyID(h.GrandparentKey),
-		UserID: int64(h.AccountID), StartedAt: int64(h.ViewedAt), StoppedAt: int64(h.ViewedAt),
-		PercentComplete: 100, Watched: true, Title: h.Title, GrandparentTitle: h.GrandparentTitle, Year: int(h.Year),
-	}
-	if h.Type == "episode" {
-		e.SeasonNumber, e.EpisodeNumber = intPtr(int(h.ParentIndex)), intPtr(int(h.Index))
-	}
-	return e, true
-}
-
-// syncPlexHistory reads the Plex history. In merged mode (v set) the
-// accounts are already stored and the Plex ids are translated to the stored
-// ones.
-func (s *Syncer) syncPlexHistory(ctx context.Context, c *plex.Client, v *viewers) (int, error) {
-	ids := map[int64]int64{}
-	if v != nil {
-		ids = v.ids
-	} else {
-		accs, err := c.Accounts(ctx)
-		if err != nil {
-			return 0, err
-		}
-		accounts := make([]store.PlexAccount, 0, len(accs))
-		for _, a := range accs {
-			if a.ID > 0 && a.Name != "" {
-				accounts = append(accounts, store.PlexAccount{AccountID: int64(a.ID), Username: a.Name, IsActive: true})
-			}
-		}
-		if err := s.Store.UpsertPlexAccounts(ctx, accounts); err != nil {
-			return 0, err
-		}
-	}
-	// Entries stored before the translation existed (or before Tautulli).
-	if err := s.Store.RemapHistoryUsers(ctx, SourcePlexHistory, ids); err != nil {
-		return 0, err
-	}
-	return s.pageHistory(ctx, cursorPlexHistory, func(start int) (historyPage, error) {
-		entries, total, err := c.History(ctx, start)
-		if err != nil {
-			return historyPage{}, err
-		}
-		var events []store.WatchEvent
-		dates := make([]int64, 0, len(entries))
-		first := ""
-		if len(entries) > 0 {
-			first = entries[0].HistoryKey
-		}
-		for _, h := range entries {
-			dates = append(dates, int64(h.ViewedAt))
-			if e, ok := PlexEvent(h); ok {
-				tid, ok := ids[e.UserID]
-				if ok {
-					e.UserID = tid
-				} else if v != nil {
-					continue // a Plex account Tautulli does not know
-				}
-				events = append(events, e)
-			}
-		}
-		return historyPage{events: events, dates: dates, rows: len(entries), total: total, first: first}, nil
-	}, plex.HistoryPageSize)
-}
-
-// historyPage is a page of history: events to store, the date of every row,
-// the raw row count, the total reported by the server (0 if unknown) and the
-// identity of the first row (to detect a server that ignores the offset).
-type historyPage struct {
-	events []store.WatchEvent
-	dates  []int64
-	rows   int
-	total  int
-	first  string
-}
-
-// pageFunc fetches the page starting at start.
-type pageFunc func(start int) (historyPage, error)
-
-func (s *Syncer) pageHistory(ctx context.Context, cursorName string, fetch pageFunc, pageSize int) (int, error) {
-	raw, err := s.Store.Cursor(ctx, cursorName)
-	if err != nil {
-		return 0, err
-	}
-	cursor, _ := strconv.ParseInt(raw, 10, 64)
-	threshold := cursor - historyOverlapSecs
-	maxDate := cursor
-	stored, start := 0, 0
-	var guard httpx.PageGuard
-	for {
-		p, err := fetch(start)
-		if err != nil {
-			return stored, err
-		}
-		if err := guard.Next(p.first); err != nil {
-			return stored, err
-		}
-		events, dates, rows, total := p.events, p.dates, p.rows, p.total
-		if err := s.Store.UpsertWatchEvents(ctx, events); err != nil {
-			return stored, err
-		}
-		stored += len(events)
-		allOld := len(dates) > 0
-		for _, d := range dates {
-			maxDate = max(maxDate, d)
-			if d >= threshold {
-				allOld = false
-			}
-		}
-		start += rows
-		if cursor == 0 {
-			if total > 0 {
-				s.setProgress("history: %d / %d", start, total)
-			} else {
-				s.setProgress("history: %d", start)
-			}
-		}
-		if (cursor > 0 && allOld) || rows < pageSize || (total > 0 && start >= total) {
-			break
-		}
-	}
-	if maxDate > cursor {
-		if err := s.Store.SetCursor(ctx, cursorName, strconv.FormatInt(maxDate, 10), s.now()); err != nil {
-			return stored, err
-		}
-	}
-	return stored, nil
-}
-
-// linkEvents resolves media for every event: Plex rating keys first, then
-// normalized title (+ year) for keys that no longer exist.
-func (s *Syncer) linkEvents(ctx context.Context) error {
-	if err := s.Store.LinkWatchEventsByKey(ctx); err != nil {
-		return err
-	}
-	titles, err := s.Store.UnlinkedEventTitles(ctx)
-	if err != nil || len(titles) == 0 {
-		return err
-	}
-	media, err := s.Store.ListMediaTitles(ctx)
-	if err != nil {
-		return err
-	}
-	cands := make([]matching.TitleCandidate, 0, len(media))
-	for _, m := range media {
-		cands = append(cands, matching.TitleCandidate{MediaID: m.ID, Kind: m.Kind, Title: m.Title, Year: m.Year})
-	}
-	idx := matching.NewTitleIndex(cands)
-	var links []store.TitleLink
-	for _, t := range titles {
-		var id int64
-		if t.MediaType == "episode" {
-			// Tautulli's year on episode rows is not reliably the show's year:
-			// try the title alone first, the year only breaks ties.
-			if id = idx.Find(matching.KindSeries, t.Title, 0); id == 0 {
-				id = idx.Find(matching.KindSeries, t.Title, t.Year)
-			}
-		} else {
-			id = idx.Find(matching.KindMovie, t.Title, t.Year)
-		}
-		if id != 0 {
-			links = append(links, store.TitleLink{UnlinkedTitle: t, MediaID: id})
-		}
-	}
-	return s.Store.LinkWatchEventsByTitle(ctx, links)
-}
-
-func unixPtr(v *int64) *time.Time {
-	if v == nil {
-		return nil
-	}
-	t := time.Unix(*v, 0)
-	return &t
-}
-
-// recompute refreshes play counts and watch_state.
-func (s *Syncer) recompute(ctx context.Context) error {
-	s.recomputeMu.Lock()
-	defer s.recomputeMu.Unlock()
-	stats, err := s.Store.LoadMediaStats(ctx)
-	if err != nil {
-		return err
-	}
-	now := s.now()
-	out := make([]store.Derived, 0, len(stats))
-	for _, m := range stats {
-		in := scoring.Input{
-			Kind: m.Kind, Status: m.Status, SizeBytes: m.SizeBytes, AddedAt: unixPtr(m.AddedAt),
-			Plays: m.Plays, CompletedPlays: m.CompletedPlays, LastViewedAt: unixPtr(m.LastViewedAt),
-		}
-		for _, se := range m.Seasons {
-			in.Seasons = append(in.Seasons, scoring.SeasonProgress{Number: se.Number, Downloaded: se.Downloaded, Watched: se.Watched})
-		}
-		d := store.Derived{MediaStats: m, WatchState: scoring.WatchState(in, now, s.AbandonDays)}
-		if m.Kind == scoring.KindSeries {
-			d.WatchedEpisodes = intPtr(scoring.WatchedEpisodes(in))
-		}
-		out = append(out, d)
-	}
-	return s.Store.SaveDerived(ctx, out)
 }
