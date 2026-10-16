@@ -100,6 +100,11 @@ func (s *Syncer) Schedule() Schedule {
 	return sc
 }
 
+// LocalNow returns the syncer's clock in the time zone of the schedule.
+func (s *Syncer) LocalNow() time.Time {
+	return s.now().In(s.location())
+}
+
 // NextRun returns when the next scheduled sync will start.
 func (s *Syncer) NextRun() time.Time {
 	return s.Schedule().Next(s.now(), s.location())

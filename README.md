@@ -16,7 +16,7 @@ Hangarr is a self-hosted web app (Go and HTMX) that cross-references Sonarr, Rad
 - **Protection**: a Sonarr/Radarr tag (the first of `PROTECTED_TAGS`), or a Hangarr-only protection for items that only the media server knows. Protected items are never proposed nor deleted.
 - **Safeguards**: `DRY_RUN=true` by default, tags re-read live before each action, a title to type for a whole series, and a log of every attempt.
 - **Stats** per period and per viewer, **Health** (services checked live, sync history, data gaps) and **Log** (actions and security events).
-- **Synchronization** once a day, or every 1, 2, 3, 4, 6, 8 or 12 hours from a chosen start time, plus **Sync now**. An optional Tautulli webhook refreshes the history after each play.
+- **Synchronization** once a day, or every 1, 2, 3, 4, 6, 8 or 12 hours from the time the setting is saved, plus **Sync now**. An optional Tautulli webhook refreshes the history after each play.
 - Interface in English or French; light and dark themes; three experimental styles (Catppuccin, Lumen, Y2K) in **Settings › General**.
 
 ## Status

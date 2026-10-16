@@ -88,32 +88,23 @@ test("manual sync", async ({ page }) => {
   await expect(page.getByRole("button", { name: "Synchroniser" })).toBeVisible();
 });
 
-test("daily sync time can be changed", async ({ page }) => {
+test("sync frequency starts from the save", async ({ page }) => {
   await page.getByRole("link", { name: "Réglages" }).click();
-  const hour = page.getByLabel("Heure", { exact: true });
-  const minute = page.getByLabel("Minute", { exact: true });
-  await expect(hour).toHaveValue("04");
-  await hour.selectOption("06");
-  // Typing on a focused drop-down picks the value: "4" then "5" gives 45.
-  await minute.focus();
-  await page.keyboard.type("45");
-  await expect(minute).toHaveValue("45");
-  await page.locator("#settings-form").getByRole("button", { name: "Enregistrer" }).click();
-  await expect(page.getByText("Enregistré.", { exact: true })).toBeVisible();
-  await expect(page.getByText(/Prochaine synchronisation : .* 06:45/)).toBeVisible();
-  await page.reload();
-  await expect(page.getByLabel("Heure", { exact: true })).toHaveValue("06");
-  await expect(page.getByLabel("Minute", { exact: true })).toHaveValue("45");
-
-  // Several syncs a day: from the chosen time, every N hours.
+  await expect(page.getByLabel("Heure", { exact: true })).toHaveCount(0);
   await page.getByLabel("Fréquence").selectOption({ label: "Toutes les 6 heures" });
+  // The first sync is the time of the save plus the frequency (wall clock, default TZ Europe/Paris).
+  const saved = await page.evaluate(() => Date.now());
   await page.locator("#settings-form").getByRole("button", { name: "Enregistrer" }).click();
   await expect(page.locator("#settings-form").getByText("Enregistré.", { exact: true })).toBeVisible();
+  const next = await page.locator("#settings-form").getByText(/Prochaine synchronisation : /).textContent();
+  const hhmm = (t: number) =>
+    new Intl.DateTimeFormat("fr-FR", { timeZone: "Europe/Paris", hour: "2-digit", minute: "2-digit" }).format(t);
+  expect([hhmm(saved + 6 * 3600_000), hhmm(saved + 6 * 3600_000 + 60_000)].some((t) => next?.includes(t))).toBe(true);
   await page.reload();
   await expect(page.getByLabel("Fréquence")).toHaveValue("6");
   await page.getByLabel("Fréquence").selectOption({ label: "Une fois par jour" });
   await page.locator("#settings-form").getByRole("button", { name: "Enregistrer" }).click();
-  await expect(page.getByText(/Chaque jour à/)).toHaveCount(0);
+  await expect(page.locator("#settings-form").getByText("Enregistré.", { exact: true })).toBeVisible();
 });
 
 test("cleanup days stepper", async ({ page }) => {

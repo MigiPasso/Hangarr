@@ -85,6 +85,20 @@ func TestSeveralADay(t *testing.T) {
 	}
 }
 
+// LocalNow is the syncer's clock in the time zone of the schedule, whatever
+// the process time zone: the time saved as the start of the syncs.
+func TestLocalNow(t *testing.T) {
+	paris, err := time.LoadLocation("Europe/Paris")
+	if err != nil {
+		t.Fatal(err)
+	}
+	utc := time.Date(2026, 10, 16, 8, 54, 0, 0, time.UTC)
+	s := &Syncer{Now: func() time.Time { return utc }, Location: paris}
+	if got := s.LocalNow(); !got.Equal(utc) || got.Location() != paris || got.Hour() != 10 {
+		t.Errorf("got %s", got)
+	}
+}
+
 func TestCatchUpDue(t *testing.T) {
 	now := time.Unix(1_800_000_000, 0)
 	recent := now.Add(-23 * time.Hour).Unix()

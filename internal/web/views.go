@@ -159,13 +159,6 @@ func (v *views) funcs(l i18n.Localizer, loc *time.Location, protectedTags []stri
 		"inc":         func(i int) int { return i + 1 },
 		"minus":       func(a, b int) int { return a - b },
 		"abandonDays": func() int { return abandonDays },
-		"minutesOfHour": func() []int {
-			m := make([]int, 60)
-			for i := range m {
-				m[i] = i
-			}
-			return m
-		},
 		"hoursOfDay": func() []int {
 			h := make([]int, 24)
 			for i := range h {
@@ -310,7 +303,7 @@ func (s *Server) page(r *http.Request, title, active string, data any) pageData 
 func (s *Server) pageRaw(r *http.Request, title, active string, data any) pageData {
 	l := s.loc(r)
 	pd := pageData{Title: title, Active: active, DryRun: s.Config.DryRun, Version: s.Version, Data: data,
-		Theme: themeFrom(r), Style: styleFrom(r), Palette: paletteFrom(r), SidebarCollapsed: sidebarCollapsed(r), Lang: l.Lang, Path: r.URL.Path}
+		Theme: themeFrom(r), Style: s.styleFrom(r), Palette: s.paletteFrom(r), SidebarCollapsed: sidebarCollapsed(r), Lang: l.Lang, Path: r.URL.Path}
 	if sess := sessionFrom(r); sess != nil {
 		pd.Session = sess
 		pd.CSRFToken = sess.CSRFToken
