@@ -84,3 +84,31 @@ func TestNothingConfigured(t *testing.T) {
 		t.Errorf("files written without any configured service: %v", entries)
 	}
 }
+
+// SEC-15: credentials are masked whatever the field, and Plex identifiers
+// are kept.
+func TestAnonymizerSecrets(t *testing.T) {
+	in := `{"data":{"server_token":"tok-1","pms_token":"tok-2","apiKey":"k-3","api_key":"k-4","password":"p-5",
+		"webhook_secret":"s-6","ratingKey":"123","key":"/library/metadata/123","parentKey":"/library/metadata/12"}}`
+	var doc any
+	if err := json.Unmarshal([]byte(in), &doc); err != nil {
+		t.Fatal(err)
+	}
+	out, _ := json.Marshal(newAnonymizer().walk(doc, false))
+	s := string(out)
+	for _, leak := range []string{"tok-1", "tok-2", "k-3", "k-4", "p-5", "s-6"} {
+		if strings.Contains(s, leak) {
+			t.Errorf("leak %q in %s", leak, s)
+		}
+	}
+	for _, keep := range []string{`"ratingKey":"123"`, `"key":"/library/metadata/123"`, `"parentKey":"/library/metadata/12"`} {
+		if !strings.Contains(s, keep) {
+			t.Errorf("missing %s in %s", keep, s)
+		}
+	}
+	for key, ok := range map[string]bool{"123": true, "abc9": true, "../x": false, "1/2": false, "": false} {
+		if safeKey.MatchString(key) != ok {
+			t.Errorf("safeKey(%q) != %v", key, ok)
+		}
+	}
+}
