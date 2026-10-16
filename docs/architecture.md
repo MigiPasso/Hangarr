@@ -37,7 +37,7 @@ Health checks and the calendar query the services live; their results are not st
 - `cmd/capture-fixtures`: records anonymized responses of the real services into `testdata/captured/`.
 - `internal/actions`: deletions through Sonarr, Radarr or the media server, with dry-run, protection, typed confirmation and the action journal.
 - `internal/auth`: first-start admin account, password policy and hashing, sessions, lockout and rate limits.
-- `internal/clients/httpx`: HTTP layer shared by the API clients: timeouts, retries, bounded bodies, errors without credentials.
+- `internal/clients/httpx`: HTTP layer shared by the API clients: timeouts (a longer one for deletions), retries of `GET`/`HEAD` only, bounded bodies decoded as they arrive, pagination guard, errors without credentials.
 - `internal/clients/sonarr`, `internal/clients/radarr`: clients for the v3 APIs. Structs ignore unknown fields. They also carry the write calls used by the actions.
 - `internal/clients/plex`: Plex Media Server client. Per-library watch counters are deliberately not decoded.
 - `internal/clients/jellyfin`: Jellyfin API client.
@@ -47,6 +47,7 @@ Health checks and the calendar query the services live; their results are not st
 - `internal/i18n`: translation (English and French), number, size and date formatting.
 - `internal/images`: proxy for posters and fanart (Sonarr, Radarr, Plex, Jellyfin), disk cache and resizing.
 - `internal/matching`: pairs server items with Sonarr and Radarr items, and resolves history rows by title.
+- `internal/media`: helpers shared by the store, the actions and the web layer: episode codes, paths of server files, truncation on character boundaries.
 - `internal/mockarr`: fake upstream services built from `testdata/`.
 - `internal/release`: quality hints (such as Remux) read from a video file name.
 - `internal/scoring`: `watch_state` computation. Pure functions; the current time is injected.
