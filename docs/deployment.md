@@ -341,15 +341,25 @@ is not read then: the scheduled sync, or **Sync now**, updates the history inste
   then run `docker compose pull && docker compose up -d`.
 - **Your own build** instead of the published image: run `make image-load` first (it builds `hangarr:local` from the
   sources), then set `HANGARR_IMAGE=hangarr:local` in `.env` and run `docker compose up -d`.
-- **Checking the published image**: each release image is signed with cosign (keyless, from the release workflow) and
-  carries an SBOM and a provenance attestation.
+- **Checking the published image**: each release image is signed with cosign (keyless), only by the release workflow on a
+  release tag.
 
   ```sh
   cosign verify ghcr.io/migipasso/hangarr:vX.Y.Z \
-    --certificate-identity-regexp '^https://github.com/MigiPasso/Hangarr/' \
+    --certificate-identity-regexp '^https://github\.com/MigiPasso/Hangarr/\.github/workflows/release\.yml@refs/tags/v' \
     --certificate-oidc-issuer https://token.actions.githubusercontent.com
+  ```
+
+  The image also carries an SBOM and a provenance attestation (BuildKit). They are stored in the image index and are not
+  signed separately by cosign (`cosign verify-attestation` does not apply). Inspect them with:
+
+  ```sh
+  docker buildx imagetools inspect ghcr.io/migipasso/hangarr:vX.Y.Z --format '{{ json .Provenance }}'
   docker buildx imagetools inspect ghcr.io/migipasso/hangarr:vX.Y.Z --format '{{ json .SBOM }}'
   ```
+
+  For reproducible deployments, pin the image by digest (`HANGARR_IMAGE=ghcr.io/migipasso/hangarr@sha256:…`, the digest
+  is printed by `docker buildx imagetools inspect`) rather than by tag.
 - **Downgrades** are refused: a database migrated by a more recent release stops an older one at startup. Restore the
   backup made before the upgrade instead.
 

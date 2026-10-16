@@ -36,7 +36,7 @@ Run `make verify` before opening a pull request. Run `make e2e` (or `make verify
 
 ### Continuous integration
 
-`.github/workflows/ci.yml` runs `make verify` and `make e2e` (two parallel jobs, together equivalent to `make verify E2E=1`), `make deploy-check`, `make k8s-check`, `make vulncheck`, `make scan`, `make fuzz` and `make secret-scan` on pushes to `main` and on pull requests. It uses a read-only token and no secrets. `.github/workflows/release.yml` publishes the image to GHCR when a `v*` tag is pushed, only after `make verify`, `make e2e` and `make scan` pass on the tagged commit; the image carries an SBOM and a provenance attestation and is signed with cosign (keyless).
+`.github/workflows/ci.yml` runs `make verify` and `make e2e` (two parallel jobs, together equivalent to `make verify E2E=1`), `make deploy-check`, `make k8s-check`, `make vulncheck`, `make scan`, `make fuzz` and `make secret-scan` on pushes to `main` and on pull requests. It uses a read-only token and no secrets. `.github/workflows/release.yml` publishes the image to GHCR when a `v*` tag is pushed, only after `make verify`, `make e2e` and `make scan` pass on the tagged commit; the image is signed with cosign (keyless) and carries BuildKit SBOM and provenance attestations, which are not signed separately.
 
 ### Development sign-in
 
