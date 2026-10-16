@@ -28,6 +28,7 @@ type SyncRunner interface {
 	Schedule() syncer.Schedule
 	SetSchedule(sc syncer.Schedule)
 	NextRun() time.Time
+	LocalNow() time.Time
 }
 
 var (

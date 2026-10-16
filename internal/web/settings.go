@@ -3,7 +3,6 @@ package web
 import (
 	"net/http"
 	"strconv"
-	"time"
 
 	"hangarr/internal/i18n"
 	"hangarr/internal/store"
@@ -49,7 +48,7 @@ func (s *Server) settingsSubmit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// The syncs start from the time of the save, then follow the frequency.
-	now := time.Now().In(s.Config.Location)
+	now := s.Sync.LocalNow()
 	at := syncer.ClockTime{Hour: now.Hour(), Minute: now.Minute()}
 	if err := s.Store.SetSetting(r.Context(), store.SettingSyncTime, at.String(), now); err != nil {
 		s.serverError(w, r, err)

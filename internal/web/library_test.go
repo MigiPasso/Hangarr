@@ -49,7 +49,7 @@ func newLibEnvDry(t *testing.T, pageSize int, dryRun bool) *libEnv {
 		log := slog.New(slog.NewTextHandler(io.Discard, nil))
 		sy := &syncer.Syncer{
 			Store: d.Store, Upstreams: upstream.NewRegistry(upstream.Build(upstream.TestValues(urls, "k"), "auto")),
-			Log: log, AbandonDays: 90,
+			Log: log, AbandonDays: 90, Location: d.Config.Location,
 		}
 		if _, err := sy.Run(context.Background()); err != nil {
 			t.Fatal(err)
