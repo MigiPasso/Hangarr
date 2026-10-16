@@ -38,13 +38,13 @@ General rules:
 
 | Variable | Default | Description |
 |---|---|---|
-| `SYNC_TIME` | `04:00` | Start time of the daily sync, `HH:MM` (24-hour clock, in `TZ`). Used until a start time is saved in **Settings › General**; the saved value then takes precedence. |
+| `SYNC_TIME` | `04:00` | Start time of the syncs, `HH:MM` (24-hour clock, in `TZ`), until the frequency is saved in **Settings › General**: from then on, the syncs start from the time of the save. |
 | `TZ` | `Europe/Paris` | Time zone of the sync schedule and of the dates shown in the interface, as an IANA name (for example `America/New_York`). The time zone data is built into the binary. |
 | `HISTORY_SOURCE` | `auto` | Source of the watch history: `auto`, `merged`, `tautulli` or `plex` (case ignored). See [History sources](#history-sources). |
 
 The sync frequency is set in **Settings › General**: every 24, 12, 8, 6, 4, 3, 2 or 1 hours (once a day by default).
-The syncs repeat at the same times each day: with a frequency of 6 hours and a start time of `04:00`, they run at
-04:00, 10:00, 16:00 and 22:00. When the application starts and the last sync is older than the interval (or none has
+The syncs start from the time of the save and repeat at the same times each day: saved at `04:00` with a frequency of
+6 hours, they run at 04:00, 10:00, 16:00 and 22:00. When the application starts and the last sync is older than the interval (or none has
 run yet), a sync runs immediately.
 
 ### Authentication and sessions

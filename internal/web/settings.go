@@ -1,10 +1,8 @@
 package web
 
 import (
-	"fmt"
 	"net/http"
 	"strconv"
-	"strings"
 	"time"
 
 	"hangarr/internal/i18n"
@@ -13,10 +11,8 @@ import (
 )
 
 type settingsData struct {
-	Hour    string // "04"
-	Minute  string // "00"
-	Every   int    // hours between syncs (24: once a day)
-	Choices []int  // allowed intervals
+	Every   int   // hours between syncs (24: once a day)
+	Choices []int // allowed intervals
 	NextRun string
 	Error   string
 	Saved   bool
@@ -31,9 +27,7 @@ type settingsPage struct {
 func (s *Server) settingsData(l i18n.Localizer, errMsg string, saved bool) settingsData {
 	d := settingsData{Error: errMsg, Saved: saved, Choices: syncer.EveryHours}
 	if s.Sync != nil {
-		sc := s.Sync.Schedule()
-		at := sc.At
-		d.Hour, d.Minute, d.Every = fmt.Sprintf("%02d", at.Hour), fmt.Sprintf("%02d", at.Minute), sc.EveryHours
+		d.Every = s.Sync.Schedule().EveryHours
 		d.NextRun = l.DateTime(s.Sync.NextRun()) // already in the schedule time zone
 	}
 	return d
@@ -44,21 +38,9 @@ func (s *Server) settingsPage(w http.ResponseWriter, r *http.Request) {
 	s.render(w, r, http.StatusOK, "settings", "", s.page(r, "Settings", "settings", data))
 }
 
-// parseClockFields reads the hour and minute fields; both accept one or two
-// digits ("4" and "04"), typed or picked from the suggestions.
-func parseClockFields(hour, minute string) (syncer.ClockTime, bool) {
-	h, herr := strconv.Atoi(strings.TrimSpace(hour))
-	m, merr := strconv.Atoi(strings.TrimSpace(minute))
-	if herr != nil || merr != nil || h < 0 || h > 23 || m < 0 || m > 59 {
-		return syncer.ClockTime{}, false
-	}
-	return syncer.ClockTime{Hour: h, Minute: m}, true
-}
-
 func (s *Server) settingsSubmit(w http.ResponseWriter, r *http.Request) {
-	at, ok := parseClockFields(r.PostFormValue("sync_hour"), r.PostFormValue("sync_minute"))
-	if !ok || s.Sync == nil {
-		s.renderSettings(w, r, http.StatusUnprocessableEntity, "Invalid time: hour 0 to 23, minute 0 to 59.", false)
+	if s.Sync == nil {
+		http.NotFound(w, r)
 		return
 	}
 	every := 24 // field absent (older form): once a day
@@ -70,7 +52,9 @@ func (s *Server) settingsSubmit(w http.ResponseWriter, r *http.Request) {
 		}
 		every = n
 	}
-	now := time.Now()
+	// The syncs start from the time of the save, then follow the frequency.
+	now := time.Now().In(s.Config.Location)
+	at := syncer.ClockTime{Hour: now.Hour(), Minute: now.Minute()}
 	if err := s.Store.SetSetting(r.Context(), store.SettingSyncTime, at.String(), now); err != nil {
 		s.serverError(w, r, err)
 		return

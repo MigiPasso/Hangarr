@@ -296,49 +296,37 @@ func TestSyncEndpoints(t *testing.T) {
 func TestSettingsSyncTime(t *testing.T) {
 	e := newLibEnv(t, 0)
 	r := e.do(e.c, "GET", "/settings", nil, nil)
-	if r.status != http.StatusOK || !strings.Contains(r.body, `<select id="sync_hour" name="sync_hour" required>`) ||
-		!strings.Contains(r.body, `<option value="00" selected>00</option>`) || !strings.Contains(r.body, `<option value="59">59</option>`) ||
-		!strings.Contains(r.body, "Prochaine synchronisation") {
+	if r.status != http.StatusOK || strings.Contains(r.body, "sync_hour") || !strings.Contains(r.body, "Prochaine synchronisation") {
 		t.Fatalf("settings page: %d", r.status)
 	}
-	tok := csrfFrom(t, r.body)
-	if r := e.do(e.c, "POST", "/settings", url.Values{"sync_hour": {"6"}, "sync_minute": {"15"}}, nil); r.status != http.StatusForbidden {
-		t.Errorf("without csrf: %d", r.status)
-	}
-	for _, bad := range [][2]string{{"25", "00"}, {"6", "60"}, {"", "10"}, {"six", "00"}} {
-		r := e.do(e.c, "POST", "/settings", url.Values{"csrf_token": {tok}, "sync_hour": {bad[0]}, "sync_minute": {bad[1]}}, nil)
-		if r.status != http.StatusUnprocessableEntity || !strings.Contains(r.body, "Heure invalide") {
-			t.Errorf("%v: %d", bad, r.status)
-		}
-	}
-	// One digit is accepted too (forms posted without the page).
-	r = e.do(e.c, "POST", "/settings", url.Values{"csrf_token": {tok}, "sync_hour": {"6"}, "sync_minute": {"7"}},
-		map[string]string{"HX-Request": "true"})
-	if r.status != http.StatusOK || !strings.Contains(r.body, `<option value="06" selected>`) ||
-		!strings.Contains(r.body, `<option value="07" selected>`) ||
-		!strings.Contains(r.body, " 06:07") || strings.Contains(r.body, "<html") {
-		t.Fatalf("save: %d %s", r.status, r.body)
-	}
-	if v, _ := e.srv.Store.Setting(context.Background(), "sync_time", ""); v != "06:07" {
-		t.Errorf("stored %q", v)
-	}
-
-	// Several syncs a day.
 	if !strings.Contains(r.body, `<option value="24" selected>Une fois par jour</option>`) {
 		t.Error("default: once a day")
 	}
-	r = e.do(e.c, "POST", "/settings", url.Values{"csrf_token": {tok}, "sync_hour": {"6"}, "sync_minute": {"7"}, "sync_every": {"8"}},
+	tok := csrfFrom(t, r.body)
+	if r := e.do(e.c, "POST", "/settings", url.Values{"sync_every": {"8"}}, nil); r.status != http.StatusForbidden {
+		t.Errorf("without csrf: %d", r.status)
+	}
+	// The start time is the time of the save; the frequency follows from it.
+	before := time.Now().In(e.srv.Config.Location).Truncate(time.Minute)
+	r = e.do(e.c, "POST", "/settings", url.Values{"csrf_token": {tok}, "sync_every": {"8"}},
 		map[string]string{"HX-Request": "true"})
-	// The next run follows the frequency; the list of the day's times is not shown.
+	after := time.Now().In(e.srv.Config.Location)
 	if r.status != http.StatusOK || !strings.Contains(r.body, `<option value="8" selected>Toutes les 8 heures</option>`) ||
-		strings.Contains(r.body, "14:07, 22:07") {
+		strings.Contains(r.body, "<html") {
 		t.Fatalf("every 8 hours: %d %s", r.status, r.body)
 	}
 	if v, _ := e.srv.Store.Setting(context.Background(), "sync_every_hours", ""); v != "8" {
 		t.Errorf("stored interval %q", v)
 	}
+	v, _ := e.srv.Store.Setting(context.Background(), "sync_time", "")
+	if v != before.Format("15:04") && v != after.Format("15:04") {
+		t.Errorf("stored start %q, saved at %s", v, before.Format("15:04"))
+	}
+	if next := e.srv.Sync.NextRun(); next.Before(before.Add(8*time.Hour)) || next.After(after.Add(8*time.Hour)) {
+		t.Errorf("next run %s, saved at %s", next, before)
+	}
 	for _, bad := range []string{"5", "0", "x", "48"} {
-		r := e.do(e.c, "POST", "/settings", url.Values{"csrf_token": {tok}, "sync_hour": {"6"}, "sync_minute": {"7"}, "sync_every": {bad}}, nil)
+		r := e.do(e.c, "POST", "/settings", url.Values{"csrf_token": {tok}, "sync_every": {bad}}, nil)
 		if r.status != http.StatusUnprocessableEntity || !strings.Contains(r.body, "Fréquence invalide.") {
 			t.Errorf("every=%s: %d", bad, r.status)
 		}

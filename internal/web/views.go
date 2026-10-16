@@ -159,13 +159,6 @@ func (v *views) funcs(l i18n.Localizer, loc *time.Location, protectedTags []stri
 		"inc":         func(i int) int { return i + 1 },
 		"minus":       func(a, b int) int { return a - b },
 		"abandonDays": func() int { return abandonDays },
-		"minutesOfHour": func() []int {
-			m := make([]int, 60)
-			for i := range m {
-				m[i] = i
-			}
-			return m
-		},
 		"hoursOfDay": func() []int {
 			h := make([]int, 24)
 			for i := range h {

@@ -129,7 +129,6 @@ func TestFrenchCatalogComplete(t *testing.T) {
 		"not found", "in %s only", "already protected", "protected by a tag", // batch exclusions
 		"No item selected.", "Invalid selection.", "No deletable item in the selection.",
 		"The number typed does not match the number of items to delete.",
-		"Invalid time: hour 0 to 23, minute 0 to 59.",
 		"Expected an http(s) address, e.g. http://host:port.", "At least 32 characters.",
 		"This is the address of a page (/login, /movie/…): keep only the address of the application.",
 		"The address changed: type the credential again.",

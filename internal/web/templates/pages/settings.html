@@ -58,28 +58,11 @@
     <div>
       <label for="sync_every" class="setting-label">{{t "Frequency"}}</label>
       <p id="sync-every-help" class="setting-help">{{if eq (server) "Jellyfin"}}{{t "Each sync reads every library again: a few a day is plenty."}}{{else}}{{t "Each sync reads every library again: a few a day is plenty, Tautulli's webhook already refreshes the history after each play."}}{{end}}</p>
+      {{with $s.Error}}<p id="sync-every-error" class="field-error">{{t .}}</p>{{end}}
     </div>
     <div class="setting-control">
-      <select id="sync_every" name="sync_every" aria-describedby="sync-every-help">
+      <select id="sync_every" name="sync_every" aria-describedby="sync-every-help{{if $s.Error}} sync-every-error{{end}}"{{if $s.Error}} aria-invalid="true"{{end}}>
         {{range $s.Choices}}<option value="{{.}}"{{if eq . $s.Every}} selected{{end}}>{{if eq . 24}}{{t "Once a day"}}{{else if eq . 1}}{{t "Every hour"}}{{else}}{{t "Every %d hours" .}}{{end}}</option>{{end}}
-      </select>
-    </div>
-  </div>
-  <div class="setting" role="group" aria-labelledby="sync-time-label" aria-describedby="sync-time-help{{if $s.Error}} sync-time-error{{end}}">
-    <div>
-      <span id="sync-time-label" class="setting-label">{{t "Start time"}}</span>
-      <p id="sync-time-help" class="setting-help">{{t "The day's first sync; the next ones follow at the chosen frequency."}}</p>
-      {{with $s.Error}}<p id="sync-time-error" class="field-error">{{t .}}</p>{{end}}
-    </div>
-    <div class="setting-control clock">
-      <label for="sync_hour" class="visually-hidden">{{t "Hour"}}</label>
-      <select id="sync_hour" name="sync_hour" required{{if $s.Error}} aria-invalid="true"{{end}}>
-        {{range hoursOfDay}}{{$v := printf "%02d" .}}<option value="{{$v}}"{{if eq $v $s.Hour}} selected{{end}}>{{$v}}</option>{{end}}
-      </select>
-      <span aria-hidden="true">:</span>
-      <label for="sync_minute" class="visually-hidden">{{t "Minute"}}</label>
-      <select id="sync_minute" name="sync_minute" required{{if $s.Error}} aria-invalid="true"{{end}}>
-        {{range minutesOfHour}}{{$v := printf "%02d" .}}<option value="{{$v}}"{{if eq $v $s.Minute}} selected{{end}}>{{$v}}</option>{{end}}
       </select>
     </div>
   </div>
