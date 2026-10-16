@@ -55,6 +55,9 @@ Open `http://<host>:8080` (or `http://localhost:8080`). The published port is `H
 - **Plain HTTP on the local network**: set `COOKIE_SECURE=false` in `.env`. Otherwise the browser refuses the session
   cookie, and the sign-in page says so. On `localhost` this is not needed.
 - **Behind an HTTPS reverse proxy**: keep `COOKIE_SECURE=true` and set the address of the proxy in `TRUSTED_PROXIES`.
+- **Plain HTTP under a domain name** (such as `http://nas.example.com:8080`): add the name to `ALLOWED_HOSTS`. Over plain
+  HTTP, Hangarr only answers local names (IP addresses, `localhost`, names without a dot, `.lan`, `.local`…) and refuses
+  the others with `421 Misdirected Request`, which blocks DNS rebinding.
 - **Same network as the *arr stack**: in `compose.yml`, uncomment `networks: [default, arr]` in the `hangarr` service,
   and the top-level `networks` block at the end of the file. Set `name:` to your stack's network (`docker network ls`).
   Sonarr is then reachable at `http://sonarr:8989`, and Tautulli can call `http://hangarr:8080/webhooks/tautulli`.
@@ -134,7 +137,7 @@ Then open `http://localhost:8080`. Keep `COOKIE_SECURE: "true"` in the ConfigMap
 `localhost`.
 
 For access through an HTTPS Ingress, keep `COOKIE_SECURE: "true"` and set `TRUSTED_PROXIES` to the CIDR of the ingress
-controller pods. Example with the Tailscale Kubernetes operator (an example, not a requirement; adapt it to your
+controller pods (without it, the Ingress host name is refused with `421`, unless it is listed in `ALLOWED_HOSTS`). Example with the Tailscale Kubernetes operator (an example, not a requirement; adapt it to your
 ingress controller):
 
 ```yaml

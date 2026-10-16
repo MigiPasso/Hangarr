@@ -147,7 +147,7 @@ func (s *Server) Handler() http.Handler {
 	// anything to anonymous users.
 	mux.Handle("/", s.authed(s.notFound, 0))
 
-	return s.recoverer(s.logRequests(s.securityHeaders(limitBody(mux))))
+	return s.recoverer(s.logRequests(s.securityHeaders(s.checkHost(limitBody(mux)))))
 }
 
 // Run serves on addr until ctx is canceled, then shuts down gracefully:

@@ -77,10 +77,13 @@ type Config struct {
 	// HSTSIncludeSubdomains adds includeSubDomains to HSTS (off: HTTPS would
 	// be forced on every service under the domain for a year).
 	HSTSIncludeSubdomains bool
-	SessionIdleTimeout    time.Duration
-	SessionMaxAge         time.Duration
-	TrustedProxies        []netip.Prefix
-	LoginMaxPerIP         int
+	// AllowedHosts are the host names accepted over plain HTTP besides the
+	// local ones (ALLOWED_HOSTS; "*" accepts any).
+	AllowedHosts       []string
+	SessionIdleTimeout time.Duration
+	SessionMaxAge      time.Duration
+	TrustedProxies     []netip.Prefix
+	LoginMaxPerIP      int
 	// Retention of the security log and of the actions log (0: kept).
 	AuthEventsRetentionDays int
 	ActionLogRetentionDays  int
@@ -159,6 +162,13 @@ func (l *loader) password(key string) string {
 			return ""
 		}
 		return strings.TrimSuffix(strings.TrimSuffix(string(b), "\n"), "\r")
+	}
+	return v
+}
+
+func lowerList(v []string) []string {
+	for i := range v {
+		v[i] = strings.ToLower(strings.TrimSuffix(strings.TrimSpace(v[i]), "."))
 	}
 	return v
 }
@@ -263,6 +273,7 @@ func Load(lookup LookupFunc, readFile ReadFileFunc) (*Config, error) {
 		AdminUsername:         l.str("ADMIN_USERNAME", "admin"),
 		CookieSecure:          l.boolean("COOKIE_SECURE", true),
 		HSTSIncludeSubdomains: l.boolean("HSTS_INCLUDE_SUBDOMAINS", false),
+		AllowedHosts:          lowerList(splitList(l.str("ALLOWED_HOSTS", ""))),
 		SessionIdleTimeout:    l.duration("SESSION_IDLE_TIMEOUT", 12*time.Hour, time.Minute),
 		SessionMaxAge:         l.duration("SESSION_MAX_AGE", 168*time.Hour, time.Minute),
 		LoginMaxPerIP:         l.integer("LOGIN_MAX_PER_IP", 10, 1),

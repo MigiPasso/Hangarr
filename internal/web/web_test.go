@@ -588,3 +588,53 @@ func TestRecovererAfterHeaders(t *testing.T) {
 		t.Error("the client must see the answer fail")
 	}
 }
+
+// SEC-05: over plain HTTP, only local host names are served (DNS
+// rebinding); HTTPS through a trusted proxy, probes and ALLOWED_HOSTS pass.
+func TestHostCheck(t *testing.T) {
+	h := newHarness(t, func(c *config.Config) {
+		c.AllowedHosts = []string{"hangarr.example.com"}
+		c.TrustedProxies = []netip.Prefix{netip.MustParsePrefix("127.0.0.1/32"), netip.MustParsePrefix("::1/128")}
+	})
+	for host, want := range map[string]int{
+		"evil.example.net":         http.StatusMisdirectedRequest,
+		"evil.example.net:8080":    http.StatusMisdirectedRequest,
+		"hangarr.example.com:8080": http.StatusOK,
+		"HANGARR.example.com.":     http.StatusOK,
+		"localhost:8080":           http.StatusOK,
+		"192.168.1.10:8080":        http.StatusOK,
+		"[fd00::10]:8080":          http.StatusOK,
+		"hangarr:8080":             http.StatusOK,
+		"nas.lan":                  http.StatusOK,
+		"nas.home.arpa":            http.StatusOK,
+	} {
+		req, _ := http.NewRequest(http.MethodGet, h.ts.URL+"/login", nil)
+		req.Host = host
+		res, err := h.client().Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_ = res.Body.Close()
+		if res.StatusCode != want {
+			t.Errorf("%s: %d, want %d", host, res.StatusCode, want)
+		}
+	}
+	for _, tc := range []struct {
+		path  string
+		proto string
+	}{{"/healthz", ""}, {"/login", "https"}} {
+		req, _ := http.NewRequest(http.MethodGet, h.ts.URL+tc.path, nil)
+		req.Host = "evil.example.net"
+		if tc.proto != "" {
+			req.Header.Set("X-Forwarded-Proto", tc.proto)
+		}
+		res, err := h.client().Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_ = res.Body.Close()
+		if res.StatusCode != http.StatusOK {
+			t.Errorf("%s %s: %d", tc.path, tc.proto, res.StatusCode)
+		}
+	}
+}

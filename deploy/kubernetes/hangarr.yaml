@@ -31,6 +31,10 @@ data:
   # CIDR of the ingress controller / proxy pods allowed to send
   # X-Forwarded-For (empty: the TCP peer is the client).
   TRUSTED_PROXIES: ""
+  # Host names served over plain HTTP besides the local ones (IPs, names
+  # without a dot, .lan, .local...); HTTPS through TRUSTED_PROXIES is not
+  # checked. Others get 421 (DNS rebinding protection).
+  ALLOWED_HOSTS: ""
   LOG_FORMAT: "json"
 ---
 apiVersion: v1
