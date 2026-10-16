@@ -435,6 +435,7 @@ var actionErrors = []struct {
 	{actions.ErrJellyfinDeletionDenied, "Jellyfin refused the deletion: check that its API key may delete media."},
 	{actions.ErrInactiveServer, "Known only by the media server that is not in use: nothing is done."},
 	{actions.ErrServerConflict, "Plex and Jellyfin are both configured: clear one of them first."},
+	{actions.ErrStopping, "Hangarr is stopping: nothing was sent. Try again once it has restarted."},
 	{actions.ErrArrCatalogUnhealthy, "The last Sonarr/Radarr catalog sync failed or was refused: nothing is deleted through the media server until it succeeds (see Health)."},
 	{actions.ErrUnmonitorAfterDelete, "Files deleted, but the season could not be unmonitored: Sonarr may download it again."},
 }
@@ -508,6 +509,10 @@ func (s *Server) deleteSubmit(kind string) http.HandlerFunc {
 		level := "success"
 		if res.DryRun {
 			level = "info"
+		}
+		if res.Warning != nil {
+			// Done, but not entirely: say what is left to do.
+			msg, level = msg+" "+explain(l, res.Warning, "%s"), "info"
 		}
 		trigger := map[string]any{
 			"hangarr:toast": map[string]any{"message": msg, "level": level},

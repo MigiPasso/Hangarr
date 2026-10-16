@@ -819,4 +819,6 @@ var fr = map[string]string{ //nolint:gosec // G101: UI texts mentioning keys and
 	"Sonarr catalog refused": "Catalogue Sonarr refusé",
 	"The last answer lacks many of the stored items, so it was not applied: the previous catalog and its protection tags are kept, and nothing is deleted through the media server. Check the instance, then accept the new catalog only if it is right: the missing items will be removed from Hangarr.": "La dernière réponse ne contient pas une grande partie des éléments connus : elle n'a pas été appliquée. L'ancien catalogue et ses tags de protection sont conservés, et rien n'est supprimé via le serveur média. Vérifiez l'instance, puis acceptez le nouveau catalogue seulement s'il est juste : les éléments manquants seront retirés de Hangarr.",
 	"Accept the new catalog": "Accepter le nouveau catalogue",
+	"Hangarr is stopping: nothing was sent. Try again once it has restarted.": "Hangarr s'arrête : rien n'a été envoyé. Réessayez après son redémarrage.",
+	"Interrupted: check whether it was done":                                  "Interrompu : vérifiez si c'est fait",
 }

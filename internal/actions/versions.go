@@ -56,6 +56,7 @@ type VersionResult struct {
 	DryRun    bool
 	// RadarrFile: it was Radarr's file (Radarr will see the movie missing).
 	RadarrFile bool
+	Note       string // see Result.Note
 }
 
 // liveVersion is a version as the media server lists it now.
@@ -71,6 +72,10 @@ type liveVersion struct {
 // download the file again. Deletions run one at a time: two at once could
 // each see the other version and delete both.
 func (s *Service) DeleteVersion(ctx context.Context, req VersionRequest) (*VersionResult, error) {
+	if !s.enter() {
+		return nil, ErrStopping
+	}
+	defer s.leave()
 	s.versionMu.Lock()
 	defer s.versionMu.Unlock()
 	up := s.Upstreams.Get()
@@ -110,10 +115,14 @@ func (s *Service) DeleteVersion(ctx context.Context, req VersionRequest) (*Versi
 	if errors.Is(err, ErrRadarrConfirm) {
 		return nil, err // a question to the user, not an attempt
 	}
-	if err == nil && !s.DryRun {
-		err = s.sendVersionDeletion(ctx, up, server, v, wholeItem)
+	id, jerr := s.journalVersionBegin(ctx, g, v, req)
+	if jerr != nil {
+		return nil, jerr // nothing sent without its journal entry
 	}
-	s.journalVersion(ctx, g, v, req, err)
+	if err == nil && !s.DryRun {
+		res.Note, err = s.sendVersionDeletion(ctx, up, server, v, wholeItem)
+	}
+	s.journalVersionEnd(ctx, id, g, v, req, res, err)
 	if err != nil {
 		return nil, err
 	}
@@ -286,13 +295,32 @@ func (s *Service) liveVersions(ctx context.Context, up *upstream.Clients, server
 // one; Jellyfin deletes the item (checkVersion made sure it holds no other
 // version).
 func (s *Service) sendVersionDeletion(ctx context.Context, up *upstream.Clients, server string,
-	v *store.DuplicateVersion, wholeItem bool) error {
-	var err error
+	v *store.DuplicateVersion, wholeItem bool) (note string, err error) {
 	denied := ErrPlexDeletionDenied
+	// gone checks the version is no longer listed, after a deletion without answer.
+	gone := func(ctx context.Context) (bool, error) {
+		it, err := up.Plex.Metadata(ctx, v.ItemKey)
+		if isNotFound(err) {
+			return true, nil
+		}
+		if err != nil {
+			return false, err
+		}
+		for _, m := range it.Media {
+			if fmt.Sprint(int64(m.ID)) == v.VersionKey {
+				return false, nil
+			}
+		}
+		return true, nil
+	}
 	switch {
 	case server == store.ServerJellyfin:
 		denied = ErrJellyfinDeletionDenied
 		err = up.Jellyfin.DeleteItem(ctx, v.ItemKey)
+		gone = func(ctx context.Context) (bool, error) {
+			items, err := up.Jellyfin.Versions(ctx, []string{v.ItemKey})
+			return err == nil && len(items) == 0, err
+		}
 	case wholeItem:
 		err = up.Plex.DeleteItem(ctx, v.ItemKey)
 	default:
@@ -301,11 +329,11 @@ func (s *Service) sendVersionDeletion(ctx context.Context, up *upstream.Clients,
 	var se *httpx.StatusError
 	switch {
 	case errors.As(err, &se) && (se.Status == http.StatusUnauthorized || se.Status == http.StatusForbidden):
-		return denied
+		return "", denied
 	case isNotFound(err):
-		return fmt.Errorf("%w in %s", ErrNotFound, up.ServerLabel())
+		return "", fmt.Errorf("%w in %s", ErrNotFound, up.ServerLabel())
 	}
-	return err
+	return s.confirmGone(ctx, err, gone)
 }
 
 // afterVersionDeletion updates local data: the version is forgotten (its
@@ -331,27 +359,38 @@ func (s *Service) afterVersionDeletion(ctx context.Context, up *upstream.Clients
 	}
 }
 
-// journalVersion records a version deletion attempt in action_log and in the
-// logs; the title names the file.
-func (s *Service) journalVersion(ctx context.Context, g *store.DuplicateGroup, v *store.DuplicateVersion,
-	req VersionRequest, err error) {
+// journalVersionBegin writes a version deletion attempt to action_log
+// (pending) before anything is sent; the title names the file.
+func (s *Service) journalVersionBegin(ctx context.Context, g *store.DuplicateGroup, v *store.DuplicateVersion,
+	req VersionRequest) (int64, error) {
 	title := g.Title
 	if name := baseOf(v.File); name != "" {
 		title += " (" + name + ")"
 	}
-	entry := store.Action{
+	id, err := s.Store.BeginAction(context.WithoutCancel(ctx), store.Action{
 		At: s.now().Unix(), Action: DeleteVersion, MediaKind: "movie", ArrID: g.ArrID, Title: title,
-		SizeFreedBytes: v.SizeBytes, DeleteFiles: true, DryRun: s.DryRun, Success: err == nil, Username: req.Username,
-	}
+		DeleteFiles: true, DryRun: s.DryRun, Username: req.Username,
+	})
 	if err != nil {
-		entry.SizeFreedBytes = 0
-		entry.Error = err.Error()
+		s.Log.Error("action not journaled: nothing sent", "title", title, "err", err)
+		return 0, fmt.Errorf("journal: %w", err)
 	}
-	if lerr := s.Store.AddAction(context.WithoutCancel(ctx), entry); lerr != nil {
-		s.Log.Error("action not journaled", "err", lerr)
+	return id, nil
+}
+
+// journalVersionEnd records the outcome of a version deletion attempt in
+// action_log and in the logs.
+func (s *Service) journalVersionEnd(ctx context.Context, id int64, g *store.DuplicateGroup, v *store.DuplicateVersion,
+	req VersionRequest, res *VersionResult, err error) {
+	size, msg := v.SizeBytes, res.Note
+	if err != nil {
+		size, msg = 0, err.Error()
+	}
+	if lerr := s.Store.FinishAction(context.WithoutCancel(ctx), id, err == nil, size, msg); lerr != nil {
+		s.Log.Error("action outcome not journaled", "err", lerr)
 	}
 	s.Log.Info("version deletion", "title", g.Title, "file", v.File, "dry_run", s.DryRun,
-		"success", err == nil, "err", err, "user", req.Username)
+		"success", err == nil, "err", err, "note", res.Note, "user", req.Username)
 }
 
 // baseOf is the file name of a path written with / or \ (Windows servers).

@@ -895,3 +895,38 @@ func TestFullSyncStoresDuplicateVersionsJellyfin(t *testing.T) {
 		t.Errorf("jellyfin versions: got %+v, want %+v", got, want)
 	}
 }
+
+// BUG-13: a sync does not write its catalogs while a deletion runs, and does
+// not bring back what was deleted after it read Radarr.
+func TestSyncSkipsItemsDeletedMeanwhile(t *testing.T) {
+	e := newEnv(t)
+	e.run()
+	ctx := context.Background()
+	end := e.s.BeginDeletion()
+	done := make(chan error, 1)
+	go func() {
+		_, err := e.s.Run(ctx)
+		done <- err
+	}()
+	select {
+	case err := <-done:
+		end()
+		t.Fatalf("the sync finished while a deletion ran: %v", err)
+	case <-time.After(300 * time.Millisecond):
+	}
+	// The deletion (Tenet, Radarr id 3) is journaled; the mock still lists it.
+	if err := e.store.AddAction(ctx, store.Action{At: e.s.Now().Unix(), Action: "delete_movie", MediaKind: "movie",
+		ArrID: 3, Title: "Tenet", DeleteFiles: true, Success: true}); err != nil {
+		t.Fatal(err)
+	}
+	end()
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+	if n := e.count(`SELECT COUNT(*) FROM media WHERE kind = 'movie' AND arr_id = 3`); n != 0 {
+		t.Error("the deleted movie came back with the sync")
+	}
+	if n := e.count(`SELECT COUNT(*) FROM media WHERE kind = 'movie' AND arr_id IS NOT NULL`); n != 4 {
+		t.Errorf("other movies: %d, want 4", n)
+	}
+}

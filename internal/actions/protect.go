@@ -48,6 +48,10 @@ type ProtectResult struct {
 // tag. The object is read live and sent back whole (PUT), like the season
 // unmonitoring. Every attempt that reaches Sonarr/Radarr is journaled.
 func (s *Service) SetProtected(ctx context.Context, req ProtectRequest) (*ProtectResult, error) {
+	if !s.enter() {
+		return nil, ErrStopping
+	}
+	defer s.leave()
 	m, err := s.Store.MediaByID(ctx, req.MediaID)
 	if errors.Is(err, store.ErrNotFound) {
 		return nil, ErrNotFound

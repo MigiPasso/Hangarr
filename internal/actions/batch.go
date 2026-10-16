@@ -31,25 +31,38 @@ type BatchOptions struct {
 // confirmation was done once for the whole batch. The media server is
 // refreshed once at the end. A failure does not stop the others.
 func (s *Service) DeleteBatch(ctx context.Context, ids []int64, opt BatchOptions) []BatchItem {
-	// Finish the batch even if the client goes away: half-done batches are
-	// harder to understand than a complete journal.
-	ctx = context.WithoutCancel(ctx)
 	out := make([]BatchItem, 0, len(ids))
+	if !s.enter() {
+		for _, id := range ids {
+			out = append(out, s.batchItem(ctx, id, ErrStopping))
+		}
+		return out
+	}
+	defer s.leave()
+	// Finish the batch even if the client goes away: half-done batches are
+	// harder to understand than a complete journal. A shutdown (Stop) ends
+	// it before the next item instead.
+	ctx = context.WithoutCancel(ctx)
 	kinds := map[string]bool{}
 	for _, id := range ids {
-		it := BatchItem{MediaID: id}
-		if m, err := s.Store.MediaByID(ctx, id); err == nil {
-			it.Kind, it.Title = m.Kind, m.Title
+		if s.Stopping() {
+			out = append(out, s.batchItem(ctx, id, ErrStopping))
+			continue
 		}
 		res, err := s.Delete(ctx, Request{MediaID: id, DeleteFiles: opt.DeleteFiles, ImportExclusion: opt.ImportExclusion,
-			Confirmed: true, SkipServerRefresh: true, Username: opt.Username})
+			Confirmed: true, SkipServerRefresh: true, SkipRecompute: true, Username: opt.Username})
 		if err != nil {
-			it.Err = err
-		} else {
-			it.OK, it.SizeFreed, it.Kind, it.Title = true, res.SizeFreed, res.Kind, res.Title
-			kinds[res.Kind] = true
+			out = append(out, s.batchItem(ctx, id, err))
+			continue
 		}
-		out = append(out, it)
+		out = append(out, BatchItem{MediaID: id, OK: true, SizeFreed: res.SizeFreed, Kind: res.Kind, Title: res.Title})
+		kinds[res.Kind] = true
+	}
+	if !s.DryRun && len(kinds) > 0 {
+		// Once for the whole batch, not after each item.
+		if err := s.Refresher.Recompute(ctx); err != nil {
+			s.Log.Warn("recompute after batch failed", "err", err)
+		}
 	}
 	if !s.DryRun && s.PlexRefresh && opt.DeleteFiles && len(kinds) > 0 {
 		list := make([]string, 0, len(kinds))
@@ -62,22 +75,26 @@ func (s *Service) DeleteBatch(ctx context.Context, ids []int64, opt BatchOptions
 	return out
 }
 
+// batchItem is the report line of an item that failed with err.
+func (s *Service) batchItem(ctx context.Context, id int64, err error) BatchItem {
+	it := BatchItem{MediaID: id, Err: err}
+	if m, merr := s.Store.MediaByID(ctx, id); merr == nil {
+		it.Kind, it.Title = m.Kind, m.Title
+	}
+	return it
+}
+
 // ProtectBatch protects items one after the other.
 func (s *Service) ProtectBatch(ctx context.Context, ids []int64, username string) []BatchItem {
 	ctx = context.WithoutCancel(ctx)
 	out := make([]BatchItem, 0, len(ids))
 	for _, id := range ids {
-		it := BatchItem{MediaID: id}
 		res, err := s.SetProtected(ctx, ProtectRequest{MediaID: id, Protect: true, Username: username})
 		if err != nil {
-			it.Err = err
-			if m, merr := s.Store.MediaByID(ctx, id); merr == nil {
-				it.Kind, it.Title = m.Kind, m.Title
-			}
-		} else {
-			it.OK, it.Unchanged, it.Kind, it.Title = true, res.Unchanged, res.Kind, res.Title
+			out = append(out, s.batchItem(ctx, id, err))
+			continue
 		}
-		out = append(out, it)
+		out = append(out, BatchItem{MediaID: id, OK: true, Unchanged: res.Unchanged, Kind: res.Kind, Title: res.Title})
 	}
 	return out
 }

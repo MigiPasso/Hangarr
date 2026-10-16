@@ -186,6 +186,12 @@ func serve() error {
 	} else if n > 0 {
 		log.Warn("syncs interrupted by the previous stop marked as such", "runs", n)
 	}
+	if n, err := st.InterruptPendingActions(ctx); err != nil {
+		return err
+	} else if n > 0 {
+		log.Warn("deletions interrupted by the previous stop: check them in Sonarr/Radarr or the media server (Log page)",
+			"actions", n)
+	}
 	lookup := func(ctx context.Context, kind, id, variant string) (images.Info, bool, error) {
 		if kind == "plex" || kind == "jellyfin" {
 			title, ok, err := st.ServerItemTitle(ctx, kind, id)
@@ -222,11 +228,18 @@ func serve() error {
 		defer wg.Done()
 		sy.Loop(ctx)
 	}()
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		<-ctx.Done()
+		deleter.Stop() // a running batch ends before its next item
+	}()
 
 	err = srv.Run(ctx, cfg.ListenAddr)
 	stop()
 	wg.Wait()
-	sy.Wait() // syncs started from the UI or the webhook, before the database closes
+	sy.Wait()      // syncs started from the UI or the webhook, before the database closes
+	deleter.Wait() // the deletion in progress, journaled before the database closes
 	if err != nil {
 		return err
 	}

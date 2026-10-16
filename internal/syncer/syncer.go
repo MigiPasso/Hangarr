@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -19,6 +20,7 @@ import (
 
 	"golang.org/x/sync/errgroup"
 
+	"hangarr/internal/clients/httpx"
 	"hangarr/internal/clients/plex"
 	"hangarr/internal/clients/radarr"
 	"hangarr/internal/clients/sonarr"
@@ -79,6 +81,21 @@ type Syncer struct {
 	last         *Result
 	schedule     Schedule
 	wake         chan struct{}
+
+	// catalogMu orders deletions and the store phase of a sync: a deletion
+	// holds it for reading while it runs; a sync holds it while it writes
+	// what it fetched, after dropping what was deleted since it started.
+	catalogMu sync.RWMutex
+	// recomputeMu: one statistics recomputation at a time (sync, deletion,
+	// webhook).
+	recomputeMu sync.Mutex
+}
+
+// BeginDeletion is held while a deletion runs (actions.Refresher): a sync
+// does not write its catalogs meanwhile.
+func (s *Syncer) BeginDeletion() (end func()) {
+	s.catalogMu.RLock()
+	return s.catalogMu.RUnlock
 }
 
 // SourceResult is the outcome of one source.
@@ -137,11 +154,34 @@ func (s *Syncer) now() time.Time {
 	return time.Now()
 }
 
+// deletionWindow: a deletion journaled that long before a sync started may
+// still have been running while the sync read the services (a DELETE may
+// take httpx.DefaultDeleteTimeout); dropping an item deleted a bit earlier
+// is harmless, it is gone anyway.
+const deletionWindow = httpx.DefaultDeleteTimeout + 5*time.Minute
+
 // fetched holds in-memory results of the parallel fetch phase.
 type fetched struct {
 	series []store.CatalogItem
 	movies []store.CatalogItem
 	server *serverCatalog
+}
+
+// drop removes the items deleted since the fetch started.
+func (f *fetched) drop(d store.Deleted) {
+	keep := func(items []store.CatalogItem, kind string) []store.CatalogItem {
+		gone := d.ArrIDs[kind]
+		if len(gone) == 0 {
+			return items
+		}
+		return slices.DeleteFunc(items, func(it store.CatalogItem) bool { return gone[it.ArrID] })
+	}
+	f.series, f.movies = keep(f.series, "series"), keep(f.movies, "movie")
+	if f.server == nil || len(d.ServerKeys) == 0 {
+		return
+	}
+	f.server.items = slices.DeleteFunc(f.server.items, func(it matching.ServerItem) bool { return d.ServerKeys[it.Key] })
+	f.server.versions = slices.DeleteFunc(f.server.versions, func(v store.MediaVersion) bool { return d.ServerKeys[v.ItemKey] })
 }
 
 // Run performs one full synchronization. A failing source does not stop the
@@ -312,7 +352,16 @@ func (s *Syncer) run(ctx context.Context, up *upstream.Clients) (*Result, error)
 	}
 
 	// Store phase, sequential: catalogs first, then matching against them.
+	// No deletion runs meanwhile, and what was deleted since the fetch
+	// started is dropped from what was fetched: it must not come back.
 	s.setProgress("saving the catalog")
+	s.catalogMu.Lock()
+	defer s.catalogMu.Unlock()
+	deleted, err := s.Store.DeletedSince(ctx, start.Add(-deletionWindow))
+	if err != nil {
+		return nil, err
+	}
+	f.drop(deleted)
 	if up.Sonarr != nil {
 		err := seriesErr
 		if err == nil {
@@ -352,7 +401,6 @@ func (s *Syncer) run(ctx context.Context, up *upstream.Clients) (*Result, error)
 		return nil, fmt.Errorf("recompute: %w", err)
 	}
 
-	var err error
 	if res.Matches, err = s.Store.MatchCounts(ctx); err != nil {
 		return nil, err
 	}
@@ -1068,6 +1116,8 @@ func unixPtr(v *int64) *time.Time {
 
 // recompute refreshes play counts and watch_state.
 func (s *Syncer) recompute(ctx context.Context) error {
+	s.recomputeMu.Lock()
+	defer s.recomputeMu.Unlock()
 	stats, err := s.Store.LoadMediaStats(ctx)
 	if err != nil {
 		return err

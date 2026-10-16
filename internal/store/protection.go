@@ -32,6 +32,8 @@ func localMatch(lp, m string) string {
 }
 
 // syncProtectedLocal recomputes the media.protected_local cache.
+//
+//nolint:gosec // G202: localMatch only concatenates constant column names
 var syncProtectedLocal = `UPDATE media SET protected_local = new.p FROM (
 	SELECT m.id, EXISTS (SELECT 1 FROM local_protections lp WHERE ` + localMatch("lp", "m") + `) AS p FROM media m
 ) AS new WHERE media.id = new.id AND media.protected_local <> new.p`
@@ -54,44 +56,32 @@ type protectionState struct {
 }
 
 func readProtectionState(ctx context.Context, q *sql.Tx) (protectionState, error) {
-	st := protectionState{media: map[int64]bool{}, matched: map[int64]bool{}}
-	rows, err := q.QueryContext(ctx, `SELECT id FROM media WHERE protected_local`)
+	media, err := idSet(ctx, q, `SELECT id FROM media WHERE protected_local`)
 	if err != nil {
-		return st, err
+		return protectionState{}, err
 	}
-	for rows.Next() {
-		var id int64
-		if err := rows.Scan(&id); err != nil {
-			_ = rows.Close()
-			return st, err
-		}
-		st.media[id] = true
-	}
-	if err := closeRows(rows); err != nil {
-		return st, err
-	}
-	rows, err = q.QueryContext(ctx, `SELECT lp.id FROM local_protections lp
+	//nolint:gosec // G202: localMatch only concatenates constant column names
+	matched, err := idSet(ctx, q, `SELECT lp.id FROM local_protections lp
 		WHERE EXISTS (SELECT 1 FROM media m WHERE `+localMatch("lp", "m")+`)`)
-	if err != nil {
-		return st, err
-	}
-	for rows.Next() {
-		var id int64
-		if err := rows.Scan(&id); err != nil {
-			_ = rows.Close()
-			return st, err
-		}
-		st.matched[id] = true
-	}
-	return st, closeRows(rows)
+	return protectionState{media: media, matched: matched}, err
 }
 
-func closeRows(rows *sql.Rows) error {
-	err := rows.Err()
-	if cerr := rows.Close(); err == nil {
-		err = cerr
+// idSet runs a query returning one id column.
+func idSet(ctx context.Context, q *sql.Tx, query string) (map[int64]bool, error) {
+	rows, err := q.QueryContext(ctx, query)
+	if err != nil {
+		return nil, err
 	}
-	return err
+	defer func() { _ = rows.Close() }()
+	out := map[int64]bool{}
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		out[id] = true
+	}
+	return out, rows.Err()
 }
 
 // refreshLocalProtection recomputes media.protected_local from the
@@ -174,6 +164,7 @@ func (s *Store) SetLocalProtection(ctx context.Context, id int64, protected bool
 			SELECT kind, tmdb_id, tvdb_id, imdb_id, plex_rating_key, jellyfin_id, title, title_norm, year, ?, ?
 			FROM media WHERE id = ?`, now.Unix(), nullString(username), id)
 	} else {
+		//nolint:gosec // G202: localMatch only concatenates constant column names
 		res, err = tx.ExecContext(ctx, `DELETE FROM local_protections AS lp WHERE EXISTS (
 			SELECT 1 FROM media m WHERE m.id = ? AND `+localMatch("lp", "m")+`)`, id)
 	}

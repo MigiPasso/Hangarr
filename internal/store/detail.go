@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"time"
 )
 
 // Media is the full row shown on the detail page.
@@ -234,28 +235,112 @@ type Action struct {
 	ImportExclusion bool
 	DryRun          bool
 	Success         bool
-	Error           string
+	Error           string // the failure, or a note on a success
 	Username        string
+	State           string // ActionDone (default), ActionPending or ActionInterrupted
+	ServerKey       string // media server key of an item deleted through the server
 }
 
-// AddAction appends to action_log.
+// Journal states (action_log.state).
+const (
+	ActionDone        = "done"
+	ActionPending     = "pending"     // written before the upstream call
+	ActionInterrupted = "interrupted" // left pending by a stop: check upstream
+)
+
+// AddAction appends a finished action to action_log.
 func (s *Store) AddAction(ctx context.Context, a Action) error {
+	if a.State == "" {
+		a.State = ActionDone
+	}
+	_, err := s.insertAction(ctx, a)
+	return err
+}
+
+func (s *Store) insertAction(ctx context.Context, a Action) (int64, error) {
 	var season sql.NullInt64
 	if a.SeasonNumber != nil {
 		season = sql.NullInt64{Int64: int64(*a.SeasonNumber), Valid: true}
 	}
-	_, err := s.db.ExecContext(ctx, `INSERT INTO action_log(at, action, media_kind, arr_id, title, season_number,
-		size_freed_bytes, delete_files, import_exclusion, dry_run, success, error, username)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, a.At, a.Action, a.MediaKind, a.ArrID, a.Title, season,
-		a.SizeFreedBytes, a.DeleteFiles, a.ImportExclusion, a.DryRun, a.Success, nullString(a.Error), nullString(a.Username))
+	res, err := s.db.ExecContext(ctx, `INSERT INTO action_log(at, action, media_kind, arr_id, title, season_number,
+		size_freed_bytes, delete_files, import_exclusion, dry_run, success, error, username, state, server_key)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, a.At, a.Action, a.MediaKind, a.ArrID, a.Title, season,
+		a.SizeFreedBytes, a.DeleteFiles, a.ImportExclusion, a.DryRun, a.Success, nullString(a.Error),
+		nullString(a.Username), a.State, nullString(a.ServerKey))
+	if err != nil {
+		return 0, err
+	}
+	return res.LastInsertId()
+}
+
+// BeginAction writes an action about to be sent upstream (state pending,
+// not successful) and returns its id: if the process stops before
+// FinishAction, the next start marks it interrupted.
+func (s *Store) BeginAction(ctx context.Context, a Action) (int64, error) {
+	a.State, a.Success = ActionPending, false
+	return s.insertAction(ctx, a)
+}
+
+// FinishAction records the outcome of an action written by BeginAction.
+func (s *Store) FinishAction(ctx context.Context, id int64, success bool, sizeFreed int64, msg string) error {
+	_, err := s.db.ExecContext(ctx, `UPDATE action_log SET state = ?, success = ?, size_freed_bytes = ?, error = ?
+		WHERE id = ?`, ActionDone, success, sizeFreed, nullString(msg), id)
 	return err
+}
+
+// ErrActionInterrupted is the message of an action left pending by a stop.
+const ErrActionInterrupted = "interrupted before its result was known: check upstream"
+
+// InterruptPendingActions marks the actions left pending by the previous
+// process. Call it at startup.
+func (s *Store) InterruptPendingActions(ctx context.Context) (int64, error) {
+	res, err := s.db.ExecContext(ctx, `UPDATE action_log SET state = ?, error = ? WHERE state = ?`,
+		ActionInterrupted, ErrActionInterrupted, ActionPending)
+	if err != nil {
+		return 0, err
+	}
+	return res.RowsAffected()
+}
+
+// Deleted lists what was deleted (or is being deleted) since the given time:
+// Sonarr/Radarr ids by kind, and media server keys. A sync that read the
+// services before skips them, so that it does not bring them back.
+type Deleted struct {
+	ArrIDs     map[string]map[int64]bool // kind → arr ids
+	ServerKeys map[string]bool
+}
+
+// DeletedSince returns the deletions journaled since t, successful or still
+// pending (a pending one may have succeeded), dry runs excluded.
+func (s *Store) DeletedSince(ctx context.Context, t time.Time) (Deleted, error) {
+	d := Deleted{ArrIDs: map[string]map[int64]bool{}, ServerKeys: map[string]bool{}}
+	err := s.queryEach(ctx, `SELECT action, media_kind, COALESCE(arr_id, 0), COALESCE(server_key, '') FROM action_log
+		WHERE at >= ? AND NOT dry_run AND (success OR state = 'pending')
+		AND action IN ('delete_movie', 'delete_series', 'delete_plex', 'delete_jellyfin')`, func(rows *sql.Rows) error {
+		var action, kind, key string
+		var arrID int64
+		if err := rows.Scan(&action, &kind, &arrID, &key); err != nil {
+			return err
+		}
+		if arrID != 0 && (action == "delete_movie" || action == "delete_series") {
+			if d.ArrIDs[kind] == nil {
+				d.ArrIDs[kind] = map[int64]bool{}
+			}
+			d.ArrIDs[kind][arrID] = true
+		}
+		if key != "" {
+			d.ServerKeys[key] = true
+		}
+		return nil
+	}, t.Unix())
+	return d, err
 }
 
 // Actions returns a page of action_log, newest first, and whether more exist.
 func (s *Store) Actions(ctx context.Context, offset, limit int) ([]Action, bool, error) {
 	rows, err := s.db.QueryContext(ctx, `SELECT id, at, action, media_kind, COALESCE(arr_id, 0), title, season_number,
-		size_freed_bytes, delete_files, import_exclusion, dry_run, success, COALESCE(error, ''), COALESCE(username, '')
-		FROM action_log ORDER BY id DESC LIMIT ? OFFSET ?`, limit+1, offset)
+		size_freed_bytes, delete_files, import_exclusion, dry_run, success, COALESCE(error, ''), COALESCE(username, ''),
+		state, COALESCE(server_key, '') FROM action_log ORDER BY id DESC LIMIT ? OFFSET ?`, limit+1, offset)
 	if err != nil {
 		return nil, false, err
 	}
@@ -265,7 +350,7 @@ func (s *Store) Actions(ctx context.Context, offset, limit int) ([]Action, bool,
 		var a Action
 		var season sql.NullInt64
 		if err := rows.Scan(&a.ID, &a.At, &a.Action, &a.MediaKind, &a.ArrID, &a.Title, &season, &a.SizeFreedBytes,
-			&a.DeleteFiles, &a.ImportExclusion, &a.DryRun, &a.Success, &a.Error, &a.Username); err != nil {
+			&a.DeleteFiles, &a.ImportExclusion, &a.DryRun, &a.Success, &a.Error, &a.Username, &a.State, &a.ServerKey); err != nil {
 			return nil, false, err
 		}
 		if season.Valid {

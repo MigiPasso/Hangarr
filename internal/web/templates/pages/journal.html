@@ -17,7 +17,7 @@
         <td>{{.Title}}{{if .SeasonNumber}} · {{t "season %d" (deref .SeasonNumber)}}{{end}}</td>
         <td class="num">{{if .SizeFreedBytes}}{{bytes .SizeFreedBytes}}{{else}}–{{end}}</td>
         <td class="small">{{if or (eq .Action "protect") (eq .Action "unprotect") (eq .Action "protect_carried") (eq .Action "protect_unmatched")}}–{{else}}{{if .DeleteFiles}}{{t "files"}}{{else}}{{t "without files"}}{{end}}{{if .ImportExclusion}} · {{t "exclusion"}}{{end}}{{end}}</td>
-        <td>{{if not .Success}}<span class="error-text" title="{{.Error}}">{{t "Failed: %s" .Error}}</span>{{else if .DryRun}}<span class="warn">{{t "Simulation"}}</span>{{else}}<span class="ok-text">{{t "Done"}}</span>{{end}}</td>
+        <td>{{if eq .State "pending"}}<span class="warn">{{t "In progress"}}</span>{{else if eq .State "interrupted"}}<span class="error-text" title="{{.Error}}">{{t "Interrupted: check whether it was done"}}</span>{{else if not .Success}}<span class="error-text" title="{{.Error}}">{{t "Failed: %s" .Error}}</span>{{else if .DryRun}}<span class="warn">{{t "Simulation"}}</span>{{else if .Error}}<span class="ok-text">{{t "Done"}}</span> <span class="small muted">({{.Error}})</span>{{else}}<span class="ok-text">{{t "Done"}}</span>{{end}}</td>
         <td>{{if .Username}}{{.Username}}{{else}}Hangarr{{end}}</td>
       </tr>
     {{end}}

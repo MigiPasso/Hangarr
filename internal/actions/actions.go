@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -59,6 +60,8 @@ var (
 	// look like one only the media server knows: nothing is deleted through
 	// the media server until it succeeds.
 	ErrArrCatalogUnhealthy = errors.New("the last Sonarr/Radarr catalog sync failed")
+	// ErrStopping: Hangarr is shutting down; nothing more is sent.
+	ErrStopping = errors.New("Hangarr is stopping")
 )
 
 // serverKey returns the item's key on the media server in use ("" when that
@@ -89,6 +92,10 @@ func serverOnly(up *upstream.Clients, m *store.Media, notManaged error) error {
 type Refresher interface {
 	RefreshSeries(ctx context.Context, arrID int64) error
 	Recompute(ctx context.Context) error
+	// BeginDeletion is held while a deletion runs: the sync does not write
+	// the catalogs it read meanwhile, and skips what was deleted since it
+	// started reading them.
+	BeginDeletion() (end func())
 }
 
 // Service deletes media.
@@ -104,8 +111,48 @@ type Service struct {
 	PlexRefresh bool
 	Log         *slog.Logger
 	Now         func() time.Time
+	// GoneChecks overrides DefaultGoneChecks (tests).
+	GoneChecks []time.Duration
 
 	versionMu sync.Mutex // one version deletion at a time (DeleteVersion)
+
+	lifeMu   sync.Mutex
+	stopping bool
+	inflight sync.WaitGroup // actions running, awaited by Wait
+}
+
+// enter registers an action; false once Stop was called.
+func (s *Service) enter() bool {
+	s.lifeMu.Lock()
+	defer s.lifeMu.Unlock()
+	if s.stopping {
+		return false
+	}
+	s.inflight.Add(1)
+	return true
+}
+
+func (s *Service) leave() { s.inflight.Done() }
+
+// Stop refuses new actions; a batch stops before its next item.
+func (s *Service) Stop() {
+	s.lifeMu.Lock()
+	s.stopping = true
+	s.lifeMu.Unlock()
+}
+
+// Stopping reports whether Stop was called.
+func (s *Service) Stopping() bool {
+	s.lifeMu.Lock()
+	defer s.lifeMu.Unlock()
+	return s.stopping
+}
+
+// Wait stops the service and waits for the running actions (at most one
+// upstream call each), so that they are journaled before the database closes.
+func (s *Service) Wait() {
+	s.Stop()
+	s.inflight.Wait()
 }
 
 // Request describes a deletion.
@@ -119,7 +166,9 @@ type Request struct {
 	Confirmed bool
 	// SkipServerRefresh: the caller refreshes the media server once (batch).
 	SkipServerRefresh bool
-	Username          string // app user, for the journal
+	// SkipRecompute: the caller recomputes the statistics once (batch).
+	SkipRecompute bool
+	Username      string // app user, for the journal
 }
 
 // Result describes what was (or would have been) deleted.
@@ -131,6 +180,12 @@ type Result struct {
 	Season    *int
 	SizeFreed int64
 	DryRun    bool
+	// Warning: done, but not entirely (season files deleted, season still
+	// monitored: ErrUnmonitorAfterDelete).
+	Warning error
+	// Note: how the outcome was established, when it is not the plain
+	// answer of the upstream (no answer in time, the item checked gone).
+	Note string
 }
 
 func (s *Service) now() time.Time {
@@ -140,9 +195,51 @@ func (s *Service) now() time.Time {
 	return time.Now()
 }
 
-func isNotFound(err error) bool {
-	var se *httpx.StatusError
-	return errors.As(err, &se) && se.Status == http.StatusNotFound
+func isNotFound(err error) bool { return httpx.IsNotFound(err) }
+
+// NoteConfirmedGone is the journal note of a deletion that got no answer in
+// time but that a later check found done.
+const NoteConfirmedGone = "no answer in time, but the item is gone: deleted"
+
+// confirmGone checks, after a deletion that ended without an answer (timeout,
+// connection cut), whether the item is gone anyway: the upstream may finish
+// a slow deletion after Hangarr stopped waiting. It returns nil and a note
+// when gone is confirmed, err otherwise.
+func (s *Service) confirmGone(ctx context.Context, err error, gone func(context.Context) (bool, error)) (string, error) {
+	if !httpx.Ambiguous(err) {
+		return "", err
+	}
+	ctx = context.WithoutCancel(ctx)
+	delays := s.GoneChecks
+	if delays == nil {
+		delays = DefaultGoneChecks
+	}
+	var cerr error
+	for _, d := range delays {
+		time.Sleep(d)
+		var ok bool
+		if ok, cerr = gone(ctx); ok {
+			s.Log.Warn("deletion without answer, but the item is gone", "err", err)
+			return NoteConfirmedGone, nil
+		}
+	}
+	s.Log.Warn("deletion without answer, item still there or unknown", "err", err, "check_err", cerr)
+	return "", err
+}
+
+// DefaultGoneChecks are the delays before each check of confirmGone: the
+// upstream may still be deleting when Hangarr stops waiting.
+var DefaultGoneChecks = []time.Duration{0, 2 * time.Second, 10 * time.Second}
+
+// goneIf404 is a confirmGone check: a 404 means gone.
+func goneIf404(get func(context.Context) error) func(context.Context) (bool, error) {
+	return func(ctx context.Context) (bool, error) {
+		err := get(ctx)
+		if isNotFound(err) {
+			return true, nil
+		}
+		return false, err
+	}
 }
 
 func (s *Service) protected(labels []string) bool {
@@ -187,6 +284,10 @@ func (s *Service) liveTags(ctx context.Context, up *upstream.Clients, kind strin
 // Delete performs (or simulates) a deletion. Every attempt that reaches
 // Sonarr/Radarr is journaled, successful or not.
 func (s *Service) Delete(ctx context.Context, req Request) (*Result, error) {
+	if !s.enter() {
+		return nil, ErrStopping
+	}
+	defer s.leave()
 	up := s.Upstreams.Get()
 	m, err := s.Store.MediaByID(ctx, req.MediaID)
 	if errors.Is(err, store.ErrNotFound) {
@@ -238,8 +339,14 @@ func (s *Service) Delete(ctx context.Context, req Request) (*Result, error) {
 		res.SizeFreed = 0
 	}
 
+	end := s.Refresher.BeginDeletion()
+	defer end()
+	id, err := s.journalBegin(ctx, m, req, res, "")
+	if err != nil {
+		return nil, err // nothing sent: a deletion is never made without its journal entry
+	}
 	err = s.execute(ctx, up, m, req, res)
-	s.journal(ctx, m, req, res, err)
+	s.journalEnd(ctx, id, m, req, res, err)
 	if err != nil {
 		return nil, err
 	}
@@ -249,22 +356,37 @@ func (s *Service) Delete(ctx context.Context, req Request) (*Result, error) {
 	return res, nil
 }
 
-// journal records a deletion attempt in action_log and in the logs.
-func (s *Service) journal(ctx context.Context, m *store.Media, req Request, res *Result, err error) {
-	entry := store.Action{
+// journalBegin writes a deletion attempt to action_log (pending) before
+// anything is sent; serverKey names the item on the media server.
+func (s *Service) journalBegin(ctx context.Context, m *store.Media, req Request, res *Result, serverKey string) (int64, error) {
+	id, err := s.Store.BeginAction(context.WithoutCancel(ctx), store.Action{
 		At: s.now().Unix(), Action: res.Action, MediaKind: m.Kind, ArrID: m.ArrID, Title: m.Title,
-		SeasonNumber: req.Season, SizeFreedBytes: res.SizeFreed, DeleteFiles: req.DeleteFiles,
-		ImportExclusion: req.ImportExclusion, DryRun: s.DryRun, Success: err == nil, Username: req.Username,
+		SeasonNumber: req.Season, DeleteFiles: req.DeleteFiles, ImportExclusion: req.ImportExclusion,
+		DryRun: s.DryRun, Username: req.Username, ServerKey: serverKey,
+	})
+	if err != nil {
+		s.Log.Error("action not journaled: nothing sent", "title", m.Title, "err", err)
+		return 0, fmt.Errorf("journal: %w", err)
+	}
+	return id, nil
+}
+
+// journalEnd records the outcome of a deletion attempt in action_log and in
+// the logs.
+func (s *Service) journalEnd(ctx context.Context, id int64, m *store.Media, req Request, res *Result, err error) {
+	size, msg := res.SizeFreed, res.Note
+	if res.Warning != nil {
+		msg = strings.TrimSpace(res.Warning.Error() + ". " + msg)
 	}
 	if err != nil {
-		entry.SizeFreedBytes = 0
-		entry.Error = err.Error()
+		size, msg = 0, err.Error()
 	}
-	if lerr := s.Store.AddAction(context.WithoutCancel(ctx), entry); lerr != nil {
-		s.Log.Error("action not journaled", "err", lerr)
+	if lerr := s.Store.FinishAction(context.WithoutCancel(ctx), id, err == nil, size, msg); lerr != nil {
+		s.Log.Error("action outcome not journaled", "err", lerr)
 	}
 	s.Log.Info("deletion", "action", res.Action, "title", m.Title, "season", req.Season, "dry_run", s.DryRun,
-		"delete_files", req.DeleteFiles, "success", err == nil, "err", err, "user", req.Username)
+		"delete_files", req.DeleteFiles, "success", err == nil, "err", err, "warning", res.Warning, "note", res.Note,
+		"user", req.Username)
 }
 
 // deleteFromServer deletes an item that only the media server in use still
@@ -287,36 +409,48 @@ func (s *Service) deleteFromServer(ctx context.Context, up *upstream.Clients, m 
 	}
 	req.DeleteFiles, req.ImportExclusion = true, false // the server always deletes the files
 	res := &Result{Action: DeletePlex, Kind: m.Kind, MediaID: m.ID, Title: m.Title, SizeFreed: m.SizeBytes, DryRun: s.DryRun}
-	denied := ErrPlexDeletionDenied
-	del := func() error { return up.Plex.DeleteItem(ctx, m.PlexRatingKey) }
+	denied, key := ErrPlexDeletionDenied, m.PlexRatingKey
 	configured := up.Plex != nil
+	del := func(ctx context.Context) error { return up.Plex.DeleteItem(ctx, m.PlexRatingKey) }
+	gone := goneIf404(func(ctx context.Context) error { _, err := up.Plex.Metadata(ctx, m.PlexRatingKey); return err })
 	if up.MediaServer == upstream.Jellyfin {
-		res.Action, denied, configured = DeleteJellyfin, ErrJellyfinDeletionDenied, up.Jellyfin != nil
-		del = func() error { return up.Jellyfin.DeleteItem(ctx, m.JellyfinID) }
+		res.Action, denied, configured, key = DeleteJellyfin, ErrJellyfinDeletionDenied, up.Jellyfin != nil, m.JellyfinID
+		del = func(ctx context.Context) error { return up.Jellyfin.DeleteItem(ctx, m.JellyfinID) }
+		gone = func(ctx context.Context) (bool, error) {
+			items, err := up.Jellyfin.Versions(ctx, []string{m.JellyfinID})
+			return err == nil && len(items) == 0, err
+		}
 	}
-	var err error
+	end := s.Refresher.BeginDeletion()
+	defer end()
+	id, err := s.journalBegin(ctx, m, req, res, key)
+	if err != nil {
+		return nil, err
+	}
 	switch {
 	case m.ProtectedLocal:
 		err = ErrProtectedLocal
 	case !configured:
 		err = fmt.Errorf("%w: %s", ErrUnconfigured, up.ServerLabel())
 	case !s.DryRun:
-		err = del()
+		err = del(ctx)
 		var se *httpx.StatusError
 		if errors.As(err, &se) && (se.Status == http.StatusUnauthorized || se.Status == http.StatusForbidden) {
 			err = denied
 		} else if isNotFound(err) {
 			err = fmt.Errorf("%w in %s", ErrNotFound, up.ServerLabel())
+		} else {
+			res.Note, err = s.confirmGone(ctx, err, gone)
 		}
 	}
-	s.journal(ctx, m, req, res, err)
+	s.journalEnd(ctx, id, m, req, res, err)
 	if err != nil {
 		return nil, err
 	}
 	if !s.DryRun {
 		ctx = context.WithoutCancel(ctx)
 		err := s.Store.DeleteMedia(ctx, m.ID)
-		if err == nil {
+		if err == nil && !req.SkipRecompute {
 			err = s.Refresher.Recompute(ctx)
 		}
 		if err != nil {
@@ -351,17 +485,28 @@ func (s *Service) execute(ctx context.Context, up *upstream.Clients, m *store.Me
 	}
 	switch res.Action {
 	case DeleteMovie:
-		return up.Radarr.DeleteMovie(ctx, m.ArrID, req.DeleteFiles, req.ImportExclusion)
+		err = up.Radarr.DeleteMovie(ctx, m.ArrID, req.DeleteFiles, req.ImportExclusion)
+		res.Note, err = s.confirmGone(ctx, err, goneIf404(func(ctx context.Context) error {
+			_, err := up.Radarr.MovieByID(ctx, m.ArrID)
+			return err
+		}))
 	case DeleteSeries:
-		return up.Sonarr.DeleteSeries(ctx, m.ArrID, req.DeleteFiles, req.ImportExclusion)
+		err = up.Sonarr.DeleteSeries(ctx, m.ArrID, req.DeleteFiles, req.ImportExclusion)
+		res.Note, err = s.confirmGone(ctx, err, goneIf404(func(ctx context.Context) error {
+			_, _, err := up.Sonarr.SeriesByID(ctx, m.ArrID)
+			return err
+		}))
 	default:
-		return s.deleteSeason(ctx, up.Sonarr, m.ArrID, *req.Season, req.DeleteFiles)
+		err = s.deleteSeason(ctx, up.Sonarr, m.ArrID, *req.Season, req.DeleteFiles, res)
 	}
+	return err
 }
 
 // deleteSeason deletes the season's files, THEN unmonitors the season, or
-// Sonarr would download it again.
-func (s *Service) deleteSeason(ctx context.Context, c *sonarr.Client, seriesID int64, season int, deleteFiles bool) error {
+// Sonarr would download it again. Files deleted but the season left
+// monitored is a partial success: res.Warning is ErrUnmonitorAfterDelete.
+func (s *Service) deleteSeason(ctx context.Context, c *sonarr.Client, seriesID int64, season int, deleteFiles bool, res *Result) error {
+	deleted := false
 	if deleteFiles {
 		files, err := c.EpisodeFiles(ctx, seriesID)
 		if err != nil {
@@ -374,24 +519,45 @@ func (s *Service) deleteSeason(ctx context.Context, c *sonarr.Client, seriesID i
 			}
 		}
 		if len(ids) > 0 {
-			if err := c.DeleteEpisodeFiles(ctx, ids); err != nil {
+			err := c.DeleteEpisodeFiles(ctx, ids)
+			res.Note, err = s.confirmGone(ctx, err, func(ctx context.Context) (bool, error) {
+				left, err := c.EpisodeFiles(ctx, seriesID)
+				if err != nil {
+					return false, err
+				}
+				for _, f := range left {
+					if slices.Contains(ids, f.ID) {
+						return false, nil
+					}
+				}
+				return true, nil
+			})
+			if err != nil {
 				return err
 			}
+			deleted = true
 		}
 	}
-	// Re-read the series after the deletion so the PUT carries fresh data.
-	_, raw, err := c.SeriesByID(ctx, seriesID)
-	if err != nil {
-		return fmt.Errorf("%w: %w", ErrUnmonitorAfterDelete, err)
+	unmonitored := func() error {
+		// Re-read the series after the deletion so the PUT carries fresh data.
+		_, raw, err := c.SeriesByID(ctx, seriesID)
+		if err != nil {
+			return fmt.Errorf("%w: %w", ErrUnmonitorAfterDelete, err)
+		}
+		updated, ok, err := sonarr.UnmonitorSeason(raw, season)
+		if err != nil || !ok {
+			return fmt.Errorf("%w: %w", ErrUnmonitorAfterDelete, errors.Join(err, ErrNoSuchSeason))
+		}
+		if err := c.UpdateSeriesRaw(ctx, seriesID, updated); err != nil {
+			return fmt.Errorf("%w: %w", ErrUnmonitorAfterDelete, err)
+		}
+		return nil
+	}()
+	if unmonitored != nil && deleted {
+		res.Warning = unmonitored // the files are gone: report them freed
+		return nil
 	}
-	updated, ok, err := sonarr.UnmonitorSeason(raw, season)
-	if err != nil || !ok {
-		return fmt.Errorf("%w: %w", ErrUnmonitorAfterDelete, errors.Join(err, ErrNoSuchSeason))
-	}
-	if err := c.UpdateSeriesRaw(ctx, seriesID, updated); err != nil {
-		return fmt.Errorf("%w: %w", ErrUnmonitorAfterDelete, err)
-	}
-	return nil
+	return unmonitored
 }
 
 func arrName(kind string) string {
@@ -407,7 +573,7 @@ func (s *Service) afterDelete(ctx context.Context, up *upstream.Clients, m *stor
 	var err error
 	if res.Action == DeleteSeason {
 		err = s.Refresher.RefreshSeries(ctx, m.ArrID)
-	} else if err = s.Store.DeleteMedia(ctx, m.ID); err == nil {
+	} else if err = s.Store.DeleteMedia(ctx, m.ID); err == nil && !req.SkipRecompute {
 		err = s.Refresher.Recompute(ctx)
 	}
 	if err != nil {
