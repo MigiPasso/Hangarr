@@ -189,14 +189,22 @@ func TestPublicEndpoints(t *testing.T) {
 }
 
 func TestSecurityHeaders(t *testing.T) {
-	h := newHarness(t, func(c *config.Config) { c.CookieSecure = true })
-	r := h.do(h.client(), "GET", "/login", nil, nil)
+	h := newHarness(t, func(c *config.Config) {
+		c.CookieSecure = true
+		c.TrustedProxies = []netip.Prefix{netip.MustParsePrefix("127.0.0.1/32"), netip.MustParsePrefix("::1/128")}
+	})
+	// SEC-09: no HSTS over plain HTTP, and none for an untrusted header.
+	if r := h.do(h.client(), "GET", "/login", nil, nil); r.header.Get("Strict-Transport-Security") != "" {
+		t.Errorf("HSTS over HTTP: %q", r.header.Get("Strict-Transport-Security"))
+	}
+	r := h.do(h.client(), "GET", "/login", nil, map[string]string{"X-Forwarded-Proto": "https"})
 	want := map[string]string{
-		"Content-Security-Policy":   contentSecurityPolicy,
-		"X-Content-Type-Options":    "nosniff",
-		"Referrer-Policy":           "same-origin",
-		"Strict-Transport-Security": "max-age=31536000; includeSubDomains",
-		"Cache-Control":             "no-store",
+		"Content-Security-Policy":      contentSecurityPolicy,
+		"X-Content-Type-Options":       "nosniff",
+		"Referrer-Policy":              "same-origin",
+		"Strict-Transport-Security":    "max-age=31536000",
+		"Cache-Control":                "no-store",
+		"Cross-Origin-Resource-Policy": "same-origin",
 	}
 	for k, v := range want {
 		if got := r.header.Get(k); got != v {
@@ -213,6 +221,36 @@ func TestSecurityHeaders(t *testing.T) {
 	}
 	if !strings.Contains(r.body, `"allowEval":false`) {
 		t.Error("htmx-config meta missing")
+	}
+	// SEC-09: prefixed cookies with COOKIE_SECURE.
+	if c := r.header.Get("Set-Cookie"); !strings.HasPrefix(c, "__Secure-hangarr_presession=") || !strings.Contains(c, "Secure") {
+		t.Errorf("pre-session cookie: %q", c)
+	}
+	h2 := newHarness(t, func(c *config.Config) {
+		c.CookieSecure, c.HSTSIncludeSubdomains = true, true
+		c.TrustedProxies = []netip.Prefix{netip.MustParsePrefix("127.0.0.1/32"), netip.MustParsePrefix("::1/128")}
+	})
+	r = h2.do(h2.client(), "GET", "/login", nil, map[string]string{"X-Forwarded-Proto": "https"})
+	if got := r.header.Get("Strict-Transport-Security"); got != "max-age=31536000; includeSubDomains" {
+		t.Errorf("HSTS_INCLUDE_SUBDOMAINS: %q", got)
+	}
+}
+
+// SEC-08: no listing of the static directories, no version for anonymous
+// visitors.
+func TestAnonymousSurface(t *testing.T) {
+	h := newHarness(t, nil)
+	c := h.client()
+	for _, p := range []string{"/static/", "/static/fonts/", "/static/fonts"} {
+		if r := h.do(c, "GET", p, nil, nil); r.status != http.StatusNotFound {
+			t.Errorf("%s: %d", p, r.status)
+		}
+	}
+	if r := h.do(c, "GET", "/static/app.js", nil, nil); r.status != http.StatusOK {
+		t.Errorf("file: %d", r.status)
+	}
+	if r := h.do(c, "GET", "/login", nil, nil); strings.Contains(r.body, "Hangarr test") {
+		t.Error("version shown on the login page")
 	}
 }
 
@@ -517,6 +555,86 @@ func TestSidebar(t *testing.T) {
 		r := h.do(c, "GET", "/", nil, map[string]string{"Cookie": "hangarr_sidebar=" + value})
 		if got := strings.Contains(r.body, `<div class="shell is-collapsed">`); got != want {
 			t.Errorf("cookie %q: collapsed %v", value, got)
+		}
+	}
+}
+
+// BUG-17: a panic after the answer started cuts the connection instead of
+// appending a 500; before, a clean 500.
+func TestRecovererAfterHeaders(t *testing.T) {
+	h := newHarness(t, nil)
+	before := httptest.NewServer(h.srv.recoverer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		panic("boom")
+	})))
+	defer before.Close()
+	res, err := http.Get(before.URL)
+	if err != nil || res.StatusCode != http.StatusInternalServerError {
+		t.Fatalf("before headers: %v %v", res, err)
+	}
+	_ = res.Body.Close()
+	after := httptest.NewServer(h.srv.recoverer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("partial"))
+		_ = http.NewResponseController(w).Flush()
+		panic("boom")
+	})))
+	defer after.Close()
+	res, err = http.Get(after.URL)
+	if err == nil {
+		_, err = io.ReadAll(res.Body)
+		_ = res.Body.Close()
+	}
+	if err == nil {
+		t.Error("the client must see the answer fail")
+	}
+}
+
+// SEC-05: over plain HTTP, only local host names are served (DNS
+// rebinding); HTTPS through a trusted proxy, probes and ALLOWED_HOSTS pass.
+func TestHostCheck(t *testing.T) {
+	h := newHarness(t, func(c *config.Config) {
+		c.AllowedHosts = []string{"hangarr.example.com"}
+		c.TrustedProxies = []netip.Prefix{netip.MustParsePrefix("127.0.0.1/32"), netip.MustParsePrefix("::1/128")}
+	})
+	for host, want := range map[string]int{
+		"evil.example.net":         http.StatusMisdirectedRequest,
+		"evil.example.net:8080":    http.StatusMisdirectedRequest,
+		"hangarr.example.com:8080": http.StatusOK,
+		"HANGARR.example.com.":     http.StatusOK,
+		"localhost:8080":           http.StatusOK,
+		"192.168.1.10:8080":        http.StatusOK,
+		"[fd00::10]:8080":          http.StatusOK,
+		"hangarr:8080":             http.StatusOK,
+		"nas.lan":                  http.StatusOK,
+		"nas.home.arpa":            http.StatusOK,
+	} {
+		req, _ := http.NewRequest(http.MethodGet, h.ts.URL+"/login", nil)
+		req.Host = host
+		res, err := h.client().Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_ = res.Body.Close()
+		if res.StatusCode != want {
+			t.Errorf("%s: %d, want %d", host, res.StatusCode, want)
+		}
+	}
+	for _, tc := range []struct {
+		path  string
+		proto string
+	}{{"/healthz", ""}, {"/login", "https"}} {
+		req, _ := http.NewRequest(http.MethodGet, h.ts.URL+tc.path, nil)
+		req.Host = "evil.example.net"
+		if tc.proto != "" {
+			req.Header.Set("X-Forwarded-Proto", tc.proto)
+		}
+		res, err := h.client().Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_ = res.Body.Close()
+		if res.StatusCode != http.StatusOK {
+			t.Errorf("%s %s: %d", tc.path, tc.proto, res.StatusCode)
 		}
 	}
 }

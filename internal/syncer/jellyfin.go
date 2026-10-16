@@ -147,20 +147,22 @@ func (s *Syncer) syncJellyfinUser(ctx context.Context, c *jellyfin.Client, v jel
 	if err := s.Store.UpsertWatchEvents(ctx, inProgress); err != nil {
 		return 0, err
 	}
-	played, err := s.pageHistory(ctx, cursorJellyfinHistory+v.userID, func(start int) ([]store.WatchEvent, []int64, int, int, error) {
+	played, err := s.pageHistory(ctx, cursorJellyfinHistory+v.userID, func(start int) (historyPage, error) {
 		items, total, err := c.Played(ctx, v.userID, start)
 		if err != nil {
-			return nil, nil, 0, 0, err
+			return historyPage{}, err
 		}
-		var events []store.WatchEvent
-		dates := make([]int64, 0, len(items))
-		for _, it := range items {
-			dates = append(dates, playedDate(it))
+		p := historyPage{dates: make([]int64, 0, len(items)), rows: len(items), total: total}
+		for i, it := range items {
+			if i == 0 {
+				p.first = it.ID
+			}
+			p.dates = append(p.dates, playedDate(it))
 			if e, ok := JellyfinEvent(v.userID, v.account, it); ok {
-				events = append(events, e)
+				p.events = append(p.events, e)
 			}
 		}
-		return events, dates, len(items), total, nil
+		return p, nil
 	}, jellyfin.PlayedPageSize)
 	return len(inProgress) + played, err
 }

@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"time"
 
+	"hangarr/internal/media"
 	"hangarr/internal/store"
 	"hangarr/internal/upstream"
 )
@@ -86,6 +87,9 @@ func (s *Server) webhookSecretSubmit(w http.ResponseWriter, r *http.Request) {
 		s.notFound(w, r)
 		return
 	}
+	if !s.recentAuth(w, r) {
+		return
+	}
 	b := make([]byte, 32)
 	if _, err := rand.Read(b); err != nil {
 		s.serverError(w, r, err)
@@ -103,8 +107,8 @@ func (s *Server) webhookSecretSubmit(w http.ResponseWriter, r *http.Request) {
 	}
 	sess := sessionFrom(r)
 	meta := s.clientMeta(r)
-	_, err := s.Services.Save(r.Context(), upstream.Tautulli, in,
-		store.AuthEvent{UserID: &sess.UserID, Username: sess.Username, IP: meta.IP, UserAgent: truncateUA(meta.UserAgent)}, time.Now())
+	changed, err := s.Services.Save(r.Context(), upstream.Tautulli, in,
+		store.AuthEvent{UserID: &sess.UserID, Username: sess.Username, IP: meta.IP, UserAgent: media.Truncate(meta.UserAgent, 256)}, time.Now())
 	var verr upstream.ValidationError
 	if err != nil && !errors.As(err, &verr) {
 		s.serverError(w, r, err)
@@ -117,9 +121,14 @@ func (s *Server) webhookSecretSubmit(w http.ResponseWriter, r *http.Request) {
 	}
 	idx := slices.IndexFunc(forms, func(f serviceForm) bool { return f.Service == upstream.Tautulli })
 	form := &forms[idx]
-	if verr != nil {
+	switch {
+	case verr != nil:
 		form.Errors = verr
-	} else {
+	case !slices.Contains(changed, upstream.TautulliWebhook):
+		// Not saved (TAUTULLI_WEBHOOK_SECRET is set by the environment):
+		// showing it would have Tautulli configured with a useless secret.
+		form.Errors = map[string]string{upstream.TautulliWebhook: "The webhook secret is set by the environment (TAUTULLI_WEBHOOK_SECRET): nothing was generated."}
+	default:
 		form.GeneratedSecret = secret
 	}
 	if isHTMX(r) {
@@ -128,12 +137,5 @@ func (s *Server) webhookSecretSubmit(w http.ResponseWriter, r *http.Request) {
 		s.render(w, r, http.StatusOK, "config", "config_saved", pd)
 		return
 	}
-	s.render(w, r, http.StatusOK, "config", "", s.page(r, "Services", "config", s.configData(forms)))
-}
-
-func truncateUA(ua string) string {
-	if len(ua) > 256 {
-		return ua[:256]
-	}
-	return ua
+	s.render(w, r, http.StatusOK, "config", "", s.page(r, "Services", "config", s.configData(r, forms)))
 }

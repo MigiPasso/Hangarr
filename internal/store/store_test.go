@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -133,6 +134,13 @@ func TestBackupTo(t *testing.T) {
 	if err := st.BackupTo(ctx, path); err != nil {
 		t.Fatal(err)
 	}
+	// SEC-14: hashes and encrypted secrets, readable by the owner only.
+	if fi, err := os.Stat(path); err != nil || fi.Mode().Perm() != 0o600 {
+		t.Errorf("backup mode: %v %v", fi.Mode(), err)
+	}
+	if left, _ := filepath.Glob(filepath.Join(dir, ".backup-*")); len(left) != 0 {
+		t.Errorf("temporary directory left: %v", left)
+	}
 	if err := st.BackupTo(ctx, path); err == nil {
 		t.Error("an existing backup must not be overwritten")
 	}
@@ -208,7 +216,7 @@ func TestPruneSyncRunsKeepsTheLatestOfEachSource(t *testing.T) {
 func TestProtectedTagRuleGoAndSQLAgree(t *testing.T) {
 	s := openTemp(t)
 	ctx := context.Background()
-	protected := []string{"keep", "Archive"}
+	protected := []string{"keep", "Archive", "gardé"}
 	for _, c := range []struct {
 		tags []string
 		want bool
@@ -220,6 +228,10 @@ func TestProtectedTagRuleGoAndSQLAgree(t *testing.T) {
 		{[]string{"4k", "archive"}, true},
 		{[]string{"keeper"}, false},
 		{[]string{"kee p"}, false},
+		// QUAL-08: only ASCII letters fold, in Go as in SQLite's lower().
+		{[]string{"gardé"}, true},
+		{[]string{"GARDé"}, true},
+		{[]string{"GARDÉ"}, false},
 	} {
 		b, _ := json.Marshal(c.tags)
 		if c.tags == nil {
@@ -235,5 +247,58 @@ func TestProtectedTagRuleGoAndSQLAgree(t *testing.T) {
 		if got := HasProtectedTag(c.tags, protected); got != c.want || excluded != c.want {
 			t.Errorf("%q: Go %v, SQL %v, want %v", c.tags, got, excluded, c.want)
 		}
+	}
+}
+
+// BUG-15: a database migrated by a more recent release is refused, at open
+// and by the readiness probe.
+func TestNewerDatabaseRefused(t *testing.T) {
+	dir := t.TempDir()
+	s, err := Open(context.Background(), dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.db.Exec(`INSERT INTO schema_migrations(version, name, applied_at) VALUES (9999, '9999_future.sql', 0)`); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Ready(context.Background()); !errors.Is(err, ErrNewerDatabase) {
+		t.Errorf("Ready: %v", err)
+	}
+	_ = s.Close()
+	if _, err := Open(context.Background(), dir); !errors.Is(err, ErrNewerDatabase) || !strings.Contains(err.Error(), "9999_future.sql") {
+		t.Fatalf("Open: %v", err)
+	}
+}
+
+// SEC-12: repeated failures of a client share a row; old events are purged.
+func TestAuthEventsAggregatedAndPruned(t *testing.T) {
+	s, ctx := openTemp(t), context.Background()
+	add := func(at int64, ip, event string) {
+		t.Helper()
+		if err := s.AddAuthEvent(ctx, AuthEvent{At: at, Username: "admin", Event: event, IP: ip}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for i := range 50 {
+		add(1000+int64(i), "203.0.113.7", EventLoginFailure)
+	}
+	add(1100, "198.51.100.2", EventLoginFailure)
+	add(1101, "203.0.113.7", "login_success")
+	add(1102, "203.0.113.7", EventLoginFailure)
+	add(1102+int64(failureMergeWindow.Seconds())+1, "203.0.113.7", EventLoginFailure)
+	events, err := s.AuthEvents(ctx, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var counts []int
+	for _, e := range events {
+		counts = append(counts, e.Count)
+	}
+	// Newest first: after the window, after the success, the other client, the 50.
+	if len(events) != 5 || counts[0] != 1 || counts[1] != 1 || counts[2] != 1 || counts[3] != 1 || counts[4] != 50 {
+		t.Fatalf("counts: %v", counts)
+	}
+	if n, err := s.PruneAuthEvents(ctx, time.Unix(1101, 0)); err != nil || n != 2 {
+		t.Errorf("pruned %d: %v", n, err)
 	}
 }

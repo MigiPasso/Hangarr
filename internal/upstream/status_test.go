@@ -25,7 +25,7 @@ func TestHealthAlertsCacheOnlySuccess(t *testing.T) {
 		_, _ = w.Write([]byte(`[{"source":"IndexerStatusCheck","type":"warning","message":"Indexers unavailable due to failures: A"}]`))
 	}))
 	defer ts.Close()
-	c := &Clients{Sonarr: sonarr.New(ts.URL, "k")}
+	c := &Clients{Sonarr: sonarr.New(ts.URL, "k"), alerts: newAlertsCache()}
 	ctx := context.Background()
 
 	down.Store(true) // every attempt fails, retries included

@@ -2,6 +2,8 @@ package web
 
 import (
 	"net/http"
+	"strings"
+	"time"
 
 	"hangarr/internal/store"
 	"hangarr/internal/upstream"
@@ -16,7 +18,20 @@ type healthData struct {
 	Latest   []store.SyncRun
 	Runs     []store.SyncRun
 	Data     *store.DataHealth
+	// Shrinks are the Sonarr/Radarr catalogs refused by the last sync
+	// (store.CatalogShrinkError), to accept on this page.
+	Shrinks []catalogShrink
 }
+
+// catalogShrink is a refused Sonarr/Radarr catalog.
+type catalogShrink struct {
+	Kind   string // series | movie
+	Source string // sonarr | radarr
+	Error  string
+}
+
+// shrinkSources maps the catalog sources to their kind.
+var shrinkSources = map[string]string{"sonarr": "series", "radarr": "movie"}
 
 // health is the Health page; the live checks of the services and of the
 // trackers load separately (healthServices, healthTrackers) so that an
@@ -39,6 +54,12 @@ func (s *Server) renderHealth(w http.ResponseWriter, r *http.Request, d healthDa
 	if d.Data, err = s.Store.DataHealth(ctx, healthListLimit); err != nil {
 		s.serverError(w, r, err)
 		return
+	}
+	for _, run := range d.Latest {
+		if kind, ok := shrinkSources[run.Source]; ok && run.Status == "error" &&
+			strings.HasPrefix(run.Error, store.CatalogShrinkPrefix) {
+			d.Shrinks = append(d.Shrinks, catalogShrink{Kind: kind, Source: run.Source, Error: run.Error})
+		}
 	}
 	s.render(w, r, http.StatusOK, "health", "", s.page(r, "Health", "health", d))
 }
@@ -64,4 +85,24 @@ func (s *Server) healthTrackers(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.renderHealth(w, r, healthData{Trackers: trackers, Services: upstream.CheckAll(r.Context(), s.Upstreams.Get(), s.loc(r))})
+}
+
+// acceptCatalog accepts the Sonarr/Radarr catalog the last sync refused
+// (much smaller than the stored one) and starts a sync that applies it.
+func (s *Server) acceptCatalog(w http.ResponseWriter, r *http.Request) {
+	kind, ok := shrinkSources[r.PathValue("source")]
+	if !ok {
+		s.notFound(w, r)
+		return
+	}
+	if err := s.Store.AcceptCatalogShrink(r.Context(), kind, time.Now()); err != nil {
+		s.serverError(w, r, err)
+		return
+	}
+	s.Log.Warn("smaller catalog accepted: the next sync deletes the missing items", "source", r.PathValue("source"),
+		"user", sessionFrom(r).Username)
+	if s.Sync != nil {
+		s.Sync.Start(s.baseContext())
+	}
+	http.Redirect(w, r, "/health", http.StatusSeeOther)
 }

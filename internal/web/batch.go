@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -53,17 +52,20 @@ func selectedIDs(r *http.Request) ([]int64, error) {
 		return nil, err
 	}
 	var ids []int64
+	seen := map[int64]bool{}
 	for _, v := range r.PostForm["ids"] {
 		id, err := strconv.ParseInt(strings.TrimSpace(v), 10, 64)
 		if err != nil || id <= 0 {
 			return nil, errors.New("invalid id")
 		}
-		if !slices.Contains(ids, id) {
-			ids = append(ids, id)
+		if seen[id] {
+			continue
 		}
-	}
-	if len(ids) > actions.MaxBatch {
-		return nil, errTooManyItems
+		if len(ids) == actions.MaxBatch {
+			return nil, errTooManyItems // stop at once: a 1 MiB body holds 100 000 ids
+		}
+		seen[id] = true
+		ids = append(ids, id)
 	}
 	return ids, nil
 }
@@ -82,14 +84,16 @@ func (s *Server) classify(r *http.Request, ids []int64, protectAction bool) (*ba
 			return nil, err
 		}
 		e := batchEntry{ID: m.ID, Kind: m.Kind, Title: m.Title, SizeBytes: m.SizeBytes}
+		protection := store.ProtectionOf(m.Tags, m.ProtectedLocal, s.Config.ProtectedTags)
 		switch {
 		case m.ArrID == 0:
 			e.Reason, e.Args = "in %s only", []any{up.ServerLabel()}
-		case store.HasProtectedTag(m.Tags, s.Config.ProtectedTags):
+		case protection != store.Unprotected && protectAction:
 			e.Reason = "already protected"
-			if !protectAction {
-				e.Reason = "protected by a tag"
-			}
+		case protection == store.ProtectedByTag:
+			e.Reason = "protected by a tag"
+		case protection == store.ProtectedInHangarr:
+			e.Reason = "protected in Hangarr"
 		}
 		if e.Reason != "" {
 			d.Excluded = append(d.Excluded, e)

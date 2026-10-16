@@ -12,6 +12,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"hangarr/internal/media"
 	"hangarr/internal/store"
 )
 
@@ -30,12 +31,14 @@ var (
 const (
 	EventAdminCreated     = "admin_created"
 	EventLoginSuccess     = "login_success"
-	EventLoginFailure     = "login_failure"
+	EventLoginFailure     = store.EventLoginFailure
 	EventLockout          = "lockout"
 	EventPasswordChanged  = "password_changed"
 	EventPasswordResetCLI = "password_reset_cli"
 	EventLogout           = "logout"
 	EventSessionRevoked   = "session_revoked"
+	EventReauth           = "reauth"         // password confirmed for a sensitive operation
+	EventReauthFailure    = "reauth_failure" // wrong password at that confirmation
 )
 
 // touchInterval bounds how often last_seen_at is written.
@@ -71,17 +74,10 @@ func (s *Service) now() time.Time {
 	return time.Now()
 }
 
-func truncate(v string, n int) string {
-	if utf8.RuneCountInString(v) <= n {
-		return v
-	}
-	return string([]rune(v)[:n])
-}
-
 func (s *Service) event(ctx context.Context, name string, userID *int64, username string, meta ClientMeta) {
 	e := store.AuthEvent{
-		At: s.now().Unix(), UserID: userID, Username: truncate(username, 64), Event: name,
-		IP: meta.IP, UserAgent: truncate(meta.UserAgent, 256),
+		At: s.now().Unix(), UserID: userID, Username: media.Truncate(username, 64), Event: name,
+		IP: meta.IP, UserAgent: media.Truncate(meta.UserAgent, 256),
 	}
 	// A request canceled by the client must not prevent the audit trail.
 	if err := s.Store.AddAuthEvent(context.WithoutCancel(ctx), e); err != nil {
@@ -183,7 +179,8 @@ func (s *Service) newSession(ctx context.Context, userID int64, username string,
 	sess := &store.Session{
 		TokenHash: HashToken(token), UserID: userID, Username: username, MustChangePassword: mustChange,
 		CSRFToken: csrf, CreatedAt: now, LastSeenAt: now, ExpiresAt: now + int64(s.MaxAge/time.Second),
-		IP: meta.IP, UserAgent: truncate(meta.UserAgent, 256),
+		IP: meta.IP, UserAgent: media.Truncate(meta.UserAgent, 256),
+		ReauthAt: now, // opened with the password (sign-in or password change)
 	}
 	return &NewSession{Token: token, Session: sess}, nil
 }
@@ -207,7 +204,14 @@ func (s *Service) Login(ctx context.Context, username, password string, meta Cli
 		return nil, err
 	}
 	now := s.now()
-	if u.LockedUntil != nil && now.Unix() < *u.LockedUntil {
+	// The lockout is per account and client: failures sent by someone else
+	// never lock the legitimate user out.
+	client := ClientKey(meta.IP)
+	lockedUntil, err := s.Store.ClientLockedUntil(ctx, u.ID, client)
+	if err != nil {
+		return nil, err
+	}
+	if lockedUntil != nil && now.Unix() < *lockedUntil {
 		s.Hasher.VerifyDummy(ctx, password)
 		s.event(ctx, EventLoginFailure, &u.ID, u.Username, meta)
 		return nil, ErrInvalidCredentials
@@ -220,19 +224,17 @@ func (s *Service) Login(ctx context.Context, username, password string, meta Cli
 		s.Log.Error("stored password hash is unreadable", "user_id", u.ID, "err", err)
 	}
 	if !ok {
-		n := u.FailedAttempts + 1
-		var lockedUntil *int64
-		d := LockDuration(n)
-		if d > 0 {
-			t := now.Add(d).Unix()
-			lockedUntil = &t
-		}
-		if err := s.Store.SetLoginFailure(ctx, u.ID, n, lockedUntil); err != nil {
+		f, err := s.Store.RecordLoginFailure(ctx, u.ID, client, now, LockDuration)
+		if err != nil {
 			return nil, err
 		}
 		s.event(ctx, EventLoginFailure, &u.ID, u.Username, meta)
-		if d > 0 {
+		if f.LockedUntil != nil {
 			s.event(ctx, EventLockout, &u.ID, u.Username, meta)
+		}
+		if f.AccountFailures%AccountAlertEvery == 0 {
+			s.Log.Warn("many failed sign-ins on this account since its last sign-in: a password guessing attack?",
+				"username", u.Username, "failures", f.AccountFailures, "last_client", client)
 		}
 		return nil, ErrInvalidCredentials
 	}
@@ -243,8 +245,11 @@ func (s *Service) Login(ctx context.Context, username, password string, meta Cli
 			return nil, err
 		}
 	}
-	if err := s.Store.SetLoginSuccess(ctx, u.ID, now, newHash); err != nil {
+	if err := s.Store.SetLoginSuccess(ctx, u.ID, client, now, newHash); err != nil {
 		return nil, err
+	}
+	if u.FailedAttempts > 0 {
+		s.Log.Warn("sign-in after failed attempts", "username", u.Username, "failures", u.FailedAttempts)
 	}
 	ns, err := s.newSession(ctx, u.ID, u.Username, u.MustChangePassword, meta)
 	if err != nil {
@@ -284,6 +289,41 @@ func (s *Service) Authenticate(ctx context.Context, token string) (*store.Sessio
 		sess.LastSeenAt = now.Unix()
 	}
 	return sess, nil
+}
+
+// ReauthWindow is how long a proof of the password (sign-in or
+// confirmation) allows sensitive operations in a session.
+const ReauthWindow = 10 * time.Minute
+
+// RecentlyAuthenticated reports whether the session proved the password
+// less than ReauthWindow ago.
+func (s *Service) RecentlyAuthenticated(sess *store.Session) bool {
+	return sess.ReauthAt > 0 && s.now().Sub(time.Unix(sess.ReauthAt, 0)) < ReauthWindow
+}
+
+// Reauthenticate checks the current password of the session's user before a
+// sensitive operation and records the proof in the session. Both outcomes
+// are journaled; ErrWrongPassword on a wrong password.
+func (s *Service) Reauthenticate(ctx context.Context, sess *store.Session, password string, meta ClientMeta) error {
+	u, err := s.Store.UserByID(ctx, sess.UserID)
+	if err != nil {
+		return err
+	}
+	ok, _, err := s.Hasher.Verify(ctx, password, u.PasswordHash)
+	if err != nil && ctx.Err() != nil {
+		return ctx.Err()
+	}
+	if !ok {
+		s.event(ctx, EventReauthFailure, &u.ID, u.Username, meta)
+		return ErrWrongPassword
+	}
+	now := s.now()
+	if err := s.Store.ConfirmSession(ctx, sess.ID, now); err != nil {
+		return err
+	}
+	sess.ReauthAt = now.Unix()
+	s.event(ctx, EventReauth, &u.ID, u.Username, meta)
+	return nil
 }
 
 // ChangePassword validates and stores a new password. On success every

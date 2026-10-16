@@ -34,7 +34,13 @@ func localPath(next string) string {
 		strings.HasPrefix(next, "/\\") || u.Scheme != "" || u.Host != "" {
 		return "/"
 	}
-	return u.RequestURI()
+	// The result is checked too: re-encoding may turn "/%2Fevil.com/ x" into
+	// "//evil.com/%20x", another site (found by FuzzLocalPath).
+	out := u.RequestURI()
+	if !strings.HasPrefix(out, "/") || strings.HasPrefix(out, "//") || strings.HasPrefix(out, "/\\") {
+		return "/"
+	}
+	return out
 }
 
 // styleCookie remembers the interface style chosen in Settings.

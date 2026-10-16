@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -395,8 +396,8 @@ func TestLoginFlowAndLockout(t *testing.T) {
 		t.Fatal(err)
 	}
 	u, _ := s.Store.UserByUsername(ctx, "admin")
-	if u.LockedUntil == nil || *u.LockedUntil != clk.Now().Add(5*time.Minute).Unix() {
-		t.Fatalf("expected a 5 minute lock, got %v", u.LockedUntil)
+	if locked, _ := s.Store.ClientLockedUntil(ctx, u.ID, "1.2.3.4"); locked == nil || *locked != clk.Now().Add(5*time.Minute).Unix() {
+		t.Fatalf("expected a 5 minute lock, got %v", locked)
 	}
 	clk.Add(5*time.Minute + time.Second)
 	ns, err := s.Login(ctx, "ADMIN", pw, meta)
@@ -407,8 +408,9 @@ func TestLoginFlowAndLockout(t *testing.T) {
 		t.Fatal("first session must require a password change")
 	}
 	u, _ = s.Store.UserByUsername(ctx, "admin")
-	if u.FailedAttempts != 0 || u.LockedUntil != nil {
-		t.Fatalf("counters not reset: %+v", u)
+	if locked, _ := s.Store.ClientLockedUntil(ctx, u.ID, "1.2.3.4"); u.FailedAttempts != 0 || locked != nil ||
+		u.FailuresBeforeLogin != LockoutThreshold+1 {
+		t.Fatalf("counters not reset: %+v %v", u, locked)
 	}
 	events, _ := s.Store.AuthEvents(ctx, 50)
 	var lockouts int
@@ -552,7 +554,7 @@ func TestResetPassword(t *testing.T) {
 		t.Fatalf("no password in output: %q", out.String())
 	}
 	u, _ := s.Store.UserByUsername(ctx, "admin")
-	if !u.MustChangePassword || u.FailedAttempts != 0 || u.LockedUntil != nil {
+	if locked, _ := s.Store.ClientLockedUntil(ctx, u.ID, ""); !u.MustChangePassword || u.FailedAttempts != 0 || locked != nil {
 		t.Fatalf("reset did not unlock / flag: %+v", u)
 	}
 	got, err := s.Login(ctx, "admin", m[1], ClientMeta{})
@@ -583,5 +585,91 @@ func TestRevokeSession(t *testing.T) {
 	}
 	if ok, _ := s.RevokeSession(ctx, a.Session, 9999, ClientMeta{}); ok {
 		t.Fatal("revoking an unknown session must report false")
+	}
+}
+
+// SEC-01: failures sent by one client lock that client out only: another
+// client signs in with the right password.
+func TestLockoutIsPerClient(t *testing.T) {
+	s, _ := newService(t)
+	ctx := context.Background()
+	pw := bootstrap(t, s)
+	attacker := ClientMeta{IP: "203.0.113.7"}
+	for range LockoutThreshold + 2 {
+		_, _ = s.Login(ctx, "admin", "wrong-password", attacker)
+	}
+	if _, err := s.Login(ctx, "admin", pw, attacker); !errors.Is(err, ErrInvalidCredentials) {
+		t.Fatalf("the locked client got in: %v", err)
+	}
+	if _, err := s.Login(ctx, "admin", pw, ClientMeta{IP: "198.51.100.2"}); err != nil {
+		t.Fatalf("another client is locked out too: %v", err)
+	}
+	// Same IPv6 /64: one client.
+	v6 := ClientMeta{IP: "2001:db8:1:2::10"}
+	for range LockoutThreshold {
+		_, _ = s.Login(ctx, "admin", "wrong-password", v6)
+	}
+	if _, err := s.Login(ctx, "admin", pw, ClientMeta{IP: "2001:db8:1:2:ffff::1"}); !errors.Is(err, ErrInvalidCredentials) {
+		t.Fatalf("another address of the same /64 got in: %v", err)
+	}
+	if _, err := s.Login(ctx, "admin", pw, ClientMeta{IP: "2001:db8:1:3::10"}); err != nil {
+		t.Fatalf("another /64: %v", err)
+	}
+	u, _ := s.Store.UserByUsername(ctx, "admin")
+	if u.FailuresBeforeLogin != LockoutThreshold { // since the sign-in from 198.51.100.2 (a refused locked-out attempt is not counted)
+		t.Errorf("failures before login: %d", u.FailuresBeforeLogin)
+	}
+}
+
+// BUG-09: concurrent failures are all counted.
+func TestConcurrentFailuresCounted(t *testing.T) {
+	s, _ := newService(t)
+	ctx := context.Background()
+	bootstrap(t, s)
+	var wg sync.WaitGroup
+	for i := range 8 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_, _ = s.Login(ctx, "admin", "wrong-password", ClientMeta{IP: fmt.Sprintf("192.0.2.%d", i)})
+		}()
+	}
+	wg.Wait()
+	if u, _ := s.Store.UserByUsername(ctx, "admin"); u.FailedAttempts != 8 {
+		t.Errorf("failed attempts: %d, want 8", u.FailedAttempts)
+	}
+}
+
+func TestClientKey(t *testing.T) {
+	for in, want := range map[string]string{
+		"192.0.2.1":            "192.0.2.1",
+		"::ffff:192.0.2.1":     "192.0.2.1",
+		"2001:db8:a:b:c:d:e:f": "2001:db8:a:b::/64",
+		"[2001:db8::1]:443":    "2001:db8::/64",
+		"not-an-ip":            "not-an-ip",
+	} {
+		if got := ClientKey(in); got != want {
+			t.Errorf("ClientKey(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+// SEC-02: an IPv6 /64 shares one budget, and the limiter stays bounded.
+func TestRateLimiterIPv6AndBounded(t *testing.T) {
+	r := NewRateLimiter(2, time.Minute, nil)
+	for _, ip := range []string{"2001:db8::1", "2001:db8::2"} {
+		if ok, _ := r.Allow(ip); !ok {
+			t.Fatal("first attempts refused")
+		}
+	}
+	if ok, _ := r.Allow("2001:db8::ffff"); ok {
+		t.Error("a third address of the same /64 must be limited")
+	}
+	r.maxKeys = 100
+	for i := range 1000 {
+		r.Allow(fmt.Sprintf("2001:db8:%x::1", i))
+	}
+	if n := r.Len(); n > 100 {
+		t.Errorf("limiter holds %d clients", n)
 	}
 }

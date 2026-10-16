@@ -83,18 +83,33 @@ func idsJSON(ids []int64) string {
 // ReplaceArrCatalog upserts the full Sonarr (kind "series") or Radarr (kind
 // "movie") catalog and deletes the items that disappeared, in one
 // transaction. Plex link and watch statistics columns are left untouched.
+// A catalog that would remove too many items is refused with a
+// *CatalogShrinkError and nothing changes (see checkCatalogShrink).
 func (s *Store) ReplaceArrCatalog(ctx context.Context, kind string, items []CatalogItem, now time.Time) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
-	arrIDs, err := upsertItems(ctx, tx, kind, items, now)
+	prot, err := readProtectionState(ctx, tx)
 	if err != nil {
+		return err
+	}
+	arrIDs := make([]int64, 0, len(items))
+	for _, it := range items {
+		arrIDs = append(arrIDs, it.ArrID)
+	}
+	if err := checkCatalogShrink(ctx, tx, kind, arrIDs, now); err != nil {
+		return err
+	}
+	if _, err := upsertItems(ctx, tx, kind, items, now); err != nil {
 		return err
 	}
 	if _, err := tx.ExecContext(ctx, `DELETE FROM media WHERE kind = ? AND arr_id IS NOT NULL
 		AND arr_id NOT IN (SELECT value FROM json_each(?))`, kind, idsJSON(arrIDs)); err != nil {
+		return err
+	}
+	if err := refreshLocalProtection(ctx, tx, prot, now); err != nil {
 		return err
 	}
 	return tx.Commit()
@@ -108,7 +123,14 @@ func (s *Store) UpsertCatalogItem(ctx context.Context, kind string, item Catalog
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
+	prot, err := readProtectionState(ctx, tx)
+	if err != nil {
+		return err
+	}
 	if _, err := upsertItems(ctx, tx, kind, []CatalogItem{item}, now); err != nil {
+		return err
+	}
+	if err := refreshLocalProtection(ctx, tx, prot, now); err != nil {
 		return err
 	}
 	return tx.Commit()
@@ -262,7 +284,10 @@ type ServerSeason struct {
 // server_only rows are upserted and stale ones deleted, and Sonarr seasons
 // get its season keys. The keys of the other server are left as they are
 // (its history stays linked) and the items only it knows are hidden, with
-// their local protection, until it is the catalog server again.
+// their local protection, until it is the catalog server again. Local
+// protections are bound to the items' identity (local_protections), not to
+// the rows: they follow an item that Sonarr/Radarr took over or that got a
+// new key.
 func (s *Store) ApplyServerMatches(ctx context.Context, server string, links []ServerLink, only []ServerOnlyItem,
 	seasons []ServerSeason, now time.Time) error {
 	col, ok := serverColumns[server]
@@ -274,6 +299,10 @@ func (s *Store) ApplyServerMatches(ctx context.Context, server string, links []S
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
+	prot, err := readProtectionState(ctx, tx)
+	if err != nil {
+		return err
+	}
 
 	//nolint:gosec // G202: col comes from the serverColumns whitelist
 	if _, err := tx.ExecContext(ctx, `UPDATE media SET `+col+` = NULL, match_state = 'arr_only',
@@ -334,6 +363,11 @@ func (s *Store) ApplyServerMatches(ctx context.Context, server string, links []S
 	if _, err := tx.ExecContext(ctx, `INSERT INTO app_settings(key, value, updated_at) VALUES (?, ?, ?)
 		ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
 		SettingCatalogServer, server, now.Unix()); err != nil {
+		return err
+	}
+	// After the stale server_only rows are gone: a protection follows its item
+	// to the row that took its key (Sonarr/Radarr took it over, new key).
+	if err := refreshLocalProtection(ctx, tx, prot, now); err != nil {
 		return err
 	}
 	return tx.Commit()

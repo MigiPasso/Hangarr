@@ -15,6 +15,7 @@ import (
 	"hangarr/internal/clients/radarr"
 	"hangarr/internal/clients/sonarr"
 	"hangarr/internal/i18n"
+	"hangarr/internal/media"
 )
 
 // calendarRanges are the periods offered on the Upcoming page (days), in the
@@ -113,7 +114,7 @@ func (s *Server) calendar(w http.ResponseWriter, r *http.Request) {
 		d.Size = n
 	}
 	if n, err := strconv.Atoi(q.Get("page")); err == nil && n > 1 {
-		d.Page = n
+		d.Page = min(n, maxPage)
 	}
 	now := time.Now().In(loc)
 	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, loc)
@@ -307,7 +308,7 @@ func seriesEntries(l i18n.Localizer, episodes []sonarr.CalendarEpisode, loc *tim
 		}
 		g.Count = len(g.episodes)
 		g.Time = g.at.Format("15:04")
-		g.What = episodeLabel(g.season, g.episodes[0])
+		g.What = media.EpisodeCode(g.season, g.episodes[0])
 		if g.Count > 1 {
 			g.What += fmt.Sprintf("–E%02d", g.episodes[g.Count-1])
 			g.EpisodeTitle = ""

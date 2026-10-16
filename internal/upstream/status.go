@@ -2,7 +2,6 @@ package upstream
 
 import (
 	"context"
-	"fmt"
 	"strings"
 	"sync"
 	"time"
@@ -72,45 +71,43 @@ func IsIndexerAlert(a sonarr.HealthCheck) bool { return strings.HasPrefix(a.Sour
 // Health page (services and trackers), loaded by two requests at once.
 const alertsTTL = 15 * time.Second
 
-type alertsKey struct {
-	c   *Clients // a configuration change installs new Clients: fresh key
-	svc string
-}
-
 type alertsEntry struct {
 	at   time.Time
 	list []sonarr.HealthCheck
 }
 
-var (
-	alertsMu     sync.Mutex
-	alertsCache  = map[alertsKey]alertsEntry{}
-	alertsFlight singleflight.Group
-)
+// alertsCache keeps the health alerts of one Clients, by service; concurrent
+// callers share one request.
+type alertsCache struct {
+	mu      sync.Mutex
+	entries map[string]alertsEntry
+	flight  singleflight.Group
+}
+
+func newAlertsCache() *alertsCache { return &alertsCache{entries: map[string]alertsEntry{}} }
 
 // healthAlerts returns every Sonarr/Radarr health alert other than "ok".
 // Concurrent callers share one request and the result is kept alertsTTL.
 func healthAlerts(ctx context.Context, c *Clients, svc string) []sonarr.HealthCheck {
-	key := alertsKey{c, svc}
-	alertsMu.Lock()
-	e, ok := alertsCache[key]
-	alertsMu.Unlock()
+	cache := c.alerts
+	if cache == nil {
+		list, _ := fetchAlerts(ctx, c, svc)
+		return list
+	}
+	cache.mu.Lock()
+	e, ok := cache.entries[svc]
+	cache.mu.Unlock()
 	if ok && time.Since(e.at) < alertsTTL {
 		return e.list
 	}
-	v, _, _ := alertsFlight.Do(fmt.Sprintf("%p/%s", c, svc), func() (any, error) {
+	v, _, _ := cache.flight.Do(svc, func() (any, error) {
 		list, err := fetchAlerts(context.WithoutCancel(ctx), c, svc)
 		if err != nil {
 			return list, nil // shared with the concurrent callers, never cached: retried next time
 		}
-		alertsMu.Lock()
-		defer alertsMu.Unlock()
-		for k, old := range alertsCache { // drop stale entries (old configurations)
-			if time.Since(old.at) >= alertsTTL {
-				delete(alertsCache, k)
-			}
-		}
-		alertsCache[key] = alertsEntry{at: time.Now(), list: list}
+		cache.mu.Lock()
+		defer cache.mu.Unlock()
+		cache.entries[svc] = alertsEntry{at: time.Now(), list: list}
 		return list, nil
 	})
 	list, _ := v.([]sonarr.HealthCheck)

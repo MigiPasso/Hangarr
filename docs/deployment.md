@@ -55,6 +55,9 @@ Open `http://<host>:8080` (or `http://localhost:8080`). The published port is `H
 - **Plain HTTP on the local network**: set `COOKIE_SECURE=false` in `.env`. Otherwise the browser refuses the session
   cookie, and the sign-in page says so. On `localhost` this is not needed.
 - **Behind an HTTPS reverse proxy**: keep `COOKIE_SECURE=true` and set the address of the proxy in `TRUSTED_PROXIES`.
+- **Plain HTTP under a domain name** (such as `http://nas.example.com:8080`): add the name to `ALLOWED_HOSTS`. Over plain
+  HTTP, Hangarr only answers local names (IP addresses, `localhost`, names without a dot, `.lan`, `.local`…) and refuses
+  the others with `421 Misdirected Request`, which blocks DNS rebinding.
 - **Same network as the *arr stack**: in `compose.yml`, uncomment `networks: [default, arr]` in the `hangarr` service,
   and the top-level `networks` block at the end of the file. Set `name:` to your stack's network (`docker network ls`).
   Sonarr is then reachable at `http://sonarr:8989`, and Tautulli can call `http://hangarr:8080/webhooks/tautulli`.
@@ -134,7 +137,7 @@ Then open `http://localhost:8080`. Keep `COOKIE_SECURE: "true"` in the ConfigMap
 `localhost`.
 
 For access through an HTTPS Ingress, keep `COOKIE_SECURE: "true"` and set `TRUSTED_PROXIES` to the CIDR of the ingress
-controller pods. Example with the Tailscale Kubernetes operator (an example, not a requirement; adapt it to your
+controller pods (without it, the Ingress host name is refused with `421`, unless it is listed in `ALLOWED_HOSTS`). Example with the Tailscale Kubernetes operator (an example, not a requirement; adapt it to your
 ingress controller):
 
 ```yaml
@@ -192,9 +195,10 @@ env:
 The account is then created with this password: nothing is written to the logs, and no change is required. The
 password must meet the same rules as a chosen one: at least 12 characters, with lowercase and uppercase letters, a
 digit and a symbol, not containing the username, and not a common password. Otherwise Hangarr refuses to start, even if
-the account already exists. The variable has no `_FILE` variant. It is only read when the account is created; afterwards
-it is ignored, with a warning in the logs. Remove it once the account exists: otherwise it stays readable in the
-container configuration (`docker inspect`, pod spec).
+the account already exists. `HANGARR_ADMIN_PASSWORD_FILE` reads it from a file instead, such as a mounted Docker or
+Kubernetes secret, which keeps it out of the container configuration. It is only read when the account is created;
+afterwards it is ignored, with a warning in the logs. Remove it once the account exists: otherwise it stays readable in
+the container configuration (`docker inspect`, `kubectl describe`); on Kubernetes, delete the Secret too.
 
 ---
 
@@ -337,6 +341,17 @@ is not read then: the scheduled sync, or **Sync now**, updates the history inste
   then run `docker compose pull && docker compose up -d`.
 - **Your own build** instead of the published image: run `make image-load` first (it builds `hangarr:local` from the
   sources), then set `HANGARR_IMAGE=hangarr:local` in `.env` and run `docker compose up -d`.
+- **Checking the published image**: each release image is signed with cosign (keyless, from the release workflow) and
+  carries an SBOM and a provenance attestation.
+
+  ```sh
+  cosign verify ghcr.io/migipasso/hangarr:vX.Y.Z \
+    --certificate-identity-regexp '^https://github.com/MigiPasso/Hangarr/' \
+    --certificate-oidc-issuer https://token.actions.githubusercontent.com
+  docker buildx imagetools inspect ghcr.io/migipasso/hangarr:vX.Y.Z --format '{{ json .SBOM }}'
+  ```
+- **Downgrades** are refused: a database migrated by a more recent release stops an older one at startup. Restore the
+  backup made before the upgrade instead.
 
 ### Backup
 
@@ -419,8 +434,14 @@ Wrong API key or token. For Plex, use the token of the server owner's account. F
 
 ### "This address redirects to another host"
 
-The address redirects elsewhere (an authentication proxy, another domain). Hangarr refuses to send the key there. Enter
-the final address of the service.
+The address redirects elsewhere (an authentication proxy, another domain, or another port of the same host, which may
+be another service). Hangarr refuses to send the key there. Enter the final address of the service.
+
+### `421 Misdirected Request`
+
+Hangarr was reached over plain HTTP under a host name it does not know (see `ALLOWED_HOSTS` in
+[configuration](configuration.md)). Add the name to `ALLOWED_HOSTS`, or reach Hangarr over HTTPS through a proxy listed
+in `TRUSTED_PROXIES`.
 
 ### "This address answers as Radarr, not Sonarr."
 

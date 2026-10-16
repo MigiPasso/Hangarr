@@ -125,29 +125,54 @@ func libraryView(b *sqlBuilder, f LibraryFilter, now time.Time, abandonDays int)
 			WHERE m.kind = ? AND m.match_state <> 'hidden')`, f.Kind)
 		return
 	}
+	perspectiveView(b, f.Kind, []int64{f.User}, now, abandonDays)
+}
+
+// perspectiveView writes the CTE "v" seen by each of users: one row per user
+// (column perspective) and media row of kind, with the effective columns
+// computed from that user's sessions (same rules as package scoring). With a
+// single user (the library) the per-user keys are left out: the query is
+// then as fast as a query written for one user (BenchmarkLibraryView).
+func perspectiveView(b *sqlBuilder, kind string, users []int64, now time.Time, abandonDays int) {
 	recent := now.Unix() - int64(abandonDays)*day
-	// ev reads the user's plays once, and only those of the listed kind
+	if len(users) == 0 {
+		users = []int64{0} // nobody: user 0 has no plays
+	}
+	multi := len(users) != 1
+	// k returns the per-user fragment, empty with a single user.
+	k := func(fragment string) string {
+		if multi {
+			return fragment
+		}
+		return ""
+	}
+	usersCTE, userCond, usersArg := `us AS (SELECT ? AS uid)`, `user_id = (SELECT uid FROM us)`, any(users[0])
+	if multi {
+		usersCTE, userCond, usersArg = `us AS (SELECT value AS uid FROM json_each(?))`, `user_id IN (SELECT uid FROM us)`, idsJSON(users)
+	}
+	// ev reads the users' plays once, and only those of the listed kind
 	// (the costly part, see BenchmarkLibraryView); up and ue come from it.
-	b.add(`WITH ev AS MATERIALIZED (
-			SELECT media_id, `+playKey+` AS pk, watched, stopped_at, media_type, season_number, episode_number
-			FROM watch_events WHERE user_id = ? AND media_id IN (SELECT id FROM media WHERE kind = ?)),
+	b.add(`WITH `+usersCTE+`,
+		ev AS MATERIALIZED (
+			SELECT user_id AS uid, media_id, `+playKey+` AS pk, watched, stopped_at, media_type, season_number, episode_number
+			FROM watch_events WHERE `+userCond+` AND media_id IN (SELECT id FROM media WHERE kind = ?)),
 		up AS (
-			SELECT media_id, COUNT(DISTINCT pk) AS plays, COUNT(DISTINCT CASE WHEN watched = 1 THEN pk END) AS completed,
+			SELECT `+k("uid, ")+`media_id, COUNT(DISTINCT pk) AS plays, COUNT(DISTINCT CASE WHEN watched = 1 THEN pk END) AS completed,
 			  MAX(stopped_at) AS last
-			FROM ev GROUP BY media_id),
+			FROM ev GROUP BY `+k("uid, ")+`media_id),
 		ue AS (
-			SELECT media_id, season_number, COUNT(DISTINCT episode_number) AS w FROM ev
+			SELECT `+k("uid, ")+`media_id, season_number, COUNT(DISTINCT episode_number) AS w FROM ev
 			WHERE watched = 1 AND media_type = 'episode' AND season_number > 0
-			GROUP BY media_id, season_number),
+			GROUP BY `+k("uid, ")+`media_id, season_number),
 		uw AS (
-			SELECT ue.media_id, SUM(ue.w) AS raw,
+			SELECT `+k("ue.uid, ")+`ue.media_id, SUM(ue.w) AS raw,
 			  SUM(CASE WHEN COALESCE(s.episode_file_count, 0) > 0 AND ue.w > s.episode_file_count
 			      THEN s.episode_file_count ELSE ue.w END) AS capped
 			FROM ue LEFT JOIN seasons s ON s.media_id = ue.media_id AND s.season_number = ue.season_number
-			GROUP BY ue.media_id),
+			GROUP BY `+k("ue.uid, ")+`ue.media_id),
 		v AS (
-			SELECT m.*, COALESCE(up.plays, 0) AS eff_plays, up.last AS eff_last,
-			  CASE WHEN up.media_id IS NOT NULL THEN ? END AS eff_last_by, COALESCE(uw.capped, 0) AS eff_watched,
+			SELECT m.*, us.uid AS perspective, COALESCE(up.plays, 0) AS eff_plays, up.last AS eff_last,
+			  CASE WHEN up.media_id IS NOT NULL THEN us.uid END AS eff_last_by, COALESCE(uw.capped, 0) AS eff_watched,
 			  CASE WHEN m.kind = 'movie' THEN
 			    CASE WHEN COALESCE(up.completed, 0) > 0 THEN 'completed'
 			         WHEN COALESCE(up.plays, 0) = 0 THEN 'never'
@@ -156,19 +181,20 @@ func libraryView(b *sqlBuilder, f LibraryFilter, now time.Time, abandonDays int)
 			    CASE WHEN COALESCE(uw.raw, 0) = 0 THEN 'never'
 			         WHEN NOT EXISTS (SELECT 1 FROM seasons s WHERE s.media_id = m.id AND s.season_number > 0
 			              AND s.episode_file_count > 0
-			              AND COALESCE((SELECT ue.w FROM ue WHERE ue.media_id = s.media_id
+			              AND COALESCE((SELECT ue.w FROM ue WHERE `+k("ue.uid = us.uid AND ")+`ue.media_id = s.media_id
 			                            AND ue.season_number = s.season_number), 0) < s.episode_file_count)
 			           THEN 'completed'
-			         WHEN (SELECT COALESCE((SELECT ue.w FROM ue WHERE ue.media_id = s.media_id
+			         WHEN (SELECT COALESCE((SELECT ue.w FROM ue WHERE `+k("ue.uid = us.uid AND ")+`ue.media_id = s.media_id
 			                 AND ue.season_number = s.season_number), 0) >= s.episode_file_count
 			               FROM seasons s WHERE s.media_id = m.id AND s.season_number > 0 AND s.episode_file_count > 0
 			               ORDER BY s.season_number DESC LIMIT 1) = 1
 			           THEN 'completed' -- last season finished (scoring.WatchState)
 			         WHEN up.last >= ? THEN 'in_progress' ELSE 'abandoned' END
 			  END AS eff_state
-			FROM media m LEFT JOIN up ON up.media_id = m.id LEFT JOIN uw ON uw.media_id = m.id
+			FROM us CROSS JOIN media m LEFT JOIN up ON `+k("up.uid = us.uid AND ")+`up.media_id = m.id
+			  LEFT JOIN uw ON `+k("uw.uid = us.uid AND ")+`uw.media_id = m.id
 			WHERE m.kind = ? AND m.match_state <> 'hidden')`,
-		f.User, f.Kind, f.User, recent, recent, f.Kind)
+		usersArg, kind, recent, recent, kind)
 }
 
 // libraryWhere writes the WHERE clause (always starts with "WHERE 1 = 1").
@@ -257,6 +283,44 @@ func LibraryQuery(f LibraryFilter, now time.Time, abandonDays int) (string, []an
 	}
 	b.add(` LIMIT ? OFFSET ?`, limit, max(f.Offset, 0))
 	return b.sb.String(), b.args
+}
+
+// InProgressSeries returns, for each of users, the series that user is
+// watching (in_progress from that user's perspective), last played first,
+// at most limit each: one query for every user instead of one per user.
+func (s *Store) InProgressSeries(ctx context.Context, users []int64, limit int, now time.Time, abandonDays int) (map[int64][]LibraryItem, error) {
+	out := map[int64][]LibraryItem{}
+	if len(users) == 0 {
+		return out, nil
+	}
+	if len(users) == 1 {
+		users = append(users, 0) // the grouped form of the view (user 0 has no plays)
+	}
+	b := &sqlBuilder{}
+	perspectiveView(b, "series", users, now, abandonDays)
+	b.add(` SELECT perspective, id, COALESCE(arr_id, 0), COALESCE(plex_rating_key, ''), COALESCE(jellyfin_id, ''), kind,
+		title, COALESCE(year, 0), eff_state, eff_plays, distinct_viewers, eff_watched, COALESCE(downloaded_episodes, 0),
+		COALESCE(total_episodes, 0), eff_last, size_bytes, added_at, COALESCE(rating, 0), tags, match_state,
+		COALESCE(status, ''), protected_local FROM (
+		  SELECT v.*, ROW_NUMBER() OVER (PARTITION BY v.perspective ORDER BY v.eff_last DESC, v.title_norm, v.id) AS rn
+		  FROM v WHERE v.eff_state = 'in_progress')
+		WHERE rn <= ? ORDER BY perspective, rn`, limit)
+	err := s.queryEach(ctx, b.sb.String(), func(rows *sql.Rows) error {
+		var user int64
+		var it LibraryItem
+		var last, added sql.NullInt64
+		var tags string
+		if err := rows.Scan(&user, &it.ID, &it.ArrID, &it.PlexRatingKey, &it.JellyfinID, &it.Kind, &it.Title, &it.Year,
+			&it.State, &it.Plays, &it.Viewers, &it.WatchedEpisodes, &it.DownloadedEpisodes, &it.TotalEpisodes, &last,
+			&it.SizeBytes, &added, &it.Rating, &tags, &it.MatchState, &it.Status, &it.ProtectedLocal); err != nil {
+			return err
+		}
+		it.LastViewedAt, it.AddedAt = ptrInt(last), ptrInt(added)
+		_ = json.Unmarshal([]byte(tags), &it.Tags)
+		out[user] = append(out[user], it)
+		return nil
+	}, b.args...)
+	return out, err
 }
 
 // LibraryPage is one page of the library and the totals of the filter.

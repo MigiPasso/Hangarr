@@ -2,6 +2,7 @@ package web
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -331,5 +332,54 @@ func TestBatchProtect(t *testing.T) {
 	if !strings.Contains(r.body, "Protéger la sélection (simulation)") || !strings.Contains(r.body, "2 réussites") ||
 		!strings.Contains(r.header.Get("HX-Trigger"), "Simulation") {
 		t.Errorf("protect report: %s\n%s", r.header.Get("HX-Trigger"), r.body)
+	}
+}
+
+// BUG-03: ?season=N on a movie is a 404, on the page and on the POST, and
+// nothing reaches Radarr.
+func TestDeleteSeasonOfMovieNotFound(t *testing.T) {
+	e := newLibEnvDry(t, 0, false)
+	tenet := e.mediaID("movie", "Tenet")
+	if r := e.do(e.c, "GET", "/movies/"+tenet+"/delete?season=1", nil, nil); r.status != http.StatusNotFound {
+		t.Errorf("page: %d", r.status)
+	}
+	tok := csrfFrom(t, e.do(e.c, "GET", "/movies/"+tenet+"/delete", nil, nil).body)
+	r := e.do(e.c, "POST", "/movies/"+tenet+"/delete", url.Values{"season": {"1"}, "delete_files": {"1"}},
+		map[string]string{"HX-Request": "true", csrfHeader: tok})
+	if r.status != http.StatusNotFound || r.header.Get("HX-Trigger") != "" {
+		t.Errorf("submit: %d %s", r.status, r.header.Get("HX-Trigger"))
+	}
+	for _, c := range e.mock.Calls() {
+		if c.Method != http.MethodGet {
+			t.Errorf("destructive call: %+v", c)
+		}
+	}
+	if r := e.do(e.c, "GET", "/movies/"+tenet, nil, nil); r.status != http.StatusOK {
+		t.Errorf("movie gone: %d", r.status)
+	}
+}
+
+// BUG-14: duplicates are dropped, and more than MaxBatch distinct ids are
+// refused as soon as they are read.
+func TestSelectedIDs(t *testing.T) {
+	form := url.Values{}
+	for range 3 {
+		form.Add("ids", "7")
+	}
+	form.Add("ids", "8")
+	r, _ := http.NewRequest(http.MethodPost, "/batch/delete", strings.NewReader(form.Encode()))
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	ids, err := selectedIDs(r)
+	if err != nil || len(ids) != 2 || ids[0] != 7 || ids[1] != 8 {
+		t.Fatalf("ids=%v err=%v", ids, err)
+	}
+	form = url.Values{}
+	for i := range 5000 { // under the parameter limit of net/url
+		form.Add("ids", strconv.Itoa(i+1))
+	}
+	r, _ = http.NewRequest(http.MethodPost, "/batch/delete", strings.NewReader(form.Encode()))
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	if _, err := selectedIDs(r); !errors.Is(err, errTooManyItems) {
+		t.Errorf("too many: %v", err)
 	}
 }

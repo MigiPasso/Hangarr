@@ -5,9 +5,12 @@ import (
 	"maps"
 	"net/http"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
+	"hangarr/internal/auth"
+	"hangarr/internal/media"
 	"hangarr/internal/store"
 	"hangarr/internal/upstream"
 )
@@ -97,6 +100,10 @@ type configData struct {
 	CanStoreSecrets bool
 	KeyInDataDir    bool
 	HistorySource   string
+	// NeedsConfirm: the password must be confirmed before saving or testing
+	// (auth.ReauthWindow); ConfirmError explains a refused confirmation.
+	NeedsConfirm bool
+	ConfirmError string
 }
 
 // testResult is the outcome of "Test connection".
@@ -129,9 +136,10 @@ func (s *Server) serviceForms(r *http.Request) ([]serviceForm, error) {
 	return out, nil
 }
 
-func (s *Server) configData(forms []serviceForm) configData {
+func (s *Server) configData(r *http.Request, forms []serviceForm) configData {
 	up := s.Upstreams.Get()
-	d := configData{Services: forms, HistorySource: up.HistorySource}
+	d := configData{Services: forms, HistorySource: up.HistorySource,
+		NeedsConfirm: !s.Auth.RecentlyAuthenticated(sessionFrom(r))}
 	if s.Services != nil {
 		d.CanStoreSecrets, d.KeyInDataDir = s.Services.CanStoreSecrets(), s.Services.KeyInDataDir
 	}
@@ -144,7 +152,7 @@ func (s *Server) configPage(w http.ResponseWriter, r *http.Request) {
 		s.serverError(w, r, err)
 		return
 	}
-	s.render(w, r, http.StatusOK, "config", "", s.page(r, "Services", "config", s.configData(forms)))
+	s.render(w, r, http.StatusOK, "config", "", s.page(r, "Services", "config", s.configData(r, forms)))
 }
 
 // serviceInput reads the form of one service. clear_all (the button of a
@@ -165,6 +173,49 @@ func serviceInput(r *http.Request, svc string) upstream.Input {
 	return in
 }
 
+// recentAuth lets a service operation through only when the session proved
+// the password lately (auth.ReauthWindow): saving or testing a service sends
+// requests to any address, with the saved keys. Otherwise the browser goes
+// back to the Services page, which asks for the password.
+func (s *Server) recentAuth(w http.ResponseWriter, r *http.Request) bool {
+	if s.Auth.RecentlyAuthenticated(sessionFrom(r)) {
+		return true
+	}
+	redirect(w, r, "/config#confirm")
+	return false
+}
+
+// configConfirm checks the current password before service operations.
+func (s *Server) configConfirm(w http.ResponseWriter, r *http.Request) {
+	meta := s.clientMeta(r)
+	fail := func(status int, msg string) {
+		forms, err := s.serviceForms(r)
+		if err != nil {
+			s.serverError(w, r, err)
+			return
+		}
+		d := s.configData(r, forms)
+		d.ConfirmError = msg
+		s.render(w, r, status, "config", "", s.page(r, "Services", "config", d))
+	}
+	// Same budget as the sign-in: the confirmation is a password guess too.
+	if ok, retry := s.LoginLimiter.Allow(meta.IP); !ok {
+		w.Header().Set("Retry-After", strconv.Itoa(int(retry/time.Second)+1))
+		fail(http.StatusTooManyRequests, s.loc(r).T("Too many attempts. Try again in %d min.", int(retry/time.Minute)+1))
+		return
+	}
+	err := s.Auth.Reauthenticate(r.Context(), sessionFrom(r), r.PostFormValue("current_password"), meta)
+	switch {
+	case errors.Is(err, auth.ErrWrongPassword):
+		fail(http.StatusUnprocessableEntity, s.loc(r).T("Incorrect current password."))
+		return
+	case err != nil:
+		s.serverError(w, r, err)
+		return
+	}
+	redirect(w, r, "/config")
+}
+
 func (s *Server) configService(w http.ResponseWriter, r *http.Request) (string, bool) {
 	svc := r.PathValue("service")
 	if s.Services == nil || !slices.Contains(upstream.Services, svc) {
@@ -176,13 +227,13 @@ func (s *Server) configService(w http.ResponseWriter, r *http.Request) (string, 
 
 func (s *Server) configSubmit(w http.ResponseWriter, r *http.Request) {
 	svc, ok := s.configService(w, r)
-	if !ok {
+	if !ok || !s.recentAuth(w, r) {
 		return
 	}
 	in := serviceInput(r, svc)
 	sess := sessionFrom(r)
 	meta := s.clientMeta(r)
-	ua := truncateUA(meta.UserAgent)
+	ua := media.Truncate(meta.UserAgent, 256)
 	wasReady := s.Upstreams.Get().Ready()
 	changed, err := s.Services.Save(r.Context(), svc, in,
 		store.AuthEvent{UserID: &sess.UserID, Username: sess.Username, IP: meta.IP, UserAgent: ua}, time.Now())
@@ -224,16 +275,29 @@ func (s *Server) configSubmit(w http.ResponseWriter, r *http.Request) {
 		s.render(w, r, http.StatusOK, "config", "config_saved", pd)
 		return
 	}
-	s.render(w, r, status, "config", "", s.page(r, "Services", "config", s.configData(forms)))
+	s.render(w, r, status, "config", "", s.page(r, "Services", "config", s.configData(r, forms)))
 }
 
 func (s *Server) configTest(w http.ResponseWriter, r *http.Request) {
 	svc, ok := s.configService(w, r)
-	if !ok {
+	if !ok || !s.recentAuth(w, r) {
 		return
 	}
 	res := testResult{Service: svc}
 	l := s.loc(r)
+	// A connection test sends a request to any address an administrator
+	// types: bounded per client, so that a stolen session cannot scan the
+	// internal network quickly with it.
+	if ok, retry := s.testLimiter.Allow(s.clientMeta(r).IP); !ok {
+		w.Header().Set("Retry-After", strconv.Itoa(int(retry/time.Second)+1))
+		res.Message = l.T("Too many connection tests. Try again in %d s.", int(retry/time.Second)+1)
+		if isHTMX(r) {
+			s.render(w, r, http.StatusOK, "config", "test_result", s.page(r, "Services", "config", res))
+			return
+		}
+		http.Error(w, res.Message, http.StatusTooManyRequests)
+		return
+	}
 	version, err := s.Services.Test(r.Context(), svc, serviceInput(r, svc))
 	var verr upstream.ValidationError
 	switch {
@@ -272,5 +336,5 @@ func (s *Server) configTest(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
-	s.render(w, r, http.StatusOK, "config", "", s.page(r, "Services", "config", s.configData(forms)))
+	s.render(w, r, http.StatusOK, "config", "", s.page(r, "Services", "config", s.configData(r, forms)))
 }

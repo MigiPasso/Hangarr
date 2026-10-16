@@ -18,6 +18,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -147,6 +148,10 @@ func captureAll(cfg *config.Config, out string, limit int) error {
 			return err
 		}
 		for _, sec := range sections.MediaContainer.Directory {
+			if !safeKey.MatchString(string(sec.Key)) {
+				fmt.Fprintf(os.Stderr, "warning: plex section key %q skipped (not alphanumeric)\n", string(sec.Key))
+				continue
+			}
 			types := map[string][]int{"movie": {1}, "show": {2, 3}}[sec.Type]
 			for _, t := range types {
 				q := c.plexPage(url.Values{"type": {strconv.Itoa(t)}, "includeGuids": {"1"}})
@@ -172,13 +177,16 @@ func captureAll(cfg *config.Config, out string, limit int) error {
 				if detailed == maxVersionDetails {
 					break
 				}
+				if !safeKey.MatchString(key) {
+					continue
+				}
 				file := fmt.Sprintf("plex/metadata-%s.json", key)
 				if err := c.capture(file, plex, "/library/metadata/"+url.PathEscape(key), nil, false); err != nil {
 					return err
 				}
 				detailed++
 			}
-			if single != "" {
+			if safeKey.MatchString(single) {
 				file := fmt.Sprintf("plex/metadata-%s.json", single)
 				if err := c.capture(file, plex, "/library/metadata/"+url.PathEscape(single), nil, false); err != nil {
 					return err
@@ -417,6 +425,23 @@ func (a *anonymizer) ip(v string) string {
 	return p
 }
 
+// secretName reports a field that holds a credential (Tautulli may return
+// server tokens, *arr API keys…). Plex's "key", "ratingKey", "parentKey"
+// are identifiers the fixtures need: a plain "key" does not count.
+func secretName(lk string) bool {
+	for _, w := range []string{"token", "secret", "password", "passwd", "apikey", "api_key", "accesskey", "access_key",
+		"privatekey", "private_key", "authorization", "cookie"} {
+		if strings.Contains(lk, w) {
+			return true
+		}
+	}
+	return false
+}
+
+// safeKey is the form of a Plex key used in a file name: digits and letters
+// only, so that an unexpected answer cannot write outside the output folder.
+var safeKey = regexp.MustCompile(`^[0-9A-Za-z]+$`)
+
 func (a *anonymizer) walk(v any, accounts bool) any {
 	switch x := v.(type) {
 	case []any:
@@ -448,6 +473,10 @@ func (a *anonymizer) walk(v any, accounts bool) any {
 			case lk == "machineidentifier" || lk == "uuid" || lk == "session_key" || lk == "machine_id" || lk == "servername" ||
 				lk == "localaddress": // Jellyfin's LAN URL
 				x[k] = "redacted"
+			case secretName(lk):
+				if s != "" {
+					x[k] = "redacted"
+				}
 			}
 		}
 	}

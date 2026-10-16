@@ -52,11 +52,15 @@ run yet), a sync runs immediately.
 | Variable | Default | Description |
 |---|---|---|
 | `ADMIN_USERNAME` | `admin` | Name of the account created at the first start, 1 to 64 characters. Only used when that account is created. Also the default account of `hangarr admin reset-password`. |
-| `HANGARR_ADMIN_PASSWORD` | empty | Password of the admin account, instead of a generated one. No `_FILE` variant. See [Admin password](#admin-password). |
-| `COOKIE_SECURE` | `true` | Sets the `Secure` attribute on the session cookies, so they are sent over HTTPS only. Use `false` only for plain-HTTP access on a local network. The sign-in page warns when it is served over HTTP while this is `true` (localhost excepted). |
+| `HANGARR_ADMIN_PASSWORD` | empty | Password of the admin account, instead of a generated one. `HANGARR_ADMIN_PASSWORD_FILE` reads it from a file (a Docker or Kubernetes secret). See [Admin password](#admin-password). |
+| `COOKIE_SECURE` | `true` | Sets the `Secure` attribute on the session cookies, so they are sent over HTTPS only. Use `false` only for plain-HTTP access on a local network. The sign-in page warns when it is served over HTTP while this is `true` (localhost excepted). With `true`, the cookies are named `__Host-hangarr_session` and `__Secure-hangarr_presession` (a subdomain cannot set them), and HTTPS responses carry `Strict-Transport-Security` (HTTPS seen directly, or `X-Forwarded-Proto: https` from a `TRUSTED_PROXIES` proxy). |
+| `HSTS_INCLUDE_SUBDOMAINS` | `false` | Adds `includeSubDomains` to `Strict-Transport-Security`. Leave it off when Hangarr is served on a parent domain (such as `home.lan`): browsers would then refuse plain HTTP on every service below it for a year. |
+| `ALLOWED_HOSTS` | empty | Host names (comma-separated) under which Hangarr may be reached over **plain HTTP**, besides the local ones always accepted: `localhost`, IP addresses, names without a dot (`hangarr`, `nas`) and names under `.local`, `.lan`, `.home.arpa`, `.internal`, `.localdomain`. Any other name gets `421 Misdirected Request`: this blocks DNS rebinding, where a web page makes the browser of someone on your network reach Hangarr under the attacker's domain. HTTPS requests (directly, or through a `TRUSTED_PROXIES` proxy) are not checked: the certificate already rules that out. `*` turns the check off. `/healthz`, `/readyz` and the webhook are never checked. |
 | `SESSION_IDLE_TIMEOUT` | `12h` | A session expires after this much inactivity. Minimum `1m`. |
 | `SESSION_MAX_AGE` | `168h` | Absolute lifetime of a session. Minimum `1m`, and not shorter than `SESSION_IDLE_TIMEOUT`. |
-| `LOGIN_MAX_PER_IP` | `10` | Sign-in attempts allowed per client IP address in a 15-minute sliding window, successful ones included. The password change shares this limit. Minimum `1`. |
+| `LOGIN_MAX_PER_IP` | `10` | Sign-in attempts allowed per client in a 15-minute sliding window, successful ones included: per IPv4 address, per /64 network in IPv6. The password change shares this limit. Minimum `1`. |
+| `AUTH_EVENTS_RETENTION_DAYS` | `365` | Days the security log (sign-ins, failures, configuration changes) is kept. Repeated failures of a client within 15 minutes are stored as one row with a count. `0` keeps everything. |
+| `ACTION_LOG_RETENTION_DAYS` | `0` | Days the actions log (deletions, protections) is kept. `0` (default) keeps everything. |
 | `TRUSTED_PROXIES` | empty | Comma-separated IP addresses or CIDR ranges of the reverse proxies allowed to set `X-Forwarded-For`, for example `172.18.0.0/16`. Other requests are identified by their own address. |
 
 ### Interface and logging
@@ -122,7 +126,9 @@ stored in the database. A copy of the database alone does not reveal them: the m
 Without a provided key, Hangarr generates one the first time it is needed, stores it in `DATA_DIR/master.key` (by default
 `/data/master.key`, mode `0600`) and logs a warning. Whoever gets a copy of the volume then gets the credentials too, and
 the Services page shows a warning to that effect. If no key is provided and the key file cannot be created (for example,
-`DATA_DIR` is read-only at the first start), the application does not start.
+`DATA_DIR` is read-only at the first start), the application does not start. On file systems without hard links (SMB/CIFS,
+some NFS or FUSE mounts), the file is created directly instead; two instances starting at the very same moment on such a
+volume may then fail once, and the next start works.
 
 ### Switching to a provided key
 
@@ -145,6 +151,10 @@ The **Settings › Services** page has one card per service:
 - Plex: Server URL, Public URL, Token (`X-Plex-Token`).
 - Jellyfin: Server URL, Public URL, API key.
 - Tautulli: API URL, API key, Webhook secret.
+
+Saving, testing a connection or generating the webhook secret needs your password from less than 10 minutes ago: right
+after signing in nothing is asked, later the page asks you to confirm it first. A connection test sends a request to any
+address you type, with the saved keys: this keeps a stolen session from using the page against your network.
 
 Where to find the credentials:
 
@@ -244,8 +254,11 @@ The Tautulli-side steps are also in the [deployment guide, section 6](deployment
   (any character that is not a letter or a digit). It must not contain the admin username and must not be a common
   password. The policy is checked at every start while the variable is set, even if the account already exists: a value
   that does not meet it stops the application at startup.
-- The value is used as typed, spaces included.
-- The variable is only used to create the account. It has no `_FILE` variant.
+- The value is used as typed, spaces included. From `HANGARR_ADMIN_PASSWORD_FILE`, only the line break that ends the
+  file is dropped.
+- The variable is only used to create the account. Prefer the `_FILE` variant: an environment variable stays visible
+  in `docker inspect`, `/proc/1/environ` and `kubectl describe` for as long as it is set. On Kubernetes, delete the
+  Secret (or remove it from the Deployment) once the account exists.
 - **Lost password.** `hangarr admin reset-password [--username NAME]` prints a new temporary password once, requires a
   change at the next sign-in, and revokes every session of the account. With Docker Compose:
   `docker compose exec hangarr /hangarr admin reset-password`.

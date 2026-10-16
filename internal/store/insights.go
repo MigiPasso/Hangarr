@@ -5,6 +5,8 @@ import (
 	"database/sql"
 	"encoding/json"
 	"strings"
+
+	"hangarr/internal/media"
 )
 
 // Aggregates for the dashboard, statistics and cleanup pages. Time windows
@@ -18,14 +20,39 @@ func userClause(alias string, user int64) (string, []any) {
 	return " AND " + alias + ".user_id = ?", []any{user}
 }
 
+// Protection says whether an item may be deleted, and why not. It is the
+// single rule of every check: badges, batch selection, cleanup candidates,
+// deletion (with the live tags), duplicates.
+type Protection int
+
+const (
+	// Unprotected: the item may be proposed for cleanup and deleted.
+	Unprotected Protection = iota
+	// ProtectedByTag: it carries one of PROTECTED_TAGS in Sonarr/Radarr.
+	ProtectedByTag
+	// ProtectedInHangarr: it is protected in Hangarr (local_protections).
+	ProtectedInHangarr
+)
+
+// ProtectionOf applies the rule to an item's tag labels and local
+// protection. protectedClause is its SQL twin
+// (TestProtectedTagRuleGoAndSQLAgree).
+func ProtectionOf(labels []string, local bool, protectedTags []string) Protection {
+	switch {
+	case local:
+		return ProtectedInHangarr
+	case HasProtectedTag(labels, protectedTags):
+		return ProtectedByTag
+	}
+	return Unprotected
+}
+
 // HasProtectedTag reports whether labels contain one of the protection tags
-// (PROTECTED_TAGS), ignoring case and surrounding spaces. It is the rule of
-// every check in Go (badges, batch selection, deletion); protectedClause is
-// its SQL twin (TestProtectedTagRuleGoAndSQLAgree).
+// (PROTECTED_TAGS), compared as normalizeLabel does.
 func HasProtectedTag(labels, protected []string) bool {
 	for _, l := range labels {
 		for _, p := range protected {
-			if strings.EqualFold(strings.TrimSpace(l), strings.TrimSpace(p)) {
+			if normalizeLabel(l) == normalizeLabel(p) {
 				return true
 			}
 		}
@@ -33,9 +60,23 @@ func HasProtectedTag(labels, protected []string) bool {
 	return false
 }
 
+// normalizeLabel is the form protection tags are compared in: trimmed, ASCII
+// letters lowercased. It is exactly what protectedClause does in SQL
+// (lower() folds ASCII only), so Go and SQL never disagree on a label with
+// accents; Sonarr/Radarr tag labels are lowercase anyway.
+func normalizeLabel(s string) string {
+	s = strings.TrimSpace(s)
+	b := []byte(s)
+	for i, c := range b {
+		if 'A' <= c && c <= 'Z' {
+			b[i] = c + 'a' - 'A'
+		}
+	}
+	return string(b)
+}
+
 // protectedClause excludes media carrying one of the protection tags, or
-// protected in Hangarr only. SQLite's lower() only folds ASCII letters:
-// *arr tag labels are lowercase anyway.
+// protected in Hangarr only (the SQL form of ProtectionOf).
 func protectedClause(alias string, tags []string) (string, []any) {
 	local := " AND NOT " + alias + ".protected_local"
 	if len(tags) == 0 {
@@ -43,7 +84,7 @@ func protectedClause(alias string, tags []string) (string, []any) {
 	}
 	args := make([]any, len(tags))
 	for i, t := range tags {
-		args[i] = strings.ToLower(strings.TrimSpace(t))
+		args[i] = normalizeLabel(t)
 	}
 	return local + " AND NOT EXISTS (SELECT 1 FROM json_each(" + alias + ".tags) j WHERE lower(trim(j.value)) IN (" +
 		placeholders(len(tags)) + "))", args
@@ -201,18 +242,11 @@ func (s *Store) RecentViews(ctx context.Context, limit int) ([]RecentView, error
 			return nil, err
 		}
 		if mediaType == "episode" {
-			r.Episode = episodeCode(season, episode) + " · " + epTitle
+			r.Episode = media.EpisodeCode(season, episode) + " · " + epTitle
 		}
 		out = append(out, r)
 	}
 	return out, rows.Err()
-}
-
-func episodeCode(season, episode int) string {
-	b := []byte("S00E00")
-	b[1], b[2] = byte('0'+season/10%10), byte('0'+season%10)
-	b[4], b[5] = byte('0'+episode/10%10), byte('0'+episode%10)
-	return string(b)
 }
 
 // PlaySession is a minimal watch event, for time bucketing done in Go (time
@@ -521,6 +555,30 @@ func (s *Store) LastEpisodes(ctx context.Context, user int64) (map[int64][2]int,
 		out[id] = [2]int{se, ep}
 		return nil
 	}, user)
+	return out, err
+}
+
+// LastEpisodesByUser is LastEpisodes for several users at once: user → media
+// → last watched episode.
+func (s *Store) LastEpisodesByUser(ctx context.Context, users []int64) (map[int64]map[int64][2]int, error) {
+	out := map[int64]map[int64][2]int{}
+	err := s.queryEach(ctx, `SELECT user_id, media_id, season_number, episode_number FROM (
+		SELECT user_id, media_id, season_number, episode_number,
+		  ROW_NUMBER() OVER (PARTITION BY user_id, media_id ORDER BY stopped_at DESC, id DESC) AS rn
+		FROM watch_events WHERE user_id IN (SELECT value FROM json_each(?)) AND watched = 1
+		  AND media_type = 'episode' AND media_id IS NOT NULL AND season_number > 0) WHERE rn = 1`,
+		func(rows *sql.Rows) error {
+			var user, id int64
+			var se, ep int
+			if err := rows.Scan(&user, &id, &se, &ep); err != nil {
+				return err
+			}
+			if out[user] == nil {
+				out[user] = map[int64][2]int{}
+			}
+			out[user][id] = [2]int{se, ep}
+			return nil
+		}, idsJSON(users))
 	return out, err
 }
 

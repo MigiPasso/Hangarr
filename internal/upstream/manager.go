@@ -123,7 +123,9 @@ func (m *Manager) rekey(ctx context.Context, old *secretbox.Box) (int, error) {
 	})
 }
 
-// CanStoreSecrets reports whether a master key is available.
+// CanStoreSecrets reports whether a master key is available: always once
+// SetupKey ran (serve always calls it); false only for a Manager used
+// without it, such as in tests.
 func (m *Manager) CanStoreSecrets() bool { return m.Box != nil }
 
 // stored returns the saved values, credentials decrypted, and the keys of
@@ -372,7 +374,7 @@ func (m *Manager) apply(svc string, saved Values, broken map[string]bool, in Inp
 		case v == "" || (v == saved[f.Key] && !broken[f.Key]):
 		case f.Key == TautulliWebhook && len(v) < MinWebhookSecret:
 			verr[f.Key] = "At least 32 characters." // MinWebhookSecret
-		case m.Box == nil:
+		case m.Box == nil: // SetupKey not called (tests): never store a credential in clear
 			verr[f.Key] = "Cannot save: no master key (HANGARR_MASTER_KEY)."
 		default:
 			sealed, serr := m.Box.Seal(f.Key, v)

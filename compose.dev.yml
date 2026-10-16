@@ -37,10 +37,12 @@ services:
       # UI), but public URLs and the webhook secret can be saved.
       HANGARR_MASTER_KEY: ZGV2LW9ubHktbWFzdGVyLWtleS0tZG8tbm90LXVzZSE=
       # Dev-only admin password (first start only, no forced change): admin / Hangarr-Dev-1.
-      HANGARR_ADMIN_PASSWORD: &dev-admin-password Hangarr-Dev-1
+      HANGARR_ADMIN_PASSWORD: Hangarr-Dev-1
     ports:
       # DEV_PORT=8081 make dev when 8080 is taken (e.g. by compose.yml).
-      - "${DEV_PORT:-8080}:8080"
+      # Loopback only: the dev password above is public, and the instance
+      # must not be reachable from the LAN.
+      - "127.0.0.1:${DEV_PORT:-8080}:8080"
     volumes:
       - .:/src
       - gomod:/go/pkg/mod
@@ -71,14 +73,17 @@ services:
     working_dir: /src
     # Makefile passes HANGARR_ENV_FILE=.env; the default keeps compose valid without .env.
     env_file: ${HANGARR_ENV_FILE:-.env.example}
+    # No HANGARR_ADMIN_PASSWORD: this instance reaches the real services, so
+    # its admin password is generated and printed once in the logs (changed
+    # at the first sign-in), not the public dev password.
     environment:
       DATA_DIR: /data
-      HANGARR_ADMIN_PASSWORD: *dev-admin-password
       DRY_RUN: ${DRY_RUN:-true}
       COOKIE_SECURE: "false"
       LOG_FORMAT: text
     ports:
-      - "8080:8080"
+      # Loopback only: it can delete real media when DRY_RUN=false.
+      - "127.0.0.1:8080:8080"
     volumes:
       - .:/src
       - gomod:/go/pkg/mod
@@ -105,7 +110,7 @@ services:
   # Records anonymized responses of the real instances: `make capture-fixtures`.
   capture:
     profiles: [real]
-    image: golang:1.27.2-bookworm
+    image: golang:1.27.2-bookworm@sha256:5cf287a799e6b94384bad13d16b14904c531f51ba65792237e122ce42b392f61
     working_dir: /src
     env_file: ${HANGARR_ENV_FILE:-.env.example}
     environment:
@@ -120,10 +125,10 @@ services:
 
   # Go toolbox with the source mounted, for go mod tidy and friends. Plain
   # image (not the deps stage) so it works before go.sum exists; keep the tag
-  # in sync with GO_VERSION in the Dockerfile.
+  # in sync with the golang image of the Dockerfile.
   gotools:
     profiles: [tools]
-    image: golang:1.27.2-bookworm
+    image: golang:1.27.2-bookworm@sha256:5cf287a799e6b94384bad13d16b14904c531f51ba65792237e122ce42b392f61
     environment:
       GOFLAGS: -buildvcs=false
     working_dir: /src
@@ -249,7 +254,7 @@ services:
 
   e2e:
     profiles: [e2e]
-    image: mcr.microsoft.com/playwright:v1.63.0-noble
+    image: mcr.microsoft.com/playwright:v1.63.0-noble@sha256:eff16c30e6f3f4af0a03fa4b706120d5e9b0891c344a27d64559aff5900a4a27
     working_dir: /e2e
     environment:
       BASE_URL: http://app-e2e:8080
@@ -273,7 +278,7 @@ services:
   # curl for vendoring static assets.
   fetch:
     profiles: [tools]
-    image: curlimages/curl:8.22.0
+    image: curlimages/curl:8.22.0@sha256:58adaa4e8dca9c988bae2aba4ab3434a0bb2da16bbe3f92dec39ec7785166777
     working_dir: /work
     volumes:
       - .:/work

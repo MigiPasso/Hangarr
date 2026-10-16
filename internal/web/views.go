@@ -19,6 +19,7 @@ import (
 
 	"hangarr/internal/clients/jellyfin"
 	"hangarr/internal/i18n"
+	"hangarr/internal/media"
 	"hangarr/internal/store"
 )
 
@@ -127,11 +128,13 @@ func (v *views) funcs(l i18n.Localizer, loc *time.Location, protectedTags []stri
 		},
 		"bytes":      l.Bytes,
 		"stateLabel": func(it store.LibraryItem) string { return stateLabel(l, it) },
-		"protected":  func(tags []string) bool { return store.HasProtectedTag(tags, protectedTags) },
-		"has":        func(list []string, v string) bool { return slices.Contains(list, v) },
-		"hasID":      func(list []int64, v int64) bool { return slices.Contains(list, v) },
-		"join":       strings.Join,
-		"lower":      strings.ToLower,
+		"protected": func(tags []string, local bool) bool {
+			return store.ProtectionOf(tags, local, protectedTags) != store.Unprotected
+		},
+		"has":   func(list []string, v string) bool { return slices.Contains(list, v) },
+		"hasID": func(list []int64, v int64) bool { return slices.Contains(list, v) },
+		"join":  strings.Join,
+		"lower": strings.ToLower,
 		// initial is the first letter of a name, for an avatar ("?" if none).
 		"initial": func(name string) string {
 			for _, r := range strings.TrimSpace(name) {
@@ -175,7 +178,7 @@ func (v *views) funcs(l i18n.Localizer, loc *time.Location, protectedTags []stri
 			if season == nil || episode == nil {
 				return ""
 			}
-			return episodeLabel(*season, *episode)
+			return media.EpisodeCode(*season, *episode)
 		},
 		"duration": l.Duration,
 		"sourceLabel": func(src string) string {
@@ -351,6 +354,15 @@ func (s *Server) static() http.Handler {
 	files := http.StripPrefix("/static/", http.FileServerFS(sub))
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		name := strings.TrimPrefix(path.Clean(r.URL.Path), "/static/")
+		// Files only: no directory listing (it would map the assets).
+		if strings.HasSuffix(r.URL.Path, "/") {
+			http.NotFound(w, r)
+			return
+		}
+		if st, err := fs.Stat(sub, name); err != nil || st.IsDir() {
+			http.NotFound(w, r)
+			return
+		}
 		if strings.HasSuffix(name, ".woff2") { // not in Go's built-in MIME table
 			w.Header().Set("Content-Type", "font/woff2")
 		}

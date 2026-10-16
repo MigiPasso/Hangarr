@@ -57,8 +57,9 @@ type Config struct {
 	HistorySource         string
 	TautulliWebhookSecret string
 
-	// MasterKey encrypts the credentials saved from the UI (nil: saving
-	// credentials from the UI is refused).
+	// MasterKey encrypts the credentials saved from the UI (HANGARR_MASTER_KEY).
+	// nil: a key is read or generated in DATA_DIR/master.key at startup
+	// (upstream.Manager.SetupKey).
 	MasterKey []byte
 	// Deprecations are notices about settings from Cleanarr (the former
 	// name) still in use; logged at startup.
@@ -71,13 +72,22 @@ type Config struct {
 	AbandonDays            int
 	PlexRefreshAfterDelete bool
 
-	AdminUsername      string
-	AdminPassword      string // HANGARR_ADMIN_PASSWORD: chosen first-start password instead of a generated one
-	CookieSecure       bool
+	AdminUsername string
+	AdminPassword string // HANGARR_ADMIN_PASSWORD: chosen first-start password instead of a generated one
+	CookieSecure  bool
+	// HSTSIncludeSubdomains adds includeSubDomains to HSTS (off: HTTPS would
+	// be forced on every service under the domain for a year).
+	HSTSIncludeSubdomains bool
+	// AllowedHosts are the host names accepted over plain HTTP besides the
+	// local ones (ALLOWED_HOSTS; "*" accepts any).
+	AllowedHosts       []string
 	SessionIdleTimeout time.Duration
 	SessionMaxAge      time.Duration
 	TrustedProxies     []netip.Prefix
 	LoginMaxPerIP      int
+	// Retention of the security log and of the actions log (0: kept).
+	AuthEventsRetentionDays int
+	ActionLogRetentionDays  int
 
 	// DefaultLang is the interface language when the user has not chosen one
 	// ("en" or "fr").
@@ -132,6 +142,36 @@ func (l *loader) secret(key string) string {
 	default:
 		return v
 	}
+}
+
+// password reads KEY or KEY_FILE like secret, without trimming spaces: only
+// the line break that ends the file is dropped.
+func (l *loader) password(key string) string {
+	v, hasValue := l.lookup(key)
+	path, hasFile := l.lookup(key + "_FILE")
+	path = strings.TrimSpace(path)
+	hasValue = hasValue && v != ""
+	hasFile = hasFile && path != ""
+	switch {
+	case hasValue && hasFile:
+		l.fail("%s and %s_FILE are both set; use only one", key, key)
+		return ""
+	case hasFile:
+		b, err := l.readFile(path)
+		if err != nil {
+			l.fail("%s_FILE: %w", key, err)
+			return ""
+		}
+		return strings.TrimSuffix(strings.TrimSuffix(string(b), "\n"), "\r")
+	}
+	return v
+}
+
+func lowerList(v []string) []string {
+	for i := range v {
+		v[i] = strings.ToLower(strings.TrimSuffix(strings.TrimSpace(v[i]), "."))
+	}
+	return v
 }
 
 func (l *loader) boolean(key string, def bool) bool {
@@ -231,11 +271,16 @@ func Load(lookup LookupFunc, readFile ReadFileFunc) (*Config, error) {
 		AbandonDays:            l.integer("ABANDON_DAYS", 90, 1),
 		PlexRefreshAfterDelete: l.boolean("PLEX_REFRESH_AFTER_DELETE", true),
 
-		AdminUsername:      l.str("ADMIN_USERNAME", "admin"),
-		CookieSecure:       l.boolean("COOKIE_SECURE", true),
-		SessionIdleTimeout: l.duration("SESSION_IDLE_TIMEOUT", 12*time.Hour, time.Minute),
-		SessionMaxAge:      l.duration("SESSION_MAX_AGE", 168*time.Hour, time.Minute),
-		LoginMaxPerIP:      l.integer("LOGIN_MAX_PER_IP", 10, 1),
+		AdminUsername:         l.str("ADMIN_USERNAME", "admin"),
+		CookieSecure:          l.boolean("COOKIE_SECURE", true),
+		HSTSIncludeSubdomains: l.boolean("HSTS_INCLUDE_SUBDOMAINS", false),
+		AllowedHosts:          lowerList(splitList(l.str("ALLOWED_HOSTS", ""))),
+		SessionIdleTimeout:    l.duration("SESSION_IDLE_TIMEOUT", 12*time.Hour, time.Minute),
+		SessionMaxAge:         l.duration("SESSION_MAX_AGE", 168*time.Hour, time.Minute),
+		LoginMaxPerIP:         l.integer("LOGIN_MAX_PER_IP", 10, 1),
+
+		AuthEventsRetentionDays: l.integer("AUTH_EVENTS_RETENTION_DAYS", 365, 0),
+		ActionLogRetentionDays:  l.integer("ACTION_LOG_RETENTION_DAYS", 0, 0),
 
 		DefaultLang: strings.ToLower(l.str("DEFAULT_LANG", "en")),
 
@@ -253,7 +298,7 @@ func Load(lookup LookupFunc, readFile ReadFileFunc) (*Config, error) {
 	}
 	// Not trimmed: spaces may be part of the password. The policy is checked
 	// when the account is created (auth.Bootstrap).
-	c.AdminPassword, _ = l.lookup("HANGARR_ADMIN_PASSWORD")
+	c.AdminPassword = l.password("HANGARR_ADMIN_PASSWORD")
 	if c.SessionMaxAge < c.SessionIdleTimeout {
 		l.fail("SESSION_MAX_AGE (%s) must be >= SESSION_IDLE_TIMEOUT (%s)", c.SessionMaxAge, c.SessionIdleTimeout)
 	}

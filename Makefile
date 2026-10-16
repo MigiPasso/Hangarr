@@ -14,11 +14,15 @@ IMAGE        ?= hangarr
 PLATFORMS    ?= linux/amd64,linux/arm64
 BUILDER      ?= hangarr-builder
 HTMX_VERSION ?= 2.0.11
+HTMX_SHA256  ?= d6fdc75f204e6bdefa99b69bf1e6d4ac69b8a364f77929f45c13476b4000f717
 KUBECONFORM_VERSION ?= v0.7.0
 GOVULNCHECK_VERSION ?= v1.9.0
 GITLEAKS_VERSION ?= v8.30.1
 ALPINE_VERSION ?= 3.22
-COMMON_PASSWORDS_URL ?= https://raw.githubusercontent.com/danielmiessler/SecLists/master/Passwords/Common-Credentials/10k-most-common.txt
+# Pinned on a commit, with the checksum of the list: a moving branch could change it silently.
+COMMON_PASSWORDS_URL ?= https://raw.githubusercontent.com/danielmiessler/SecLists/f1196104c5594a19d78b486c52c0794b9d947993/Passwords/Common-Credentials/10k-most-common.txt
+COMMON_PASSWORDS_SHA256 ?= 68782d6a4a19a4768d5f15dd66bd534e7a33055cc755411e33f16d18c50fdcce
+TRIVY_IMAGE  ?= aquasec/trivy:0.75.0@sha256:af6acf9a6b85dfe389a1941505c0ce9efef52a4719635e1a962f022a3d855daa
 # Media server of `make dev`: the variables read by compose.dev.yml (empty = unset for the app).
 MEDIA        ?= plex
 DEV_ENV_plex     := DEV_PLEX_URL=http://mock:32400 DEV_PLEX_TOKEN=mock-api-key DEV_TAUTULLI_URL=http://mock:8181 DEV_TAUTULLI_API_KEY=mock-api-key DEV_JELLYFIN_URL= DEV_JELLYFIN_API_KEY=
@@ -30,7 +34,7 @@ VERIFY_DIR   := .verify
 VERIFY_COMPOSE := docker compose --progress quiet -f compose.dev.yml
 
 .DEFAULT_GOAL := help
-.PHONY: help dev dev-real down logs test lint e2e verify image image-load reset-admin clean deps vendor-assets deploy-check capture-fixtures jellyfin-lab jellyfin-lab-capture jellyfin-lab-down sync icons k8s-check vulncheck secret-scan
+.PHONY: help dev dev-real down logs test lint e2e verify go-version-check scan fuzz image image-load reset-admin clean deps vendor-assets deploy-check capture-fixtures jellyfin-lab jellyfin-lab-capture jellyfin-lab-down sync icons k8s-check vulncheck secret-scan
 
 help: ## List targets
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-18s %s\n", $$1, $$2}'
@@ -52,6 +56,19 @@ logs: ## Follow dev app logs
 test: ## Unit + integration tests (go test -race -cover)
 	$(COMPOSE) --profile tools build test
 	$(COMPOSE) --profile tools run --rm test
+
+# Fuzz tests (package:function), run by `make fuzz` for FUZZTIME each.
+FUZZTIME     ?= 10s
+FUZZ_TARGETS := internal/auth:FuzzParsePHC internal/auth:FuzzClientKey internal/web:FuzzLocalPath \
+  internal/clients/httpx:FuzzFlexTypes internal/release:FuzzParse internal/secretbox:FuzzParseKey \
+  internal/clients/sonarr:FuzzUnmonitorSeason internal/clients/sonarr:FuzzWithTags internal/clients/radarr:FuzzRatings \
+  internal/media:FuzzTruncate
+
+fuzz: ## Run every fuzz test for FUZZTIME each (default 10s), in a container
+	$(COMPOSE) --profile tools build test
+	$(COMPOSE) --profile tools run --rm -T test sh -c 'set -e; for t in $(FUZZ_TARGETS); do \
+	  pkg=$${t%%:*}; fn=$${t##*:}; echo "== $$pkg $$fn"; \
+	  go test -run "^$$" -fuzz "^$$fn$$" -fuzztime $(FUZZTIME) ./$$pkg; done'
 
 lint: ## go vet + golangci-lint
 	$(COMPOSE) --profile tools build lint
@@ -78,8 +95,18 @@ e2e: ## Playwright against the runtime image on a blank database
 	$(E2E_COMPOSE) down --remove-orphans; \
 	exit $$status
 
-verify: ## gofmt + lint + test (+ e2e with E2E=1): compact summary, full logs in .verify/
+go-version-check: ## The Go version of go.mod (toolchain), the Dockerfile and the Compose images (tag and digest) must match
+	@ref=$$(sed -n 's/^FROM .*\(golang:[^ ]*\).*/\1/p' Dockerfile | head -n 1); \
+	want=$$(echo "$$ref" | sed -n 's/^golang:\([0-9][0-9.]*\)-.*/\1/p'); \
+	tc=$$(sed -n 's/^toolchain go//p' go.mod); \
+	bad=$$(grep -h -o 'golang:[^ "]*' compose.dev.yml deploy/jellyfin-lab/compose.yml | grep -v -x -F "$$ref" | sort -u); \
+	if [ -z "$$want" ] || [ "$$tc" != "$$want" ] || [ -n "$$bad" ]; then \
+	  echo "Go versions differ: Dockerfile $$ref, go.mod toolchain=go$$tc, other Compose images: $${bad:-none}" >&2; exit 1; \
+	fi; echo "go version: OK ($$want)"
+
+verify: ## go versions + gofmt + lint + test (+ e2e with E2E=1): compact summary, full logs in .verify/
 	@mkdir -p $(VERIFY_DIR); rm -f $(VERIFY_DIR)/*.log; status=0; \
+	$(MAKE) --no-print-directory go-version-check || status=1; \
 	$(VERIFY_COMPOSE) --profile tools run --rm -T gotools gofmt -l . > $(VERIFY_DIR)/gofmt.log 2>&1; rc=$$?; \
 	if [ $$rc -eq 0 ] && [ ! -s $(VERIFY_DIR)/gofmt.log ]; then \
 	  echo "gofmt: OK"; \
@@ -124,10 +151,14 @@ verify: ## gofmt + lint + test (+ e2e with E2E=1): compact summary, full logs in
 	else echo "verify: FAIL (full logs: $(VERIFY_DIR)/*.log)"; fi; \
 	exit $$status
 
-image: ## Multi-arch runtime image (PUSH=1 to push to $(IMAGE))
+image: ## Multi-arch runtime image (PUSH=1 to push to $(IMAGE), with its SBOM and provenance attestations)
 	@docker buildx inspect $(BUILDER) >/dev/null 2>&1 || docker buildx create --name $(BUILDER) --driver docker-container --config build/buildkitd.toml >/dev/null
 	docker buildx build --builder $(BUILDER) --platform $(PLATFORMS) --target runtime \
-	  --build-arg VERSION=$(VERSION) -t $(IMAGE):$(VERSION) $(if $(PUSH),--push,) .
+	  --build-arg VERSION=$(VERSION) -t $(IMAGE):$(VERSION) $(if $(PUSH),--push --sbom=true --provenance=mode=max,) .
+
+scan: image-load ## Known HIGH/CRITICAL vulnerabilities of the runtime image (Trivy, in a container)
+	docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v hangarr-trivy-cache:/root/.cache/trivy $(TRIVY_IMAGE) \
+	  image --skip-version-check --exit-code 1 --severity HIGH,CRITICAL --ignore-unfixed $(IMAGE):local
 
 image-load: ## Runtime image for the local platform, loaded into docker
 	docker build --target runtime --build-arg VERSION=$(VERSION) -t $(IMAGE):$(VERSION) -t $(IMAGE):local .
@@ -142,11 +173,13 @@ clean: ## Remove containers, volumes and the dev database
 deps: ## go mod tidy (in a container)
 	$(COMPOSE) --profile tools run --rm gotools go mod tidy
 
-vendor-assets: ## Download htmx and the common password list (in a container)
-	$(COMPOSE) --profile tools run --rm fetch -fsSL -o internal/web/static/htmx.min.js \
-	  https://unpkg.com/htmx.org@$(HTMX_VERSION)/dist/htmx.min.js
-	$(COMPOSE) --profile tools run --rm --entrypoint sh fetch -c '\
+vendor-assets: ## Download htmx and the common password list, checked against their SHA-256 (in a container)
+	$(COMPOSE) --profile tools run --rm --user "$(shell id -u):$(shell id -g)" --entrypoint sh fetch -c '\
+	  set -e; tmp=$$(mktemp); curl -fsSL -o "$$tmp" "https://unpkg.com/htmx.org@$(HTMX_VERSION)/dist/htmx.min.js"; \
+	  echo "$(HTMX_SHA256)  $$tmp" | sha256sum -c -; cp "$$tmp" internal/web/static/htmx.min.js'
+	$(COMPOSE) --profile tools run --rm --user "$(shell id -u):$(shell id -g)" --entrypoint sh fetch -c '\
 	  set -e; tmp=$$(mktemp); curl -fsSL -o "$$tmp" "$(COMMON_PASSWORDS_URL)"; \
+	  echo "$(COMMON_PASSWORDS_SHA256)  $$tmp" | sha256sum -c -; \
 	  { echo "# Source: SecLists (MIT), $(COMMON_PASSWORDS_URL)"; cat "$$tmp"; } > internal/auth/common-passwords.txt'
 
 deploy-check: ## Validate compose.yml and smoke-test it, with an image built from the sources, against the mock

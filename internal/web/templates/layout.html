@@ -33,7 +33,7 @@
   <main class="centered">
     {{template "content" .}}
   </main>
-  <footer class="footer">Hangarr {{.Version}}{{template "lang_switch" .}}{{template "theme_toggle"}}</footer>
+  <footer class="footer">Hangarr{{template "lang_switch" .}}{{template "theme_toggle"}}</footer>
   {{end}}
   {{if .Session}}
   <dialog id="modal" class="modal" aria-label="{{t "Details"}}">

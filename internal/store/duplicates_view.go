@@ -154,10 +154,6 @@ func groupVersionKeys(ctx context.Context, tx *sql.Tx, server, groupKey string) 
 	return keys, rows.Err()
 }
 
-// normalizeLabel is the form protection tags are compared in (protectedClause
-// does the same in SQL).
-func normalizeLabel(s string) string { return strings.ToLower(strings.TrimSpace(s)) }
-
 // duplicateGroups reads the versions of a server, or only those of groupKey
 // when it is not empty, with their media rows and the acknowledgements of the
 // server, and assembles them in Go.
@@ -165,10 +161,6 @@ func (s *Store) duplicateGroups(ctx context.Context, server, groupKey string, pr
 	col, ok := serverColumns[server]
 	if !ok {
 		return nil, fmt.Errorf("unknown media server %q", server)
-	}
-	tagSet := make(map[string]bool, len(protectedTags))
-	for _, t := range protectedTags {
-		tagSet[normalizeLabel(t)] = true
 	}
 	// A version can join several media rows (no unique index on the keys of
 	// the rows managed by Radarr): the best of them is shown.
@@ -215,11 +207,7 @@ func (s *Store) duplicateGroups(ctx context.Context, server, groupKey string, pr
 		m.managed, m.arrID = arr.Valid, arr.Int64
 		var labels []string
 		_ = json.Unmarshal([]byte(tags), &labels)
-		for _, l := range labels {
-			if tagSet[normalizeLabel(l)] {
-				m.protected = true
-			}
-		}
+		m.protected = ProtectionOf(labels, m.protected, protectedTags) != Unprotected
 		if cur := shownVersion[v.VersionKey]; cur.id == 0 || m.before(cur) {
 			shownVersion[v.VersionKey] = m
 		}

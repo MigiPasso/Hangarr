@@ -1,5 +1,8 @@
 {{define "content"}}
 <h1>{{t "Account"}}</h1>
+{{if or .Data.FailuresBefore .Data.FailuresSince}}
+<p class="alert alert-error">{{if .Data.FailuresBefore}}{{tn .Data.FailuresBefore "%d failed sign-in on your account before your last sign-in." "%d failed sign-ins on your account before your last sign-in."}} {{end}}{{if .Data.FailuresSince}}{{tn .Data.FailuresSince "%d failed sign-in since then." "%d failed sign-ins since then."}} {{end}}<a href="/journal?tab=security">{{t "See the security log."}}</a></p>
+{{end}}
 <section class="card">
   <h2>{{t "Password"}}</h2>
   <p><a class="button" href="/account/password">{{t "Change my password"}}</a></p>

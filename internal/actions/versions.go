@@ -5,10 +5,11 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"path"
 	"strings"
 
 	"hangarr/internal/clients/httpx"
+	"hangarr/internal/clients/plex"
+	"hangarr/internal/media"
 	"hangarr/internal/store"
 	"hangarr/internal/upstream"
 )
@@ -56,11 +57,34 @@ type VersionResult struct {
 	DryRun    bool
 	// RadarrFile: it was Radarr's file (Radarr will see the movie missing).
 	RadarrFile bool
+	Note       string // see Result.Note
 }
 
-// liveVersion is a version as the media server lists it now.
-type liveVersion struct {
-	item, key, file string
+// LiveVersion is a version as the media server lists it now, with its
+// tracks (read by the deletion checks and by the Duplicates page).
+type LiveVersion struct {
+	Item, Key, File string
+	Audio           []string // display titles
+	Subtitles       []Track
+}
+
+// Track is a subtitle track.
+type Track struct {
+	Title  string
+	Forced bool
+}
+
+// JellyfinTakesOther reports whether Jellyfin, deleting target, would take
+// another of versions with it: Jellyfin deletes the item's whole folder, so
+// any other version of the same item or in the same folder goes too (seen
+// with Jellyfin 12.2).
+func JellyfinTakesOther(versions []LiveVersion, target LiveVersion) bool {
+	for _, o := range versions {
+		if o.Key != target.Key && (o.Item == target.Item || media.Dir(o.File) == media.Dir(target.File)) {
+			return true
+		}
+	}
+	return false
 }
 
 // DeleteVersion deletes (or simulates) one version of a movie the media
@@ -71,6 +95,10 @@ type liveVersion struct {
 // download the file again. Deletions run one at a time: two at once could
 // each see the other version and delete both.
 func (s *Service) DeleteVersion(ctx context.Context, req VersionRequest) (*VersionResult, error) {
+	if !s.enter() {
+		return nil, ErrStopping
+	}
+	defer s.leave()
 	s.versionMu.Lock()
 	defer s.versionMu.Unlock()
 	up := s.Upstreams.Get()
@@ -110,10 +138,14 @@ func (s *Service) DeleteVersion(ctx context.Context, req VersionRequest) (*Versi
 	if errors.Is(err, ErrRadarrConfirm) {
 		return nil, err // a question to the user, not an attempt
 	}
-	if err == nil && !s.DryRun {
-		err = s.sendVersionDeletion(ctx, up, server, v, wholeItem)
+	id, jerr := s.journalVersionBegin(ctx, g, v, req)
+	if jerr != nil {
+		return nil, jerr // nothing sent without its journal entry
 	}
-	s.journalVersion(ctx, g, v, req, err)
+	if err == nil && !s.DryRun {
+		res.Note, err = s.sendVersionDeletion(ctx, up, server, v, wholeItem)
+	}
+	s.journalVersionEnd(ctx, id, g, v, req, res, err)
 	if err != nil {
 		return nil, err
 	}
@@ -134,12 +166,12 @@ func (s *Service) checkVersion(ctx context.Context, up *upstream.Clients, server
 	if err != nil {
 		return false, err
 	}
-	var target *liveVersion
+	var target *LiveVersion
 	inItem := 0
 	for i := range live {
-		if live[i].item == v.ItemKey {
+		if live[i].Item == v.ItemKey {
 			inItem++
-			if live[i].key == v.VersionKey {
+			if live[i].Key == v.VersionKey {
 				target = &live[i]
 			}
 		}
@@ -150,17 +182,8 @@ func (s *Service) checkVersion(ctx context.Context, up *upstream.Clients, server
 	case len(live) < 2:
 		return false, ErrLastVersion
 	}
-	if server == store.ServerJellyfin {
-		// Jellyfin deletes the item's folder: refuse if any other version is
-		// in it, grouped under the same item or not.
-		if inItem > 1 {
-			return false, ErrSameFolder
-		}
-		for _, o := range live {
-			if o.key != target.key && dirOf(o.file) == dirOf(target.file) {
-				return false, ErrSameFolder
-			}
-		}
+	if server == store.ServerJellyfin && JellyfinTakesOther(live, *target) {
+		return false, ErrSameFolder
 	}
 	if g.ArrID != 0 {
 		if err := s.checkRadarr(ctx, up, g.ArrID, *target, live, req, res); err != nil {
@@ -175,8 +198,8 @@ func (s *Service) checkVersion(ctx context.Context, up *upstream.Clients, server
 // would download it again). Deleting its file when the movie is not
 // monitored only needs the user's confirmation. A movie Radarr no longer has
 // sets no condition.
-func (s *Service) checkRadarr(ctx context.Context, up *upstream.Clients, arrID int64, target liveVersion,
-	live []liveVersion, req VersionRequest, res *VersionResult) error {
+func (s *Service) checkRadarr(ctx context.Context, up *upstream.Clients, arrID int64, target LiveVersion,
+	live []LiveVersion, req VersionRequest, res *VersionResult) error {
 	if up.Radarr == nil {
 		return fmt.Errorf("%w: Radarr", ErrUnconfigured)
 	}
@@ -199,21 +222,21 @@ func (s *Service) checkRadarr(ctx context.Context, up *upstream.Clients, arrID i
 	for _, id := range mv.Tags {
 		labels = append(labels, byID[id])
 	}
-	if s.protected(labels) {
-		return ErrProtected
+	if err := s.protectionError(labels, false); err != nil {
+		return err
 	}
 	if !mv.HasFile {
 		return nil
 	}
 	radarrFile := ""
 	if mv.MovieFile != nil {
-		radarrFile = baseOf(mv.MovieFile.RelativePath)
+		radarrFile = media.Base(mv.MovieFile.RelativePath)
 	}
 	isRadarr, known := false, false
 	for _, l := range live {
-		if radarrFile != "" && strings.EqualFold(baseOf(l.file), radarrFile) {
+		if radarrFile != "" && strings.EqualFold(media.Base(l.File), radarrFile) {
 			known = true
-			if l.key == target.key {
+			if l.Key == target.Key {
 				isRadarr = true
 			}
 		}
@@ -230,9 +253,14 @@ func (s *Service) checkRadarr(ctx context.Context, up *upstream.Clients, arrID i
 	return nil
 }
 
-// liveVersions reads the versions of the group's items from the media server
-// (an item it no longer has has none).
-func (s *Service) liveVersions(ctx context.Context, up *upstream.Clients, server string, g *store.DuplicateGroup) ([]liveVersion, error) {
+// liveVersions reads the versions of the group's items from the media server.
+func (s *Service) liveVersions(ctx context.Context, up *upstream.Clients, server string, g *store.DuplicateGroup) ([]LiveVersion, error) {
+	return LiveVersions(ctx, up, server, g)
+}
+
+// LiveVersions reads the versions of the group's items, with their tracks,
+// from the media server (an item it no longer has has none).
+func LiveVersions(ctx context.Context, up *upstream.Clients, server string, g *store.DuplicateGroup) ([]LiveVersion, error) {
 	var items []string
 	seen := map[string]bool{}
 	for _, v := range g.Versions {
@@ -241,7 +269,7 @@ func (s *Service) liveVersions(ctx context.Context, up *upstream.Clients, server
 			items = append(items, v.ItemKey)
 		}
 	}
-	var out []liveVersion
+	var out []LiveVersion
 	if server == store.ServerJellyfin {
 		got, err := up.Jellyfin.Versions(ctx, items)
 		if err != nil {
@@ -252,9 +280,19 @@ func (s *Service) liveVersions(ctx context.Context, up *upstream.Clients, server
 				continue
 			}
 			for _, src := range it.MediaSources {
-				if src.ID != "" {
-					out = append(out, liveVersion{item: it.ID, key: src.ID, file: src.Path})
+				if src.ID == "" {
+					continue
 				}
+				lv := LiveVersion{Item: it.ID, Key: src.ID, File: src.Path}
+				for _, st := range src.MediaStreams {
+					switch st.Type {
+					case "Audio":
+						lv.Audio = append(lv.Audio, st.DisplayTitle)
+					case "Subtitle":
+						lv.Subtitles = append(lv.Subtitles, Track{Title: st.DisplayTitle, Forced: st.IsForced})
+					}
+				}
+				out = append(out, lv)
 			}
 		}
 		return out, nil
@@ -271,9 +309,17 @@ func (s *Service) liveVersions(ctx context.Context, up *upstream.Clients, server
 			if m.ID <= 0 {
 				continue
 			}
-			lv := liveVersion{item: key, key: fmt.Sprint(int64(m.ID))}
+			lv := LiveVersion{Item: key, Key: fmt.Sprint(int64(m.ID))}
 			if len(m.Part) > 0 {
-				lv.file = m.Part[0].File
+				lv.File = m.Part[0].File
+				for _, st := range m.Part[0].Stream {
+					switch st.StreamType {
+					case plex.StreamAudio:
+						lv.Audio = append(lv.Audio, st.DisplayTitle)
+					case plex.StreamSubtitle:
+						lv.Subtitles = append(lv.Subtitles, Track{Title: st.DisplayTitle, Forced: st.Forced})
+					}
+				}
 			}
 			out = append(out, lv)
 		}
@@ -286,13 +332,32 @@ func (s *Service) liveVersions(ctx context.Context, up *upstream.Clients, server
 // one; Jellyfin deletes the item (checkVersion made sure it holds no other
 // version).
 func (s *Service) sendVersionDeletion(ctx context.Context, up *upstream.Clients, server string,
-	v *store.DuplicateVersion, wholeItem bool) error {
-	var err error
+	v *store.DuplicateVersion, wholeItem bool) (note string, err error) {
 	denied := ErrPlexDeletionDenied
+	// gone checks the version is no longer listed, after a deletion without answer.
+	gone := func(ctx context.Context) (bool, error) {
+		it, err := up.Plex.Metadata(ctx, v.ItemKey)
+		if isNotFound(err) {
+			return true, nil
+		}
+		if err != nil {
+			return false, err
+		}
+		for _, m := range it.Media {
+			if fmt.Sprint(int64(m.ID)) == v.VersionKey {
+				return false, nil
+			}
+		}
+		return true, nil
+	}
 	switch {
 	case server == store.ServerJellyfin:
 		denied = ErrJellyfinDeletionDenied
 		err = up.Jellyfin.DeleteItem(ctx, v.ItemKey)
+		gone = func(ctx context.Context) (bool, error) {
+			items, err := up.Jellyfin.Versions(ctx, []string{v.ItemKey})
+			return err == nil && len(items) == 0, err
+		}
 	case wholeItem:
 		err = up.Plex.DeleteItem(ctx, v.ItemKey)
 	default:
@@ -301,11 +366,11 @@ func (s *Service) sendVersionDeletion(ctx context.Context, up *upstream.Clients,
 	var se *httpx.StatusError
 	switch {
 	case errors.As(err, &se) && (se.Status == http.StatusUnauthorized || se.Status == http.StatusForbidden):
-		return denied
+		return "", denied
 	case isNotFound(err):
-		return fmt.Errorf("%w in %s", ErrNotFound, up.ServerLabel())
+		return "", fmt.Errorf("%w in %s", ErrNotFound, up.ServerLabel())
 	}
-	return err
+	return s.confirmGone(ctx, err, gone)
 }
 
 // afterVersionDeletion updates local data: the version is forgotten (its
@@ -331,41 +396,36 @@ func (s *Service) afterVersionDeletion(ctx context.Context, up *upstream.Clients
 	}
 }
 
-// journalVersion records a version deletion attempt in action_log and in the
-// logs; the title names the file.
-func (s *Service) journalVersion(ctx context.Context, g *store.DuplicateGroup, v *store.DuplicateVersion,
-	req VersionRequest, err error) {
+// journalVersionBegin writes a version deletion attempt to action_log
+// (pending) before anything is sent; the title names the file.
+func (s *Service) journalVersionBegin(ctx context.Context, g *store.DuplicateGroup, v *store.DuplicateVersion,
+	req VersionRequest) (int64, error) {
 	title := g.Title
-	if name := baseOf(v.File); name != "" {
+	if name := media.Base(v.File); name != "" {
 		title += " (" + name + ")"
 	}
-	entry := store.Action{
+	id, err := s.Store.BeginAction(context.WithoutCancel(ctx), store.Action{
 		At: s.now().Unix(), Action: DeleteVersion, MediaKind: "movie", ArrID: g.ArrID, Title: title,
-		SizeFreedBytes: v.SizeBytes, DeleteFiles: true, DryRun: s.DryRun, Success: err == nil, Username: req.Username,
-	}
+		DeleteFiles: true, DryRun: s.DryRun, Username: req.Username,
+	})
 	if err != nil {
-		entry.SizeFreedBytes = 0
-		entry.Error = err.Error()
+		s.Log.Error("action not journaled: nothing sent", "title", title, "err", err)
+		return 0, fmt.Errorf("journal: %w", err)
 	}
-	if lerr := s.Store.AddAction(context.WithoutCancel(ctx), entry); lerr != nil {
-		s.Log.Error("action not journaled", "err", lerr)
+	return id, nil
+}
+
+// journalVersionEnd records the outcome of a version deletion attempt in
+// action_log and in the logs.
+func (s *Service) journalVersionEnd(ctx context.Context, id int64, g *store.DuplicateGroup, v *store.DuplicateVersion,
+	req VersionRequest, res *VersionResult, err error) {
+	size, msg := v.SizeBytes, res.Note
+	if err != nil {
+		size, msg = 0, err.Error()
+	}
+	if lerr := s.Store.FinishAction(context.WithoutCancel(ctx), id, err == nil, size, msg); lerr != nil {
+		s.Log.Error("action outcome not journaled", "err", lerr)
 	}
 	s.Log.Info("version deletion", "title", g.Title, "file", v.File, "dry_run", s.DryRun,
-		"success", err == nil, "err", err, "user", req.Username)
-}
-
-// baseOf is the file name of a path written with / or \ (Windows servers).
-func baseOf(p string) string {
-	if i := strings.LastIndexAny(p, `/\`); i >= 0 {
-		return p[i+1:]
-	}
-	return p
-}
-
-// dirOf is the folder of a path written with / or \.
-func dirOf(p string) string {
-	if i := strings.LastIndexAny(p, `/\`); i >= 0 {
-		return path.Clean(strings.ReplaceAll(p[:i], `\`, "/"))
-	}
-	return ""
+		"success", err == nil, "err", err, "note", res.Note, "user", req.Username)
 }

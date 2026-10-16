@@ -91,8 +91,8 @@ Command-line subcommands, run in the container with `docker compose exec hangarr
 
 Everything runs in Docker: no Go, Node.js, linter or browser is needed on the host.
 
-- `make dev`: the app with hot reload on http://localhost:8080, against mock Sonarr, Radarr and Plex with Tautulli. Sign in as `admin` / `Hangarr-Dev-1` (development only). Use `DEV_PORT=8081 make dev` if port 8080 is taken, and `MEDIA=jellyfin make dev` to use the mock Jellyfin instead of Plex.
-- `make dev-real`: the app against your real services, configured in `.env` (copy `.env.example`). `DRY_RUN=true` by default.
+- `make dev`: the app with hot reload on http://localhost:8080, against mock Sonarr, Radarr and Plex with Tautulli. Sign in as `admin` / `Hangarr-Dev-1` (development only: the dev app listens on `127.0.0.1` only). Use `DEV_PORT=8081 make dev` if port 8080 is taken, and `MEDIA=jellyfin make dev` to use the mock Jellyfin instead of Plex.
+- `make dev-real`: the app against your real services, configured in `.env` (copy `.env.example`). `DRY_RUN=true` by default, and the admin password is generated and printed in the logs at the first start.
 - `make verify`: gofmt, lint and tests, with a compact summary; full logs are in `.verify/`. `make verify E2E=1` also runs the Playwright end-to-end suite.
 - `make help`: lists all the targets.
 

@@ -1,12 +1,13 @@
-# syntax=docker/dockerfile:1.7
+# syntax=docker/dockerfile:1.7@sha256:a57df69d0ea827fb7266491f2813635de6f17269be881f696fbfdf2d83dda33e
 # Stages: deps, dev, test, lint, build, mock, runtime (default, last).
+# Base images are pinned by digest (Dependabot proposes the updates). The Go
+# version of the golang image must match the toolchain line of go.mod and the
+# Compose images (make go-version-check).
 
-ARG GO_VERSION=1.27.2
-ARG GOLANGCI_LINT_VERSION=v2.14.0
 ARG AIR_VERSION=v1.67.4
 
 # --- deps: module download, shared by every Go stage ------------------------
-FROM --platform=$BUILDPLATFORM golang:${GO_VERSION}-bookworm AS deps
+FROM --platform=$BUILDPLATFORM golang:1.27.2-bookworm@sha256:5cf287a799e6b94384bad13d16b14904c531f51ba65792237e122ce42b392f61 AS deps
 WORKDIR /src
 ENV GOFLAGS=-buildvcs=false
 COPY go.mod go.sum ./
@@ -31,7 +32,7 @@ COPY . .
 CMD ["go", "test", "-race", "-cover", "-count=1", "./..."]
 
 # --- lint: official golangci-lint image + go vet ----------------------------
-FROM golangci/golangci-lint:${GOLANGCI_LINT_VERSION} AS lint
+FROM golangci/golangci-lint:v2.14.0@sha256:ad862ba6b3798cbe0fd9fd7408d498fd74fbd2623a92406b2fd3898faf0bf98f AS lint
 WORKDIR /src
 ENV GOFLAGS=-buildvcs=false
 COPY --from=deps /go/pkg/mod /go/pkg/mod
@@ -54,7 +55,7 @@ RUN --mount=type=cache,target=/root/.cache/go-build \
     rm -rf /out/testdata/captured
 
 # --- mock: fake upstream services for dev and e2e ---------------------------
-FROM gcr.io/distroless/static-debian12:nonroot AS mock
+FROM gcr.io/distroless/static-debian13:nonroot@sha256:e2e927ec666bae08560abb3c55d0659eceabb657f56b6782ab500a9fc7f555e3 AS mock
 COPY --from=build /out/mockarr /mockarr
 COPY --from=build /out/testdata /testdata
 USER 65532:65532
@@ -62,7 +63,7 @@ EXPOSE 8989 7878 32400 8096 8181
 ENTRYPOINT ["/mockarr"]
 
 # --- runtime: what ships to Kubernetes --------------------------------------
-FROM gcr.io/distroless/static-debian12:nonroot AS runtime
+FROM gcr.io/distroless/static-debian13:nonroot@sha256:e2e927ec666bae08560abb3c55d0659eceabb657f56b6782ab500a9fc7f555e3 AS runtime
 ARG VERSION=dev
 LABEL org.opencontainers.image.title="hangarr" \
       org.opencontainers.image.description="Sonarr / Radarr watch statistics and cleanup, with Plex (+ Tautulli) or Jellyfin" \

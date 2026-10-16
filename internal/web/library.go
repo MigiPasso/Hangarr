@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"hangarr/internal/clients/jellyfin"
+	"hangarr/internal/media"
 	"hangarr/internal/store"
 	"hangarr/internal/syncer"
 )
@@ -131,9 +132,7 @@ func parseLibraryFilter(q url.Values, kind string) (store.LibraryFilter, int) {
 	if n := atoi(q.Get("inactive")); slices.Contains(inactiveOptions, n) {
 		f.InactiveDays = n
 	}
-	if len(f.Query) > 200 {
-		f.Query = f.Query[:200]
-	}
+	f.Query = media.Truncate(f.Query, 200)
 	if kind == "series" {
 		f.Status = pick(q.Get("status"), statuses)
 	}
@@ -151,9 +150,13 @@ func parseLibraryFilter(q url.Values, kind string) (store.LibraryFilter, int) {
 	default:
 		f.Desc = f.Sort != "title" // newest/largest first, titles A→Z
 	}
-	page := max(atoi(q.Get("page")), 1)
+	page := min(max(atoi(q.Get("page")), 1), maxPage)
 	return f, page
 }
+
+// maxPage bounds the page parameters: page × size must not overflow the
+// offset.
+const maxPage = 100_000
 
 // filterValues is the canonical query string of a filter (without page).
 func filterValues(f store.LibraryFilter) url.Values {

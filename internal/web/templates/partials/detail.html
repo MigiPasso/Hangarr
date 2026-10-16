@@ -51,7 +51,7 @@
         {{end}}
         {{if $d.Deletable}}
         <button type="button" class="danger" hx-get="{{$d.Path}}/{{$m.ID}}/delete" hx-target="#confirm-body"
-                {{if $d.Protected}}disabled title="{{if $m.ArrID}}{{t "Protected by a tag"}}{{else}}{{t "Protected in Hangarr"}}{{end}}"{{end}}>{{if eq $m.Kind "series"}}{{t "Delete series"}}{{else}}{{t "Delete movie"}}{{end}}</button>
+                {{if $d.Protected}}disabled title="{{if $m.ProtectedLocal}}{{t "Protected in Hangarr"}}{{else}}{{t "Protected by a tag"}}{{end}}"{{end}}>{{if eq $m.Kind "series"}}{{t "Delete series"}}{{else}}{{t "Delete movie"}}{{end}}</button>
         {{end}}
         </div>
         <nav class="detail-links" aria-label="{{t "Open in"}}">
@@ -87,7 +87,7 @@
               {{if and $d.Deletable .Deletable}}
               <button type="button" class="icon-button danger" hx-get="{{$d.Path}}/{{$m.ID}}/delete?season={{.Number}}" hx-target="#confirm-body"
                       aria-label="{{t "Delete season"}}"
-                      title="{{if $d.Protected}}{{t "Protected by a tag"}}{{else}}{{t "Delete season"}}{{end}}"{{if $d.Protected}} disabled{{end}}>{{template "trash_icon"}}</button>
+                      title="{{if $m.ProtectedLocal}}{{t "Protected in Hangarr"}}{{else if $d.Protected}}{{t "Protected by a tag"}}{{else}}{{t "Delete season"}}{{end}}"{{if $d.Protected}} disabled{{end}}>{{template "trash_icon"}}</button>
               {{end}}
             </td>
           </tr>

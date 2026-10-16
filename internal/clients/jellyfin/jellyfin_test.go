@@ -313,3 +313,22 @@ func TestIDs(t *testing.T) {
 		t.Error("EventID must change with the user")
 	}
 }
+
+// BUG-07: a server that ignores startIndex and sends no total.
+func TestCollectStopsWhenPagingIgnored(t *testing.T) {
+	items := make([]map[string]any, pageSize)
+	for i := range items {
+		items[i] = map[string]any{"Id": fmt.Sprintf("%032x", i+1), "Type": TypeMovie, "Name": fmt.Sprint(i)}
+	}
+	body, _ := json.Marshal(map[string]any{"Items": items})
+	var calls atomic.Int32
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		calls.Add(1)
+		_, _ = w.Write(body)
+	}))
+	t.Cleanup(ts.Close)
+	_, err := New(ts.URL, "k").Items(context.Background(), TypeMovie)
+	if err == nil || !strings.Contains(err.Error(), "ignores the page offset") || calls.Load() != 2 {
+		t.Fatalf("err=%v calls=%d", err, calls.Load())
+	}
+}

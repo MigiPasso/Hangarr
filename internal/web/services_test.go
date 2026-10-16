@@ -218,3 +218,81 @@ func TestWebhookSecretGeneration(t *testing.T) {
 		t.Error("the secret must be shown only once")
 	}
 }
+
+// BUG-11: with TAUTULLI_WEBHOOK_SECRET set by the environment, a replayed
+// request does not show a secret that was never saved.
+func TestWebhookSecretFromEnvNotShown(t *testing.T) {
+	h := newConfigHarness(t, upstream.Values{upstream.TautulliURL: "http://tautulli:8181",
+		upstream.TautulliWebhook: "env-secret-env-secret-env-secret-env-secre"}, true)
+	c := h.loggedIn()
+	csrf := csrfFrom(t, h.do(c, "GET", "/config", nil, nil).body)
+	r := h.do(c, "POST", "/config/tautulli/webhook-secret", url.Values{"csrf_token": {csrf}}, map[string]string{"HX-Request": "true"})
+	if regexp.MustCompile(`"X-Hangarr-Token": "[A-Za-z0-9_-]{43}"`).MatchString(r.body) ||
+		!strings.Contains(r.body, "défini par l&#39;environnement (TAUTULLI_WEBHOOK_SECRET)") {
+		t.Fatalf("response:\n%s", r.body)
+	}
+}
+
+// SEC-13: connection tests are rate-limited per client.
+func TestConfigTestRateLimited(t *testing.T) {
+	h := newConfigHarness(t, nil, true)
+	c := h.loggedIn()
+	csrf := csrfFrom(t, h.do(c, "GET", "/config", nil, nil).body)
+	form := url.Values{"csrf_token": {csrf}, "sonarr.url": {"not a url"}, "sonarr.api_key": {"k"}} // refused at once
+	for i := range testsPerMinute {
+		if r := h.do(c, "POST", "/config/sonarr/test", form, nil); r.status == http.StatusTooManyRequests {
+			t.Fatalf("test %d refused", i)
+		}
+	}
+	if r := h.do(c, "POST", "/config/sonarr/test", form, nil); r.status != http.StatusTooManyRequests || r.header.Get("Retry-After") == "" {
+		t.Errorf("over the limit: %d", r.status)
+	}
+}
+
+// SEC-13: saving or testing a service needs a recent proof of the password
+// (the sign-in counts for auth.ReauthWindow, then a confirmation).
+func TestServicesNeedRecentPassword(t *testing.T) {
+	h := newConfigHarness(t, nil, true)
+	c := h.loggedIn()
+	csrf := csrfFrom(t, h.do(c, "GET", "/config", nil, nil).body)
+	if page := h.do(c, "GET", "/config", nil, nil); strings.Contains(page.body, `action="/config/confirm"`) {
+		t.Fatal("a fresh sign-in must not ask for the password again")
+	}
+	// The sign-in is older than the window.
+	if _, err := h.srv.Store.DB().Exec(`UPDATE sessions SET reauth_at = 1`); err != nil {
+		t.Fatal(err)
+	}
+	form := url.Values{"csrf_token": {csrf}, "sonarr.url": {"http://sonarr:8989"}}
+	r := h.do(c, "POST", "/config/sonarr", form, map[string]string{"HX-Request": "true"})
+	if r.header.Get("HX-Redirect") != "/config#confirm" {
+		t.Fatalf("save without a recent password: %d %q", r.status, r.header.Get("HX-Redirect"))
+	}
+	for _, p := range []string{"/config/sonarr/test", "/config/tautulli/webhook-secret"} {
+		if r := h.do(c, "POST", p, form, nil); r.status != http.StatusSeeOther || r.header.Get("Location") != "/config#confirm" {
+			t.Errorf("%s: %d %s", p, r.status, r.header.Get("Location"))
+		}
+	}
+	if v := h.srv.Upstreams.Get().Values[upstream.SonarrURL]; v != "" {
+		t.Fatalf("saved without confirmation: %q", v)
+	}
+	page := h.do(c, "GET", "/config", nil, nil)
+	if !strings.Contains(page.body, `action="/config/confirm"`) || !strings.Contains(page.body, "Confirmez votre mot de passe") {
+		t.Fatal("the page must ask for the password")
+	}
+	r = h.do(c, "POST", "/config/confirm", url.Values{"csrf_token": {csrf}, "current_password": {"wrong"}}, nil)
+	if r.status != http.StatusUnprocessableEntity || !strings.Contains(r.body, "Mot de passe actuel incorrect.") {
+		t.Fatalf("wrong password: %d", r.status)
+	}
+	r = h.do(c, "POST", "/config/confirm", url.Values{"csrf_token": {csrf}, "current_password": {newPassword}}, nil)
+	if r.status != http.StatusSeeOther || r.header.Get("Location") != "/config" {
+		t.Fatalf("confirm: %d %s", r.status, r.header.Get("Location"))
+	}
+	h.do(c, "POST", "/config/sonarr", form, nil)
+	if v := h.srv.Upstreams.Get().Values[upstream.SonarrURL]; v != "http://sonarr:8989" {
+		t.Errorf("save after confirmation: %q", v)
+	}
+	sec := h.do(c, "GET", "/journal?tab=security", nil, nil)
+	if !strings.Contains(sec.body, "Échec de confirmation du mot de passe") || !strings.Contains(sec.body, "Mot de passe confirmé") {
+		t.Error("confirmations must be journaled")
+	}
+}

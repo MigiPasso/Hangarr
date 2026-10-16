@@ -9,6 +9,20 @@
   <strong>{{t "No master key: keys and tokens cannot be saved."}}</strong>{{template "info" (t "Set HANGARR_MASTER_KEY (or _FILE) and restart; `hangarr master-key` makes one.")}}
 </div>
 {{end}}
+{{if .Data.NeedsConfirm}}
+<section class="card config-intro" id="confirm">
+  <h2>{{t "Confirm your password"}}</h2>
+  <p class="small muted">{{t "Saving or testing a service sends requests, with the saved keys, to the address entered: confirm your password first (valid 10 minutes)."}}</p>
+  <form method="post" action="/config/confirm" class="inline">
+    <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+    <label for="confirm-password" class="visually-hidden">{{t "Current password"}}</label>
+    <input id="confirm-password" name="current_password" type="password" autocomplete="current-password" required
+           placeholder="{{t "Current password"}}"{{if .Data.ConfirmError}} aria-invalid="true"{{end}}>
+    <button type="submit" class="primary">{{t "Confirm"}}</button>
+  </form>
+  {{with .Data.ConfirmError}}<p class="field-error" role="alert">{{.}}</p>{{end}}
+</section>
+{{end}}
 <div class="config-grid">
 {{range .Data.Services}}{{template "service_section" .}}{{end}}
 </div>

@@ -144,7 +144,8 @@ func (c *Client) MovieByIDRaw(ctx context.Context, id int64) (*Movie, json.RawMe
 
 // UpdateMovieRaw sends a full movie object (PUT /api/v3/movie/{id}).
 func (c *Client) UpdateMovieRaw(ctx context.Context, id int64, raw json.RawMessage) error {
-	return c.HTTP.JSON(ctx, httpx.Request{Method: http.MethodPut, Path: "/api/v3/movie/" + strconv.FormatInt(id, 10), Body: raw}, nil)
+	return c.HTTP.JSON(ctx, httpx.Request{Method: http.MethodPut, Path: "/api/v3/movie/" + strconv.FormatInt(id, 10), Body: raw,
+		Retry: true}, nil)
 }
 
 // CreateTag creates a tag and returns it with its id.

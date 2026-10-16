@@ -1,8 +1,9 @@
-# Weekly update pull requests for Go modules and the pinned GitHub Actions.
-# Not covered on purpose, bumped by hand because each version lives in two
-# places (see CONTRIBUTING.md): Go and golangci-lint (Dockerfile,
-# compose.dev.yml), Playwright (compose.dev.yml, e2e/package.json), htmx
-# (Makefile).
+# Weekly update pull requests for Go modules, the pinned GitHub Actions and
+# the base images (pinned by tag and digest). Some versions live in two
+# places (see CONTRIBUTING.md): when a pull request bumps only one of them,
+# `make go-version-check` (Go) or the e2e job (Playwright) fails until the
+# other is aligned by hand. htmx and the common password list are bumped by
+# hand too (Makefile, with their checksums).
 version: 2
 updates:
   - package-ecosystem: gomod
@@ -16,3 +17,17 @@ updates:
     directory: /
     schedule:
       interval: weekly
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      base-images:
+        patterns: ["*"]
+  - package-ecosystem: docker-compose
+    directories: ["/", "/deploy", "/deploy/jellyfin-lab"]
+    schedule:
+      interval: weekly
+    groups:
+      compose-images:
+        patterns: ["*"]

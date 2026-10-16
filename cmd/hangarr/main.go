@@ -103,14 +103,23 @@ func serve() error {
 	if err != nil {
 		return err
 	}
-	log := newLogger(cfg, os.Stdout)
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, os.Interrupt)
+	defer stop()
+	return run(ctx, cfg, os.Stdout)
+}
+
+// run serves until ctx is canceled (SIGTERM), then stops in order: HTTP
+// server, background syncs, the deletion in flight, then the database. The
+// logs and the first-start banner go to out.
+func run(ctx context.Context, cfg *config.Config, out io.Writer) error {
+	log := newLogger(cfg, out)
 	slog.SetDefault(log)
 	log.Info("starting hangarr", "version", version, "dry_run", cfg.DryRun, "master_key", cfg.MasterKey != nil)
 	for _, d := range cfg.Deprecations {
 		log.Warn(d)
 	}
 
-	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, os.Interrupt)
+	ctx, stop := context.WithCancel(ctx)
 	defer stop()
 
 	st, err := store.Open(ctx, cfg.DataDir)
@@ -132,14 +141,14 @@ func serve() error {
 		IdleTimeout: cfg.SessionIdleTimeout, MaxAge: cfg.SessionMaxAge}
 	// The banner goes straight to stdout, in plain text even in JSON mode,
 	// so that it stays readable in `docker logs` / `kubectl logs`.
-	created, err := svc.Bootstrap(ctx, cfg.AdminUsername, cfg.AdminPassword, os.Stdout)
+	created, err := svc.Bootstrap(ctx, cfg.AdminUsername, cfg.AdminPassword, out)
 	switch {
 	case errors.Is(err, auth.ErrWeakPassword):
-		return fmt.Errorf("HANGARR_ADMIN_PASSWORD: %w", err)
+		return fmt.Errorf("HANGARR_ADMIN_PASSWORD(_FILE): %w", err)
 	case err != nil:
 		return fmt.Errorf("admin bootstrap: %w", err)
 	case !created && cfg.AdminPassword != "":
-		log.Warn("HANGARR_ADMIN_PASSWORD is ignored: the admin account already exists " +
+		log.Warn("HANGARR_ADMIN_PASSWORD(_FILE) is ignored: the admin account already exists, remove it " +
 			"(change its password in the interface or with `hangarr admin reset-password`)")
 	}
 	cfg.AdminPassword = "" // only needed above; cfg lives on in the web server
@@ -186,6 +195,12 @@ func serve() error {
 	} else if n > 0 {
 		log.Warn("syncs interrupted by the previous stop marked as such", "runs", n)
 	}
+	if n, err := st.InterruptPendingActions(ctx); err != nil {
+		return err
+	} else if n > 0 {
+		log.Warn("deletions interrupted by the previous stop: check them in Sonarr/Radarr or the media server (Log page)",
+			"actions", n)
+	}
 	lookup := func(ctx context.Context, kind, id, variant string) (images.Info, bool, error) {
 		if kind == "plex" || kind == "jellyfin" {
 			title, ok, err := st.ServerItemTitle(ctx, kind, id)
@@ -215,18 +230,25 @@ func serve() error {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		janitor(ctx, log, svc, st, func() { limiter.Sweep(); srv.SweepLimiters() })
+		janitor(ctx, log, cfg, svc, st, func() { limiter.Sweep(); srv.SweepLimiters() })
 	}()
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
 		sy.Loop(ctx)
 	}()
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		<-ctx.Done()
+		deleter.Stop() // a running batch ends before its next item
+	}()
 
 	err = srv.Run(ctx, cfg.ListenAddr)
 	stop()
 	wg.Wait()
-	sy.Wait() // syncs started from the UI or the webhook, before the database closes
+	sy.Wait()      // syncs started from the UI or the webhook, before the database closes
+	deleter.Wait() // the deletion in progress, journaled before the database closes
 	if err != nil {
 		return err
 	}
@@ -234,9 +256,9 @@ func serve() error {
 	return nil
 }
 
-// janitor purges expired sessions, old sync runs and rate-limit entries
-// until ctx ends.
-func janitor(ctx context.Context, log *slog.Logger, svc *auth.Service, st *store.Store, sweep func()) {
+// janitor purges expired sessions, old sync runs, logs past their retention
+// and rate-limit entries until ctx ends.
+func janitor(ctx context.Context, log *slog.Logger, cfg *config.Config, svc *auth.Service, st *store.Store, sweep func()) {
 	t := time.NewTicker(10 * time.Minute)
 	defer t.Stop()
 	for {
@@ -249,6 +271,23 @@ func janitor(ctx context.Context, log *slog.Logger, svc *auth.Service, st *store
 			log.Error("sync runs purge failed", "err", err)
 		} else if n > 0 {
 			log.Info("old sync runs purged", "count", n)
+		}
+		if _, err := st.PruneLoginFailures(ctx, time.Now().Add(-24*time.Hour), time.Now()); err != nil && ctx.Err() == nil {
+			log.Error("login failures purge failed", "err", err)
+		}
+		if days := cfg.AuthEventsRetentionDays; days > 0 {
+			if n, err := st.PruneAuthEvents(ctx, time.Now().AddDate(0, 0, -days)); err != nil && ctx.Err() == nil {
+				log.Error("security log purge failed", "err", err)
+			} else if n > 0 {
+				log.Info("old security events purged", "count", n)
+			}
+		}
+		if days := cfg.ActionLogRetentionDays; days > 0 {
+			if n, err := st.PruneActions(ctx, time.Now().AddDate(0, 0, -days)); err != nil && ctx.Err() == nil {
+				log.Error("actions log purge failed", "err", err)
+			} else if n > 0 {
+				log.Info("old actions purged", "count", n)
+			}
 		}
 		sweep()
 		select {
