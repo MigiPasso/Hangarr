@@ -1,11 +1,11 @@
-# Checks for pushes to main and for pull requests. Everything runs through
-# make + Docker, exactly as on a contributor's machine (see CONTRIBUTING.md).
+# Checks for pull requests. The ruleset of main requires them to pass on a branch
+# that is up to date with main, so main is not tested again after the merge.
+# Everything runs through make + Docker, exactly as on a contributor's machine
+# (see CONTRIBUTING.md).
 # No secret is used: pull requests from forks run with a read-only token.
 name: CI
 
 on:
-  push:
-    branches: [main]
   pull_request:
   workflow_dispatch:
 
