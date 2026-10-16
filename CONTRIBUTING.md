@@ -15,7 +15,7 @@ Nothing else is installed on the host. Go, the linters, Playwright and every oth
 | Command | What it does |
 |---|---|
 | `make dev` | Runs the app with hot reload on http://localhost:8080, with the mock upstreams. `MEDIA=plex` (default: mock Plex and Tautulli), `MEDIA=jellyfin` (mock Jellyfin) or `MEDIA=none` (the media server is set in the interface). Use `DEV_PORT=8081 make dev` when 8080 is taken. |
-| `make dev-real` | Runs the app against the real services listed in `.env` (copy `.env.example`). `DRY_RUN=true` by default. |
+| `make dev-real` | Runs the app against the real services listed in `.env` (copy `.env.example`). `DRY_RUN=true` by default. The admin password is generated and printed once in the logs (`make logs` shows the dev app only: read the output of `make dev-real`), unless `.env` sets `HANGARR_ADMIN_PASSWORD`. |
 | `make test` | Unit and integration tests with the race detector (`go test -race -cover ./...`). |
 | `make lint` | `go vet` and golangci-lint. |
 | `make e2e` | Playwright scenarios against the runtime image, on a blank database, in the separate project `hangarr-e2e`. |
@@ -38,7 +38,7 @@ Run `make verify` before opening a pull request. Run `make e2e` (or `make verify
 
 ### Development sign-in
 
-The dev instance (`make dev`) signs in with `admin` / `Hangarr-Dev-1`. This password exists for development only. It comes from `HANGARR_ADMIN_PASSWORD` in `compose.dev.yml` and applies only when the admin account does not exist yet, so it is used again after `make clean`. `make reset-admin` resets the password of the running dev app.
+The dev instance (`make dev`) signs in with `admin` / `Hangarr-Dev-1`. This password exists for development only, so both dev instances listen on `127.0.0.1` only: they cannot be reached from the LAN. It comes from `HANGARR_ADMIN_PASSWORD` in `compose.dev.yml` and applies only when the admin account does not exist yet, so it is used again after `make clean`. `make reset-admin` resets the password of the running dev app.
 
 `compose.dev.yml` also sets a fixed master key for the dev environment. It is public and must never be used anywhere else.
 
