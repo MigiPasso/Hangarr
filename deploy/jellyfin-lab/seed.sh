@@ -54,8 +54,9 @@ api POST /Library/Refresh > /dev/null
 total() {
   api GET "/Items?recursive=true&includeItemTypes=$1&limit=1" | jq -r .TotalRecordCount
 }
+# 6 movies: Tenet is there twice (a copy in its own folder, for the Duplicates page).
 i=0
-until [ "$(total Movie)" = 5 ] && [ "$(total Series)" = 5 ] && [ "$(total Episode)" = 21 ]; do
+until [ "$(total Movie)" = 6 ] && [ "$(total Series)" = 5 ] && [ "$(total Episode)" = 21 ]; do
   i=$((i + 1))
   [ "$i" -le 60 ] || fail "library scan incomplete after 5 minutes"
   sleep 5
@@ -78,7 +79,11 @@ fi
 
 # Items of the scenario, with their ids and runtimes.
 items=$(api GET '/Items?recursive=true&includeItemTypes=Movie,Episode&fields=Path')
-movie() { printf '%s' "$items" | jq -c --arg n "$1" '.Items[] | select(.Type == "Movie" and .Name == $n)'; }
+# movie NAME: the JSON of one movie; the original, not the "[copie]" duplicate.
+movie() {
+  printf '%s' "$items" | jq -c --arg n "$1" \
+    'first(.Items[] | select(.Type == "Movie" and .Name == $n and ((.Path // "") | contains("[copie]") | not)))'
+}
 # episode SERIES SEASON EPISODE: the JSON of one episode.
 episode() {
   printf '%s' "$items" | jq -c --arg s "$1" --argjson n "$2" --argjson e "$3" \
