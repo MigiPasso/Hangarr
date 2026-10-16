@@ -4,11 +4,12 @@
 # :latest unless the tag is a pre-release (vX.Y.Z-rc.1…).
 # Nothing is published unless the checks of CI pass on the tagged commit
 # (verify, e2e) and the image has no fixable HIGH/CRITICAL vulnerability
-# (Trivy). The image carries an SBOM and a provenance attestation, and is
-# signed with cosign (keyless, GitHub OIDC): verify it with
+# (Trivy). The image is signed with cosign (keyless, GitHub OIDC): verify it with
 #   cosign verify ghcr.io/migipasso/hangarr:vX.Y.Z \
-#     --certificate-identity-regexp '^https://github.com/MigiPasso/Hangarr/' \
+#     --certificate-identity-regexp '^https://github\.com/MigiPasso/Hangarr/\.github/workflows/release\.yml@refs/tags/v' \
 #     --certificate-oidc-issuer https://token.actions.githubusercontent.com
+# It also carries an SBOM and a provenance attestation (BuildKit), which are
+# not signed separately by cosign.
 # Only the built-in GITHUB_TOKEN is used, with packages: write.
 name: Release image
 
