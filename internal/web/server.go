@@ -136,6 +136,7 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("GET /health", s.authed(s.health, 0))
 	mux.Handle("GET /health/services", s.authed(s.healthServices, 0))
 	mux.Handle("GET /health/trackers", s.authed(s.healthTrackers, 0))
+	mux.Handle("POST /health/catalog/{source}/accept", s.authed(s.acceptCatalog, 0))
 	mux.Handle("GET /config", s.authed(s.configPage, 0))
 	mux.Handle("POST /config/{service}", s.authed(s.configSubmit, 0))
 	mux.Handle("POST /config/{service}/test", s.authed(s.configTest, 0))

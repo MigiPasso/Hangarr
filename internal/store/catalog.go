@@ -83,6 +83,8 @@ func idsJSON(ids []int64) string {
 // ReplaceArrCatalog upserts the full Sonarr (kind "series") or Radarr (kind
 // "movie") catalog and deletes the items that disappeared, in one
 // transaction. Plex link and watch statistics columns are left untouched.
+// A catalog that would remove too many items is refused with a
+// *CatalogShrinkError and nothing changes (see checkCatalogShrink).
 func (s *Store) ReplaceArrCatalog(ctx context.Context, kind string, items []CatalogItem, now time.Time) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -93,8 +95,14 @@ func (s *Store) ReplaceArrCatalog(ctx context.Context, kind string, items []Cata
 	if err != nil {
 		return err
 	}
-	arrIDs, err := upsertItems(ctx, tx, kind, items, now)
-	if err != nil {
+	arrIDs := make([]int64, 0, len(items))
+	for _, it := range items {
+		arrIDs = append(arrIDs, it.ArrID)
+	}
+	if err := checkCatalogShrink(ctx, tx, kind, arrIDs, now); err != nil {
+		return err
+	}
+	if _, err := upsertItems(ctx, tx, kind, items, now); err != nil {
 		return err
 	}
 	if _, err := tx.ExecContext(ctx, `DELETE FROM media WHERE kind = ? AND arr_id IS NOT NULL

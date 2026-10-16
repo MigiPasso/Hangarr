@@ -54,6 +54,11 @@ var (
 	// ErrServerConflict: Plex and Jellyfin are both configured, so which
 	// one owns the item is not settled; nothing is done through either.
 	ErrServerConflict = errors.New("both media servers are configured")
+	// ErrArrCatalogUnhealthy: the last Sonarr/Radarr catalog sync failed or
+	// was refused, so an item they manage (with its protection tags) may
+	// look like one only the media server knows: nothing is deleted through
+	// the media server until it succeeds.
+	ErrArrCatalogUnhealthy = errors.New("the last Sonarr/Radarr catalog sync failed")
 )
 
 // serverKey returns the item's key on the media server in use ("" when that
@@ -270,6 +275,15 @@ func (s *Service) deleteFromServer(ctx context.Context, up *upstream.Clients, m 
 	if m.Kind == "series" && s.ConfirmByTyping && !req.Confirmed &&
 		!strings.EqualFold(strings.TrimSpace(req.ConfirmTitle), strings.TrimSpace(m.Title)) {
 		return nil, ErrConfirmMismatch
+	}
+	if (m.Kind == "movie" && up.Radarr != nil) || (m.Kind == "series" && up.Sonarr != nil) {
+		healthy, err := s.Store.ArrCatalogHealthy(ctx, m.Kind)
+		if err != nil {
+			return nil, err
+		}
+		if !healthy {
+			return nil, fmt.Errorf("%w (%s)", ErrArrCatalogUnhealthy, arrName(m.Kind))
+		}
 	}
 	req.DeleteFiles, req.ImportExclusion = true, false // the server always deletes the files
 	res := &Result{Action: DeletePlex, Kind: m.Kind, MediaID: m.ID, Title: m.Title, SizeFreed: m.SizeBytes, DryRun: s.DryRun}

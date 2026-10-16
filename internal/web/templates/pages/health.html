@@ -19,6 +19,20 @@
   </div>{{end}}
 </section>
 
+{{range $d.Shrinks}}
+<section class="card">
+  <div class="alert alert-error">
+    <p><strong>{{if eq .Kind "movie"}}{{t "Radarr catalog refused"}}{{else}}{{t "Sonarr catalog refused"}}{{end}}</strong></p>
+    <p>{{t "The last answer lacks many of the stored items, so it was not applied: the previous catalog and its protection tags are kept, and nothing is deleted through the media server. Check the instance, then accept the new catalog only if it is right: the missing items will be removed from Hangarr."}}</p>
+    <p class="small">{{.Error}}</p>
+    <form method="post" action="/health/catalog/{{.Source}}/accept" class="inline">
+      <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+      <button type="submit" class="danger">{{t "Accept the new catalog"}}</button>
+    </form>
+  </div>
+</section>
+{{end}}
+
 <section class="card">
   <h2>{{t "Synchronization"}}</h2>
   {{if $d.Latest}}

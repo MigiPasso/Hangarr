@@ -4,6 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"io"
 	"io/fs"
 	"log/slog"
@@ -294,25 +296,89 @@ func TestSourceFailureIsolated(t *testing.T) {
 			radarrErr = s.Err
 		}
 	}
-	if sonarrErr == nil || radarrErr != nil {
+	// BUG-02: Radarr answering [] is refused, the movies are kept.
+	var shrink *store.CatalogShrinkError
+	if sonarrErr == nil || !errors.As(radarrErr, &shrink) || shrink.Before != 5 || shrink.After != 0 {
 		t.Fatalf("sonarr err=%v radarr err=%v", sonarrErr, radarrErr)
 	}
 	if n := e.count(`SELECT COUNT(*) FROM media WHERE kind = 'series' AND arr_id IS NOT NULL`); n != 5 {
 		t.Errorf("series must be kept when Sonarr fails, got %d", n)
 	}
-	// Radarr now returns no movie: movies vanish; those still in Plex
-	// become server_only and keep their history.
-	if n := e.count(`SELECT COUNT(*) FROM media WHERE kind = 'movie' AND arr_id IS NOT NULL`); n != 0 {
-		t.Errorf("movies removed from Radarr must be deleted, got %d", n)
-	}
-	if inc := e.media("movie", "Inception"); inc.MatchState != "server_only" || inc.Plays != 2 {
-		t.Errorf("Inception after Radarr removal: %+v", inc)
+	if n := e.count(`SELECT COUNT(*) FROM media WHERE kind = 'movie' AND arr_id IS NOT NULL`); n != 5 {
+		t.Errorf("an empty Radarr answer must not delete the movies, got %d", n)
 	}
 	runs, _ := e.store.LatestSyncRuns(context.Background())
 	for _, r := range runs {
 		if r.Source == SourceSonarr && (r.Status != "error" || !strings.Contains(r.Error, "500")) {
 			t.Errorf("sonarr run: %+v", r)
 		}
+		if r.Source == SourceRadarr && (r.Status != "error" || !strings.HasPrefix(r.Error, store.CatalogShrinkPrefix)) {
+			t.Errorf("radarr run: %+v", r)
+		}
+	}
+	if ok, _ := e.store.ArrCatalogHealthy(context.Background(), "movie"); ok {
+		t.Error("the Radarr catalog must be reported unhealthy")
+	}
+
+	// Accepted on the Health page: the next sync applies it once. Movies
+	// still in Plex become server_only and keep their history.
+	if err := e.store.AcceptCatalogShrink(context.Background(), "movie", e.s.Now()); err != nil {
+		t.Fatal(err)
+	}
+	e.run()
+	if n := e.count(`SELECT COUNT(*) FROM media WHERE kind = 'movie' AND arr_id IS NOT NULL`); n != 0 {
+		t.Errorf("accepted: movies removed from Radarr must be deleted, got %d", n)
+	}
+	if inc := e.media("movie", "Inception"); inc.MatchState != "server_only" || inc.Plays != 2 {
+		t.Errorf("Inception after Radarr removal: %+v", inc)
+	}
+	if ok, _ := e.store.ArrCatalogHealthy(context.Background(), "movie"); !ok {
+		t.Error("the Radarr catalog must be healthy again")
+	}
+}
+
+// BUG-02: an answer missing most items (90 %) is refused like an empty one.
+func TestCatalogShrinkRefused(t *testing.T) {
+	e := newEnv(t)
+	e.run()
+	var movies []map[string]any
+	if err := json.Unmarshal(e.fsys["radarr/movie.json"].Data, &movies); err != nil {
+		t.Fatal(err)
+	}
+	// 5 movies in the fixtures: pad the catalog so that one movie left is a
+	// 90 % drop above the floor.
+	for i := range 45 {
+		m := map[string]any{}
+		for k, v := range movies[0] {
+			m[k] = v
+		}
+		m["id"], m["title"], m["tmdbId"], m["imdbId"] = 1000+i, fmt.Sprintf("Padding %d", i), 900000+i, ""
+		movies = append(movies, m)
+	}
+	b, _ := json.Marshal(movies)
+	e.fsys["radarr/movie.json"] = &fstest.MapFile{Data: b}
+	e.run()
+	if n := e.count(`SELECT COUNT(*) FROM media WHERE kind = 'movie' AND arr_id IS NOT NULL`); n != 50 {
+		t.Fatalf("setup: %d movies", n)
+	}
+	b, _ = json.Marshal(movies[:5])
+	e.fsys["radarr/movie.json"] = &fstest.MapFile{Data: b}
+	res := e.run()
+	for _, s := range res.Sources {
+		var shrink *store.CatalogShrinkError
+		if s.Source == SourceRadarr && (!errors.As(s.Err, &shrink) || shrink.Removed != 45) {
+			t.Errorf("radarr: %v", s.Err)
+		}
+	}
+	if n := e.count(`SELECT COUNT(*) FROM media WHERE kind = 'movie' AND arr_id IS NOT NULL`); n != 50 {
+		t.Errorf("catalog must be kept, got %d movies", n)
+	}
+	// A small removal (5 of 50 = 10 %) goes through.
+	b, _ = json.Marshal(movies[:45])
+	e.fsys["radarr/movie.json"] = &fstest.MapFile{Data: b}
+	e.run()
+	if n := e.count(`SELECT COUNT(*) FROM media WHERE kind = 'movie' AND arr_id IS NOT NULL`); n != 45 {
+		t.Errorf("small removal: %d movies, want 45", n)
 	}
 }
 

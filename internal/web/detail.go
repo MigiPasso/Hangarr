@@ -435,6 +435,7 @@ var actionErrors = []struct {
 	{actions.ErrJellyfinDeletionDenied, "Jellyfin refused the deletion: check that its API key may delete media."},
 	{actions.ErrInactiveServer, "Known only by the media server that is not in use: nothing is done."},
 	{actions.ErrServerConflict, "Plex and Jellyfin are both configured: clear one of them first."},
+	{actions.ErrArrCatalogUnhealthy, "The last Sonarr/Radarr catalog sync failed or was refused: nothing is deleted through the media server until it succeeds (see Health)."},
 	{actions.ErrUnmonitorAfterDelete, "Files deleted, but the season could not be unmonitored: Sonarr may download it again."},
 }
 
