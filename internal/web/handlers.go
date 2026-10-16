@@ -61,8 +61,8 @@ func (s *Server) insecureCookieSetup(r *http.Request) bool {
 
 // preSession returns the pre-session cookie value, creating it if needed.
 func (s *Server) preSession(w http.ResponseWriter, r *http.Request) (string, error) {
-	if c, err := r.Cookie(preSessionCookie); err == nil && len(c.Value) == 43 {
-		return c.Value, nil
+	if v, ok := s.readCookie(r, preSessionCookie); ok && len(v) == 43 {
+		return v, nil
 	}
 	v, err := auth.NewToken()
 	if err != nil {
@@ -85,8 +85,8 @@ func (s *Server) renderLogin(w http.ResponseWriter, r *http.Request, status int,
 }
 
 func (s *Server) loginPage(w http.ResponseWriter, r *http.Request) {
-	if c, err := r.Cookie(sessionCookie); err == nil {
-		if _, err := s.Auth.Authenticate(r.Context(), c.Value); err == nil {
+	if token, ok := s.readCookie(r, sessionCookie); ok {
+		if _, err := s.Auth.Authenticate(r.Context(), token); err == nil {
 			http.Redirect(w, r, "/", http.StatusSeeOther)
 			return
 		}
@@ -105,10 +105,7 @@ func (s *Server) loginSubmit(w http.ResponseWriter, r *http.Request) {
 			Error: s.loc(r).T("Too many attempts. Try again in %d min.", mins)})
 		return
 	}
-	var pre string
-	if c, err := r.Cookie(preSessionCookie); err == nil {
-		pre = c.Value
-	}
+	pre, _ := s.readCookie(r, preSessionCookie)
 	if !auth.CheckPreSessionCSRF(s.PreSessionKey, pre, r.PostFormValue(csrfField)) {
 		s.Log.Warn("login csrf token rejected", "ip", meta.IP)
 		s.renderLogin(w, r, http.StatusForbidden, loginData{Username: username,

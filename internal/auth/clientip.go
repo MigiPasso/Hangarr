@@ -80,3 +80,21 @@ func ClientKey(ip string) string {
 	}
 	return a.String()
 }
+
+// SecureRequest reports whether the client reached the server over HTTPS:
+// TLS on this connection, or X-Forwarded-Proto: https set by a trusted proxy
+// (the header of anyone else is ignored).
+func (r IPResolver) SecureRequest(req *http.Request) bool {
+	if req.TLS != nil {
+		return true
+	}
+	peer, ok := parseAddr(req.RemoteAddr)
+	if !ok || !r.trusted(peer) {
+		return false
+	}
+	proto := req.Header.Get("X-Forwarded-Proto")
+	if i := strings.LastIndexByte(proto, ','); i >= 0 {
+		proto = proto[i+1:] // the hop closest to us
+	}
+	return strings.EqualFold(strings.TrimSpace(proto), "https")
+}

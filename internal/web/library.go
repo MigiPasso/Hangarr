@@ -150,9 +150,13 @@ func parseLibraryFilter(q url.Values, kind string) (store.LibraryFilter, int) {
 	default:
 		f.Desc = f.Sort != "title" // newest/largest first, titles A→Z
 	}
-	page := max(atoi(q.Get("page")), 1)
+	page := min(max(atoi(q.Get("page")), 1), maxPage)
 	return f, page
 }
+
+// maxPage bounds the page parameters: page × size must not overflow the
+// offset.
+const maxPage = 100_000
 
 // filterValues is the canonical query string of a filter (without page).
 func filterValues(f store.LibraryFilter) url.Values {

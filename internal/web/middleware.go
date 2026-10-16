@@ -19,6 +19,37 @@ const (
 	csrfField        = "csrf_token"
 )
 
+// With COOKIE_SECURE, the cookies carry a prefix the browser enforces: a
+// sibling subdomain can then neither set nor overwrite them. __Host- needs
+// Path=/, so the pre-session cookie (Path=/login) gets __Secure-.
+const (
+	hostPrefix   = "__Host-"
+	securePrefix = "__Secure-"
+)
+
+// cookieName is the name a cookie is written under.
+func (s *Server) cookieName(name string) string {
+	if !s.Config.CookieSecure {
+		return name
+	}
+	if name == preSessionCookie {
+		return securePrefix + name
+	}
+	return hostPrefix + name
+}
+
+// readCookie reads a cookie under its current name, else under its name
+// before the prefixes (sessions opened before the upgrade stay valid).
+func (s *Server) readCookie(r *http.Request, name string) (string, bool) {
+	if c, err := r.Cookie(s.cookieName(name)); err == nil {
+		return c.Value, true
+	}
+	if c, err := r.Cookie(name); err == nil {
+		return c.Value, true
+	}
+	return "", false
+}
+
 const contentSecurityPolicy = "default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; " +
 	"object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'"
 
@@ -68,9 +99,15 @@ func (s *Server) clientMeta(r *http.Request) auth.ClientMeta {
 // 0 makes it a browser-session cookie.
 func (s *Server) setCookie(w http.ResponseWriter, name, value, path string, maxAge int) {
 	http.SetCookie(w, &http.Cookie{ //nolint:gosec // G124: Secure follows COOKIE_SECURE (false only for local dev without TLS)
-		Name: name, Value: value, Path: path, MaxAge: maxAge,
+		Name: s.cookieName(name), Value: value, Path: path, MaxAge: maxAge,
 		HttpOnly: true, Secure: s.Config.CookieSecure, SameSite: http.SameSiteLaxMode,
 	})
+	if maxAge < 0 && s.cookieName(name) != name {
+		// Also drop the cookie written before the prefixes.
+		http.SetCookie(w, &http.Cookie{ //nolint:gosec // G124: deletion
+			Name: name, Path: path, MaxAge: -1, HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode,
+		})
+	}
 }
 
 func (s *Server) setSessionCookie(w http.ResponseWriter, token string) {
@@ -90,10 +127,7 @@ const allowMustChange authFlags = 1
 // checks the CSRF token on unsafe methods.
 func (s *Server) authed(h http.HandlerFunc, flags authFlags) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		var token string
-		if c, err := r.Cookie(sessionCookie); err == nil {
-			token = c.Value
-		}
+		token, _ := s.readCookie(r, sessionCookie)
 		sess, err := s.Auth.Authenticate(r.Context(), token)
 		if err != nil {
 			if !errors.Is(err, auth.ErrSessionInvalid) {
@@ -134,8 +168,16 @@ func (s *Server) securityHeaders(next http.Handler) http.Handler {
 		h.Set("Permissions-Policy", permissionsPolicy)
 		h.Set("X-Frame-Options", "DENY")
 		h.Set("Cross-Origin-Opener-Policy", "same-origin")
-		if s.Config.CookieSecure {
-			h.Set("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+		h.Set("Cross-Origin-Resource-Policy", "same-origin")
+		// HSTS only on HTTPS (as the browser saw it) and for this host only:
+		// includeSubDomains on a parent domain (maison.lan) would force HTTPS
+		// on every service below it for a year.
+		if s.Config.CookieSecure && s.ips.SecureRequest(r) {
+			v := "max-age=31536000"
+			if s.Config.HSTSIncludeSubdomains {
+				v += "; includeSubDomains"
+			}
+			h.Set("Strict-Transport-Security", v)
 		}
 		if !strings.HasPrefix(r.URL.Path, "/static/") {
 			h.Set("Cache-Control", "no-store")
@@ -177,6 +219,9 @@ func (s *Server) logRequests(next http.Handler) http.Handler {
 		start := time.Now()
 		rec := &statusRecorder{ResponseWriter: w}
 		next.ServeHTTP(rec, r)
+		if rec.status == 0 {
+			rec.status = http.StatusOK // nothing written: net/http answers 200
+		}
 		attrs := []any{
 			"method", r.Method, "path", r.URL.Path, "status", rec.status,
 			"duration_ms", time.Since(start).Milliseconds(), "ip", s.clientMeta(r).IP,
@@ -192,16 +237,22 @@ func (s *Server) logRequests(next http.Handler) http.Handler {
 
 func (s *Server) recoverer(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		rec := &statusRecorder{ResponseWriter: w}
 		defer func() {
 			if v := recover(); v != nil {
 				if v == http.ErrAbortHandler { //nolint:errorlint // sentinel compared as in net/http
 					panic(v)
 				}
 				s.Log.Error("panic in handler", "panic", v, "stack", string(debug.Stack()))
+				if rec.status != 0 {
+					// The answer has started: a 500 can no longer be sent,
+					// cut the connection so the client sees it failed.
+					panic(http.ErrAbortHandler)
+				}
 				http.Error(w, s.loc(r).T("Internal error."), http.StatusInternalServerError)
 			}
 		}()
-		next.ServeHTTP(w, r)
+		next.ServeHTTP(rec, r)
 	})
 }
 

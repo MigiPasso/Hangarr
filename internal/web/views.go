@@ -352,6 +352,15 @@ func (s *Server) static() http.Handler {
 	files := http.StripPrefix("/static/", http.FileServerFS(sub))
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		name := strings.TrimPrefix(path.Clean(r.URL.Path), "/static/")
+		// Files only: no directory listing (it would map the assets).
+		if strings.HasSuffix(r.URL.Path, "/") {
+			http.NotFound(w, r)
+			return
+		}
+		if st, err := fs.Stat(sub, name); err != nil || st.IsDir() {
+			http.NotFound(w, r)
+			return
+		}
 		if strings.HasSuffix(name, ".woff2") { // not in Go's built-in MIME table
 			w.Header().Set("Content-Type", "font/woff2")
 		}

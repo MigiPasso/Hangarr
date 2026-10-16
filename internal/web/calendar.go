@@ -114,7 +114,7 @@ func (s *Server) calendar(w http.ResponseWriter, r *http.Request) {
 		d.Size = n
 	}
 	if n, err := strconv.Atoi(q.Get("page")); err == nil && n > 1 {
-		d.Page = n
+		d.Page = min(n, maxPage)
 	}
 	now := time.Now().In(loc)
 	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, loc)

@@ -53,7 +53,8 @@ run yet), a sync runs immediately.
 |---|---|---|
 | `ADMIN_USERNAME` | `admin` | Name of the account created at the first start, 1 to 64 characters. Only used when that account is created. Also the default account of `hangarr admin reset-password`. |
 | `HANGARR_ADMIN_PASSWORD` | empty | Password of the admin account, instead of a generated one. `HANGARR_ADMIN_PASSWORD_FILE` reads it from a file (a Docker or Kubernetes secret). See [Admin password](#admin-password). |
-| `COOKIE_SECURE` | `true` | Sets the `Secure` attribute on the session cookies, so they are sent over HTTPS only. Use `false` only for plain-HTTP access on a local network. The sign-in page warns when it is served over HTTP while this is `true` (localhost excepted). |
+| `COOKIE_SECURE` | `true` | Sets the `Secure` attribute on the session cookies, so they are sent over HTTPS only. Use `false` only for plain-HTTP access on a local network. The sign-in page warns when it is served over HTTP while this is `true` (localhost excepted). With `true`, the cookies are named `__Host-hangarr_session` and `__Secure-hangarr_presession` (a subdomain cannot set them), and HTTPS responses carry `Strict-Transport-Security` (HTTPS seen directly, or `X-Forwarded-Proto: https` from a `TRUSTED_PROXIES` proxy). |
+| `HSTS_INCLUDE_SUBDOMAINS` | `false` | Adds `includeSubDomains` to `Strict-Transport-Security`. Leave it off when Hangarr is served on a parent domain (such as `home.lan`): browsers would then refuse plain HTTP on every service below it for a year. |
 | `SESSION_IDLE_TIMEOUT` | `12h` | A session expires after this much inactivity. Minimum `1m`. |
 | `SESSION_MAX_AGE` | `168h` | Absolute lifetime of a session. Minimum `1m`, and not shorter than `SESSION_IDLE_TIMEOUT`. |
 | `LOGIN_MAX_PER_IP` | `10` | Sign-in attempts allowed per client in a 15-minute sliding window, successful ones included: per IPv4 address, per /64 network in IPv6. The password change shares this limit. Minimum `1`. |

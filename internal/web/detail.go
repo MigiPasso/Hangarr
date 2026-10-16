@@ -569,7 +569,7 @@ func (s *Server) journal(w http.ResponseWriter, r *http.Request) {
 	if !slices.Contains([]string{"actions", "security"}, tab) {
 		tab = "actions"
 	}
-	page := max(atoi(r.URL.Query().Get("page")), 1)
+	page := min(max(atoi(r.URL.Query().Get("page")), 1), maxPage)
 	d := journalData{Tab: tab, Page: page}
 	offset := (page - 1) * journalPageSize
 	var more bool
