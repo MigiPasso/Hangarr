@@ -218,3 +218,17 @@ func TestWebhookSecretGeneration(t *testing.T) {
 		t.Error("the secret must be shown only once")
 	}
 }
+
+// BUG-11: with TAUTULLI_WEBHOOK_SECRET set by the environment, a replayed
+// request does not show a secret that was never saved.
+func TestWebhookSecretFromEnvNotShown(t *testing.T) {
+	h := newConfigHarness(t, upstream.Values{upstream.TautulliURL: "http://tautulli:8181",
+		upstream.TautulliWebhook: "env-secret-env-secret-env-secret-env-secre"}, true)
+	c := h.loggedIn()
+	csrf := csrfFrom(t, h.do(c, "GET", "/config", nil, nil).body)
+	r := h.do(c, "POST", "/config/tautulli/webhook-secret", url.Values{"csrf_token": {csrf}}, map[string]string{"HX-Request": "true"})
+	if regexp.MustCompile(`"X-Hangarr-Token": "[A-Za-z0-9_-]{43}"`).MatchString(r.body) ||
+		!strings.Contains(r.body, "défini par l&#39;environnement (TAUTULLI_WEBHOOK_SECRET)") {
+		t.Fatalf("response:\n%s", r.body)
+	}
+}

@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -53,17 +52,20 @@ func selectedIDs(r *http.Request) ([]int64, error) {
 		return nil, err
 	}
 	var ids []int64
+	seen := map[int64]bool{}
 	for _, v := range r.PostForm["ids"] {
 		id, err := strconv.ParseInt(strings.TrimSpace(v), 10, 64)
 		if err != nil || id <= 0 {
 			return nil, errors.New("invalid id")
 		}
-		if !slices.Contains(ids, id) {
-			ids = append(ids, id)
+		if seen[id] {
+			continue
 		}
-	}
-	if len(ids) > actions.MaxBatch {
-		return nil, errTooManyItems
+		if len(ids) == actions.MaxBatch {
+			return nil, errTooManyItems // stop at once: a 1 MiB body holds 100 000 ids
+		}
+		seen[id] = true
+		ids = append(ids, id)
 	}
 	return ids, nil
 }

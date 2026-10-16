@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 )
 
@@ -101,5 +102,24 @@ func TestLoadOrCreateKeyFile(t *testing.T) {
 	}
 	if _, _, err := LoadOrCreateKeyFile(path); err == nil {
 		t.Error("a corrupt key file must not be silently replaced")
+	}
+}
+
+// BUG-16: a file system without hard links still gets its master.key.
+func TestKeyFileWithoutHardLinks(t *testing.T) {
+	old := linkFile
+	linkFile = func(string, string) error { return &os.LinkError{Op: "link", Err: syscall.EPERM} }
+	t.Cleanup(func() { linkFile = old })
+	path := filepath.Join(t.TempDir(), "master.key")
+	key, created, err := LoadOrCreateKeyFile(path)
+	if err != nil || !created || len(key) != KeySize {
+		t.Fatalf("create: %v created=%v", err, created)
+	}
+	if st, err := os.Stat(path); err != nil || st.Mode().Perm() != 0o600 {
+		t.Fatalf("mode: %v %v", st, err)
+	}
+	again, created, err := LoadOrCreateKeyFile(path)
+	if err != nil || created || string(again) != string(key) {
+		t.Fatalf("reload: %v created=%v", err, created)
 	}
 }

@@ -155,12 +155,45 @@ func (s *Store) migrate(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	if err := s.checkNotNewer(ctx, migs); err != nil {
+		return err
+	}
 	for _, m := range migs {
 		if err := s.applyMigration(ctx, m); err != nil {
 			return fmt.Errorf("migration %s: %w", m.name, err)
 		}
 	}
 	return nil
+}
+
+// ErrNewerDatabase: the database was migrated by a more recent release; this
+// one does not know its schema (there is no downgrade).
+var ErrNewerDatabase = errors.New("the database was created by a more recent version of Hangarr: " +
+	"run that version, or restore the backup made before the upgrade")
+
+// checkNotNewer refuses a database holding migrations this release does not
+// embed.
+func (s *Store) checkNotNewer(ctx context.Context, migs []migration) error {
+	known := map[int]bool{}
+	for _, m := range migs {
+		known[m.version] = true
+	}
+	rows, err := s.db.QueryContext(ctx, `SELECT version, name FROM schema_migrations ORDER BY version`)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = rows.Close() }()
+	for rows.Next() {
+		var v int
+		var name string
+		if err := rows.Scan(&v, &name); err != nil {
+			return err
+		}
+		if !known[v] {
+			return fmt.Errorf("%w (migration %s)", ErrNewerDatabase, name)
+		}
+	}
+	return rows.Err()
 }
 
 // ErrMigrationMismatch: the database recorded another migration under the
@@ -211,7 +244,7 @@ func (s *Store) Ready(ctx context.Context) error {
 	if applied < len(migs) {
 		return fmt.Errorf("database not ready: %d/%d migrations applied", applied, len(migs))
 	}
-	return nil
+	return s.checkNotNewer(ctx, migs)
 }
 
 func nullInt(v *int64) sql.NullInt64 {
@@ -260,11 +293,27 @@ func pingWithRetry(ctx context.Context, db *sql.DB) error {
 }
 
 // BackupTo writes a consistent copy of the database to path (VACUUM INTO):
-// safe while the application runs, the target must not exist.
+// safe while the application runs, the target must not exist. The copy holds
+// password hashes and encrypted secrets: it is written in a private
+// directory, made readable by its owner only (0600), then moved into place.
 func (s *Store) BackupTo(ctx context.Context, path string) error {
 	if _, err := os.Stat(path); err == nil {
 		return fmt.Errorf("%s already exists", path)
 	}
-	_, err := s.db.ExecContext(ctx, `VACUUM INTO ?`, path)
-	return err
+	tmpDir, err := os.MkdirTemp(filepath.Dir(path), ".backup-*") // mode 0700
+	if err != nil {
+		return err
+	}
+	defer func() { _ = os.RemoveAll(tmpDir) }()
+	tmp := filepath.Join(tmpDir, filepath.Base(path))
+	if _, err := s.db.ExecContext(ctx, `VACUUM INTO ?`, tmp); err != nil {
+		return err
+	}
+	if err := os.Chmod(tmp, 0o600); err != nil {
+		return err
+	}
+	if _, err := os.Stat(path); err == nil {
+		return fmt.Errorf("%s already exists", path)
+	}
+	return os.Rename(tmp, path)
 }

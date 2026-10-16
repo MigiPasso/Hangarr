@@ -134,6 +134,29 @@ func (l *loader) secret(key string) string {
 	}
 }
 
+// password reads KEY or KEY_FILE like secret, without trimming spaces: only
+// the line break that ends the file is dropped.
+func (l *loader) password(key string) string {
+	v, hasValue := l.lookup(key)
+	path, hasFile := l.lookup(key + "_FILE")
+	path = strings.TrimSpace(path)
+	hasValue = hasValue && v != ""
+	hasFile = hasFile && path != ""
+	switch {
+	case hasValue && hasFile:
+		l.fail("%s and %s_FILE are both set; use only one", key, key)
+		return ""
+	case hasFile:
+		b, err := l.readFile(path)
+		if err != nil {
+			l.fail("%s_FILE: %w", key, err)
+			return ""
+		}
+		return strings.TrimSuffix(strings.TrimSuffix(string(b), "\n"), "\r")
+	}
+	return v
+}
+
 func (l *loader) boolean(key string, def bool) bool {
 	v := l.str(key, "")
 	if v == "" {
@@ -253,7 +276,7 @@ func Load(lookup LookupFunc, readFile ReadFileFunc) (*Config, error) {
 	}
 	// Not trimmed: spaces may be part of the password. The policy is checked
 	// when the account is created (auth.Bootstrap).
-	c.AdminPassword, _ = l.lookup("HANGARR_ADMIN_PASSWORD")
+	c.AdminPassword = l.password("HANGARR_ADMIN_PASSWORD")
 	if c.SessionMaxAge < c.SessionIdleTimeout {
 		l.fail("SESSION_MAX_AGE (%s) must be >= SESSION_IDLE_TIMEOUT (%s)", c.SessionMaxAge, c.SessionIdleTimeout)
 	}

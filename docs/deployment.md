@@ -192,9 +192,10 @@ env:
 The account is then created with this password: nothing is written to the logs, and no change is required. The
 password must meet the same rules as a chosen one: at least 12 characters, with lowercase and uppercase letters, a
 digit and a symbol, not containing the username, and not a common password. Otherwise Hangarr refuses to start, even if
-the account already exists. The variable has no `_FILE` variant. It is only read when the account is created; afterwards
-it is ignored, with a warning in the logs. Remove it once the account exists: otherwise it stays readable in the
-container configuration (`docker inspect`, pod spec).
+the account already exists. `HANGARR_ADMIN_PASSWORD_FILE` reads it from a file instead, such as a mounted Docker or
+Kubernetes secret, which keeps it out of the container configuration. It is only read when the account is created;
+afterwards it is ignored, with a warning in the logs. Remove it once the account exists: otherwise it stays readable in
+the container configuration (`docker inspect`, `kubectl describe`); on Kubernetes, delete the Secret too.
 
 ---
 

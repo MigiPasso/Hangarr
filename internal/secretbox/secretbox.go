@@ -108,7 +108,8 @@ func (b *Box) Open(name, sealed string) (string, error) {
 // LoadOrCreateKeyFile reads the key stored at path, or creates it (mode
 // 0600) with a fresh random key. The file is written aside then hard-linked
 // into place: a concurrent process never reads a partial file, and both
-// agree on the first key linked.
+// agree on the first key linked. Without hard links (some network file
+// systems), the file is created exclusively instead.
 func LoadOrCreateKeyFile(path string) (key []byte, created bool, err error) {
 	if key, err := ReadKeyFile(path); err == nil || !errors.Is(err, fs.ErrNotExist) {
 		return key, false, err
@@ -127,7 +128,14 @@ func LoadOrCreateKeyFile(path string) (key []byte, created bool, err error) {
 	if err := errors.Join(werr, serr, tmp.Close()); err != nil {
 		return nil, false, err
 	}
-	if err := os.Link(tmp.Name(), path); errors.Is(err, fs.ErrExist) {
+	err = linkFile(tmp.Name(), path)
+	if err != nil && !errors.Is(err, fs.ErrExist) {
+		// Some file systems (SMB/CIFS, some NFS or FUSE mounts) refuse hard
+		// links: create the file exclusively instead. A concurrent start may
+		// then read it half-written and fail once; the next start works.
+		err = writeExclusive(path, enc+"\n")
+	}
+	if errors.Is(err, fs.ErrExist) {
 		key, err := ReadKeyFile(path)
 		return key, false, err
 	} else if err != nil {
@@ -135,6 +143,24 @@ func LoadOrCreateKeyFile(path string) (key []byte, created bool, err error) {
 	}
 	key, err = ParseKey(enc)
 	return key, true, err
+}
+
+// linkFile is os.Link (replaced in tests by a file system without links).
+var linkFile = os.Link
+
+// writeExclusive creates path (mode 0600) with content; fs.ErrExist when it
+// already exists.
+func writeExclusive(path, content string) error {
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600) //nolint:gosec // G304: path is DATA_DIR/master.key
+	if err != nil {
+		return err
+	}
+	_, werr := f.WriteString(content)
+	if err := errors.Join(werr, f.Sync(), f.Close()); err != nil {
+		_ = os.Remove(path)
+		return err
+	}
+	return nil
 }
 
 // ReadKeyFile reads a key file written by LoadOrCreateKeyFile.

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -133,6 +134,13 @@ func TestBackupTo(t *testing.T) {
 	if err := st.BackupTo(ctx, path); err != nil {
 		t.Fatal(err)
 	}
+	// SEC-14: hashes and encrypted secrets, readable by the owner only.
+	if fi, err := os.Stat(path); err != nil || fi.Mode().Perm() != 0o600 {
+		t.Errorf("backup mode: %v %v", fi.Mode(), err)
+	}
+	if left, _ := filepath.Glob(filepath.Join(dir, ".backup-*")); len(left) != 0 {
+		t.Errorf("temporary directory left: %v", left)
+	}
 	if err := st.BackupTo(ctx, path); err == nil {
 		t.Error("an existing backup must not be overwritten")
 	}
@@ -235,5 +243,25 @@ func TestProtectedTagRuleGoAndSQLAgree(t *testing.T) {
 		if got := HasProtectedTag(c.tags, protected); got != c.want || excluded != c.want {
 			t.Errorf("%q: Go %v, SQL %v, want %v", c.tags, got, excluded, c.want)
 		}
+	}
+}
+
+// BUG-15: a database migrated by a more recent release is refused, at open
+// and by the readiness probe.
+func TestNewerDatabaseRefused(t *testing.T) {
+	dir := t.TempDir()
+	s, err := Open(context.Background(), dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.db.Exec(`INSERT INTO schema_migrations(version, name, applied_at) VALUES (9999, '9999_future.sql', 0)`); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Ready(context.Background()); !errors.Is(err, ErrNewerDatabase) {
+		t.Errorf("Ready: %v", err)
+	}
+	_ = s.Close()
+	if _, err := Open(context.Background(), dir); !errors.Is(err, ErrNewerDatabase) || !strings.Contains(err.Error(), "9999_future.sql") {
+		t.Fatalf("Open: %v", err)
 	}
 }

@@ -2,6 +2,7 @@ package web
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -355,5 +356,30 @@ func TestDeleteSeasonOfMovieNotFound(t *testing.T) {
 	}
 	if r := e.do(e.c, "GET", "/movies/"+tenet, nil, nil); r.status != http.StatusOK {
 		t.Errorf("movie gone: %d", r.status)
+	}
+}
+
+// BUG-14: duplicates are dropped, and more than MaxBatch distinct ids are
+// refused as soon as they are read.
+func TestSelectedIDs(t *testing.T) {
+	form := url.Values{}
+	for range 3 {
+		form.Add("ids", "7")
+	}
+	form.Add("ids", "8")
+	r, _ := http.NewRequest(http.MethodPost, "/batch/delete", strings.NewReader(form.Encode()))
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	ids, err := selectedIDs(r)
+	if err != nil || len(ids) != 2 || ids[0] != 7 || ids[1] != 8 {
+		t.Fatalf("ids=%v err=%v", ids, err)
+	}
+	form = url.Values{}
+	for i := range 5000 { // under the parameter limit of net/url
+		form.Add("ids", strconv.Itoa(i+1))
+	}
+	r, _ = http.NewRequest(http.MethodPost, "/batch/delete", strings.NewReader(form.Encode()))
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	if _, err := selectedIDs(r); !errors.Is(err, errTooManyItems) {
+		t.Errorf("too many: %v", err)
 	}
 }

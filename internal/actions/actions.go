@@ -61,7 +61,7 @@ var (
 	// the media server until it succeeds.
 	ErrArrCatalogUnhealthy = errors.New("the last Sonarr/Radarr catalog sync failed")
 	// ErrStopping: Hangarr is shutting down; nothing more is sent.
-	ErrStopping = errors.New("Hangarr is stopping")
+	ErrStopping = errors.New("hangarr is stopping")
 )
 
 // serverKey returns the item's key on the media server in use ("" when that

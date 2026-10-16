@@ -250,3 +250,21 @@ func TestTrustedProxies(t *testing.T) {
 		}
 	}
 }
+
+// SEC-10: the admin password may come from a file (Docker/Kubernetes
+// secret); spaces are kept, the final line break is not.
+func TestAdminPasswordFile(t *testing.T) {
+	m := upstreams()
+	m["HANGARR_ADMIN_PASSWORD_FILE"] = "/run/secrets/admin"
+	c, err := Load(env(m), files(map[string]string{"/run/secrets/admin": " Spaced Pass-word 1 \r\n"}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.AdminPassword != " Spaced Pass-word 1 " {
+		t.Errorf("got %q", c.AdminPassword)
+	}
+	m["HANGARR_ADMIN_PASSWORD"] = "x"
+	if _, err := Load(env(m), files(map[string]string{"/run/secrets/admin": "y"})); err == nil || !strings.Contains(err.Error(), "both set") {
+		t.Errorf("both: %v", err)
+	}
+}

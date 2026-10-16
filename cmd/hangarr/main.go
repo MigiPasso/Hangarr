@@ -135,11 +135,11 @@ func serve() error {
 	created, err := svc.Bootstrap(ctx, cfg.AdminUsername, cfg.AdminPassword, os.Stdout)
 	switch {
 	case errors.Is(err, auth.ErrWeakPassword):
-		return fmt.Errorf("HANGARR_ADMIN_PASSWORD: %w", err)
+		return fmt.Errorf("HANGARR_ADMIN_PASSWORD(_FILE): %w", err)
 	case err != nil:
 		return fmt.Errorf("admin bootstrap: %w", err)
 	case !created && cfg.AdminPassword != "":
-		log.Warn("HANGARR_ADMIN_PASSWORD is ignored: the admin account already exists " +
+		log.Warn("HANGARR_ADMIN_PASSWORD(_FILE) is ignored: the admin account already exists, remove it " +
 			"(change its password in the interface or with `hangarr admin reset-password`)")
 	}
 	cfg.AdminPassword = "" // only needed above; cfg lives on in the web server

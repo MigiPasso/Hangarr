@@ -104,7 +104,7 @@ func (s *Server) webhookSecretSubmit(w http.ResponseWriter, r *http.Request) {
 	}
 	sess := sessionFrom(r)
 	meta := s.clientMeta(r)
-	_, err := s.Services.Save(r.Context(), upstream.Tautulli, in,
+	changed, err := s.Services.Save(r.Context(), upstream.Tautulli, in,
 		store.AuthEvent{UserID: &sess.UserID, Username: sess.Username, IP: meta.IP, UserAgent: media.Truncate(meta.UserAgent, 256)}, time.Now())
 	var verr upstream.ValidationError
 	if err != nil && !errors.As(err, &verr) {
@@ -118,9 +118,14 @@ func (s *Server) webhookSecretSubmit(w http.ResponseWriter, r *http.Request) {
 	}
 	idx := slices.IndexFunc(forms, func(f serviceForm) bool { return f.Service == upstream.Tautulli })
 	form := &forms[idx]
-	if verr != nil {
+	switch {
+	case verr != nil:
 		form.Errors = verr
-	} else {
+	case !slices.Contains(changed, upstream.TautulliWebhook):
+		// Not saved (TAUTULLI_WEBHOOK_SECRET is set by the environment):
+		// showing it would have Tautulli configured with a useless secret.
+		form.Errors = map[string]string{upstream.TautulliWebhook: "The webhook secret is set by the environment (TAUTULLI_WEBHOOK_SECRET): nothing was generated."}
+	default:
 		form.GeneratedSecret = secret
 	}
 	if isHTMX(r) {
