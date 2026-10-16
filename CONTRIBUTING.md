@@ -25,6 +25,7 @@ Nothing else is installed on the host. Go, the linters, Playwright and every oth
 | `make k8s-check` | Validates `deploy/kubernetes/hangarr.yaml` against the Kubernetes schemas (kubeconform, in a container). |
 | `make vulncheck` | Looks for known vulnerabilities in the Go code and its dependencies (govulncheck, in a container). |
 | `make scan` | Builds the runtime image and fails on a fixable HIGH or CRITICAL vulnerability (Trivy, in a container). |
+| `make fuzz` | Runs every fuzz test (parsers of external input) for `FUZZTIME` each, 10 seconds by default (in a container). A failing input is saved under `testdata/fuzz/` of the package: commit it with the fix, it then runs with `make test`. |
 | `make secret-scan` | Scans the whole git history for secrets (gitleaks with `.gitleaks.toml`, in a container). |
 | `make capture-fixtures` | Records anonymized responses of the real services into `testdata/captured/`. Needs `.env`. |
 | `make jellyfin-lab` | Starts a pinned Jellyfin with the test scenario on http://localhost:8096. `make jellyfin-lab-down` removes it. |
@@ -35,7 +36,7 @@ Run `make verify` before opening a pull request. Run `make e2e` (or `make verify
 
 ### Continuous integration
 
-`.github/workflows/ci.yml` runs `make verify` and `make e2e` (two parallel jobs, together equivalent to `make verify E2E=1`), `make deploy-check`, `make k8s-check`, `make vulncheck`, `make scan` and `make secret-scan` on pushes to `main` and on pull requests. It uses a read-only token and no secrets. `.github/workflows/release.yml` publishes the image to GHCR when a `v*` tag is pushed, only after `make verify`, `make e2e` and `make scan` pass on the tagged commit; the image carries an SBOM and a provenance attestation and is signed with cosign (keyless).
+`.github/workflows/ci.yml` runs `make verify` and `make e2e` (two parallel jobs, together equivalent to `make verify E2E=1`), `make deploy-check`, `make k8s-check`, `make vulncheck`, `make scan`, `make fuzz` and `make secret-scan` on pushes to `main` and on pull requests. It uses a read-only token and no secrets. `.github/workflows/release.yml` publishes the image to GHCR when a `v*` tag is pushed, only after `make verify`, `make e2e` and `make scan` pass on the tagged commit; the image carries an SBOM and a provenance attestation and is signed with cosign (keyless).
 
 ### Development sign-in
 

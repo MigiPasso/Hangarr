@@ -103,14 +103,23 @@ func serve() error {
 	if err != nil {
 		return err
 	}
-	log := newLogger(cfg, os.Stdout)
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, os.Interrupt)
+	defer stop()
+	return run(ctx, cfg, os.Stdout)
+}
+
+// run serves until ctx is canceled (SIGTERM), then stops in order: HTTP
+// server, background syncs, the deletion in flight, then the database. The
+// logs and the first-start banner go to out.
+func run(ctx context.Context, cfg *config.Config, out io.Writer) error {
+	log := newLogger(cfg, out)
 	slog.SetDefault(log)
 	log.Info("starting hangarr", "version", version, "dry_run", cfg.DryRun, "master_key", cfg.MasterKey != nil)
 	for _, d := range cfg.Deprecations {
 		log.Warn(d)
 	}
 
-	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, os.Interrupt)
+	ctx, stop := context.WithCancel(ctx)
 	defer stop()
 
 	st, err := store.Open(ctx, cfg.DataDir)
@@ -132,7 +141,7 @@ func serve() error {
 		IdleTimeout: cfg.SessionIdleTimeout, MaxAge: cfg.SessionMaxAge}
 	// The banner goes straight to stdout, in plain text even in JSON mode,
 	// so that it stays readable in `docker logs` / `kubectl logs`.
-	created, err := svc.Bootstrap(ctx, cfg.AdminUsername, cfg.AdminPassword, os.Stdout)
+	created, err := svc.Bootstrap(ctx, cfg.AdminUsername, cfg.AdminPassword, out)
 	switch {
 	case errors.Is(err, auth.ErrWeakPassword):
 		return fmt.Errorf("HANGARR_ADMIN_PASSWORD(_FILE): %w", err)

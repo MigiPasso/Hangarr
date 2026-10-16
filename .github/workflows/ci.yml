@@ -82,5 +82,7 @@ jobs:
         run: make vulncheck
       - name: make scan (runtime image, Trivy)
         run: make scan
+      - name: make fuzz (10 s per parser)
+        run: make fuzz FUZZTIME=10s
       - name: make secret-scan
         run: make secret-scan

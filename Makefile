@@ -34,7 +34,7 @@ VERIFY_DIR   := .verify
 VERIFY_COMPOSE := docker compose --progress quiet -f compose.dev.yml
 
 .DEFAULT_GOAL := help
-.PHONY: help dev dev-real down logs test lint e2e verify go-version-check scan image image-load reset-admin clean deps vendor-assets deploy-check capture-fixtures jellyfin-lab jellyfin-lab-capture jellyfin-lab-down sync icons k8s-check vulncheck secret-scan
+.PHONY: help dev dev-real down logs test lint e2e verify go-version-check scan fuzz image image-load reset-admin clean deps vendor-assets deploy-check capture-fixtures jellyfin-lab jellyfin-lab-capture jellyfin-lab-down sync icons k8s-check vulncheck secret-scan
 
 help: ## List targets
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-18s %s\n", $$1, $$2}'
@@ -56,6 +56,19 @@ logs: ## Follow dev app logs
 test: ## Unit + integration tests (go test -race -cover)
 	$(COMPOSE) --profile tools build test
 	$(COMPOSE) --profile tools run --rm test
+
+# Fuzz tests (package:function), run by `make fuzz` for FUZZTIME each.
+FUZZTIME     ?= 10s
+FUZZ_TARGETS := internal/auth:FuzzParsePHC internal/auth:FuzzClientKey internal/web:FuzzLocalPath \
+  internal/clients/httpx:FuzzFlexTypes internal/release:FuzzParse internal/secretbox:FuzzParseKey \
+  internal/clients/sonarr:FuzzUnmonitorSeason internal/clients/sonarr:FuzzWithTags internal/clients/radarr:FuzzRatings \
+  internal/media:FuzzTruncate
+
+fuzz: ## Run every fuzz test for FUZZTIME each (default 10s), in a container
+	$(COMPOSE) --profile tools build test
+	$(COMPOSE) --profile tools run --rm -T test sh -c 'set -e; for t in $(FUZZ_TARGETS); do \
+	  pkg=$${t%%:*}; fn=$${t##*:}; echo "== $$pkg $$fn"; \
+	  go test -run "^$$" -fuzz "^$$fn$$" -fuzztime $(FUZZTIME) ./$$pkg; done'
 
 lint: ## go vet + golangci-lint
 	$(COMPOSE) --profile tools build lint
