@@ -45,6 +45,7 @@ test.describe("dry-run instance (app-e2e)", () => {
     await expect(remuxRow).toContainText("4K");
     // The tracks are read live, once the table is shown.
     await expect(remuxRow).toContainText("Français (AC3 5.1)");
+    await expect(remuxRow.locator(".dup-tracks").nth(1)).toHaveAttribute("title", "Français Forced\nEnglish");
     await expect(remuxRow.locator(".badge", { hasText: "Radarr" })).toBeVisible();
     await expect(remuxRow.getByText("surveillé", { exact: true })).toBeVisible();
 

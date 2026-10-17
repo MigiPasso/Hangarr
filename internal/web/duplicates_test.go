@@ -3,6 +3,7 @@ package web
 import (
 	"context"
 	"fmt"
+	"html"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -40,6 +41,10 @@ func TestDuplicatesPage(t *testing.T) {
 		if !strings.Contains(r.body, want) {
 			t.Errorf("missing %q", want)
 		}
+	}
+	// Not live: the tracks are the "…" placeholder, no tooltip.
+	if strings.Contains(r.body, "dup-tracks") {
+		t.Error("the page without the live tracks shows a tracks cell")
 	}
 }
 
@@ -80,8 +85,17 @@ func TestDuplicatesLive(t *testing.T) {
 	if strings.Contains(remux, "non surveillé") {
 		t.Errorf("Remux row says not monitored:\n%s", remux)
 	}
-	if m := regexp.MustCompile(`class="dup-tracks" title="([^"]*)"`).FindStringSubmatch(remux); m == nil || !strings.Contains(m[1], "Français (AC3 5.1)") {
-		t.Errorf("Remux row has no tracks tooltip with the audio list:\n%s", remux)
+	matches := regexp.MustCompile(`class="dup-tracks" title="([^"]*)"`).FindAllStringSubmatch(remux, -1)
+	if len(matches) != 2 {
+		t.Fatalf("Remux row has %d tracks tooltips, want 2 (audio, subtitles):\n%s", len(matches), remux)
+	}
+	audio := strings.Split(html.UnescapeString(matches[0][1]), "\n")
+	if want := []string{"English (TRUEHD 7.1 + Atmos)", "Français (AC3 5.1)"}; !slices.Equal(audio, want) {
+		t.Errorf("Remux audio tooltip %q, want %q", audio, want)
+	}
+	subtitles := strings.Split(html.UnescapeString(matches[1][1]), "\n")
+	if want := []string{"Français Forced", "English"}; !slices.Equal(subtitles, want) {
+		t.Errorf("Remux subtitles tooltip %q, want %q", subtitles, want)
 	}
 	if web := duplicateRow(t, r.body, "WEB-DL"); strings.Contains(web, "Radarr") {
 		t.Errorf("WEB-DL row has the Radarr badge:\n%s", web)
