@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"regexp"
 	"slices"
 	"strings"
 	"testing"
@@ -78,6 +79,9 @@ func TestDuplicatesLive(t *testing.T) {
 	}
 	if strings.Contains(remux, "non surveillé") {
 		t.Errorf("Remux row says not monitored:\n%s", remux)
+	}
+	if m := regexp.MustCompile(`class="dup-tracks" title="([^"]*)"`).FindStringSubmatch(remux); m == nil || !strings.Contains(m[1], "Français (AC3 5.1)") {
+		t.Errorf("Remux row has no tracks tooltip with the audio list:\n%s", remux)
 	}
 	if web := duplicateRow(t, r.body, "WEB-DL"); strings.Contains(web, "Radarr") {
 		t.Errorf("WEB-DL row has the Radarr badge:\n%s", web)
