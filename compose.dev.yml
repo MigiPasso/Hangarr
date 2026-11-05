@@ -254,7 +254,7 @@ services:
 
   e2e:
     profiles: [e2e]
-    image: mcr.microsoft.com/playwright:v1.64.1-noble@sha256:7852dc5a7d72f5fe458a597d690f6c42fbc8e9e26ddfa95f8e6ef552558d9bbf
+    image: mcr.microsoft.com/playwright:v1.65.0-noble@sha256:6e3fb709361521eb27161606e6da6d2674e5e89fa16516cb37d6fdd91372273d
     working_dir: /e2e
     environment:
       BASE_URL: http://app-e2e:8080
@@ -278,7 +278,7 @@ services:
   # curl for vendoring static assets.
   fetch:
     profiles: [tools]
-    image: curlimages/curl:8.22.0@sha256:58adaa4e8dca9c988bae2aba4ab3434a0bb2da16bbe3f92dec39ec7785166777
+    image: curlimages/curl:8.23.0@sha256:3fb7e13e5d179a845c97d78204f3f1064d1907037f26a3ebf91710571151fd93
     working_dir: /work
     volumes:
       - .:/work
