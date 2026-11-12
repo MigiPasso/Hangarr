@@ -7,7 +7,7 @@
 ARG AIR_VERSION=v1.67.4
 
 # --- deps: module download, shared by every Go stage ------------------------
-FROM --platform=$BUILDPLATFORM golang:1.27.2-bookworm@sha256:5cf287a799e6b94384bad13d16b14904c531f51ba65792237e122ce42b392f61 AS deps
+FROM --platform=$BUILDPLATFORM golang:1.27.3-bookworm@sha256:dc0963f32053e4bc451d24d87e3892d42d01021b61f093e98eb95c0352bb84b0 AS deps
 WORKDIR /src
 ENV GOFLAGS=-buildvcs=false
 COPY go.mod go.sum ./
@@ -32,7 +32,7 @@ COPY . .
 CMD ["go", "test", "-race", "-cover", "-count=1", "./..."]
 
 # --- lint: official golangci-lint image + go vet ----------------------------
-FROM golangci/golangci-lint:v2.14.0@sha256:ad862ba6b3798cbe0fd9fd7408d498fd74fbd2623a92406b2fd3898faf0bf98f AS lint
+FROM golangci/golangci-lint:v2.15.0@sha256:fbfcfd12a6f8d7f1b97b3362ca80fc2a244d46863148c73cb88e7793af96c481 AS lint
 WORKDIR /src
 ENV GOFLAGS=-buildvcs=false
 COPY --from=deps /go/pkg/mod /go/pkg/mod
@@ -55,7 +55,7 @@ RUN --mount=type=cache,target=/root/.cache/go-build \
     rm -rf /out/testdata/captured
 
 # --- mock: fake upstream services for dev and e2e ---------------------------
-FROM gcr.io/distroless/static-debian13:nonroot@sha256:e2e927ec666bae08560abb3c55d0659eceabb657f56b6782ab500a9fc7f555e3 AS mock
+FROM gcr.io/distroless/static-debian13:nonroot@sha256:aafe993665bf6200db38a02c11a9351e782a84b6a45e7f33b6695638c88e3931 AS mock
 COPY --from=build /out/mockarr /mockarr
 COPY --from=build /out/testdata /testdata
 USER 65532:65532
@@ -63,7 +63,7 @@ EXPOSE 8989 7878 32400 8096 8181
 ENTRYPOINT ["/mockarr"]
 
 # --- runtime: what ships to Kubernetes --------------------------------------
-FROM gcr.io/distroless/static-debian13:nonroot@sha256:e2e927ec666bae08560abb3c55d0659eceabb657f56b6782ab500a9fc7f555e3 AS runtime
+FROM gcr.io/distroless/static-debian13:nonroot@sha256:aafe993665bf6200db38a02c11a9351e782a84b6a45e7f33b6695638c88e3931 AS runtime
 ARG VERSION=dev
 LABEL org.opencontainers.image.title="hangarr" \
       org.opencontainers.image.description="Sonarr / Radarr watch statistics and cleanup, with Plex (+ Tautulli) or Jellyfin" \
